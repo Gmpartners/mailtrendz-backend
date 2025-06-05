@@ -51,7 +51,7 @@ class ProjectService {
         project.type
       )
 
-      return project
+      return project.toJSON() as IProject
     } catch (error) {
       logger.error('Create project failed:', error)
       throw error
@@ -172,7 +172,7 @@ class ProjectService {
       })
 
       return {
-        projects,
+        projects: projects.map(p => p.toJSON() as IProject),
         pagination: {
           currentPage: page,
           totalPages,
@@ -201,7 +201,7 @@ class ProjectService {
         userId: new Types.ObjectId(userId)
       }).populate('chatId')
 
-      return project
+      return project ? project.toJSON() as IProject : null
     } catch (error) {
       logger.error('Get project by ID failed:', error)
       throw error
@@ -220,9 +220,10 @@ class ProjectService {
       if (project) {
         const changedFields = Object.keys(updates)
         loggerHelpers.project.updated(userId, projectId, changedFields)
+        return project.toJSON() as IProject
       }
 
-      return project
+      return null
     } catch (error) {
       logger.error('Update project failed:', error)
       throw error
@@ -287,7 +288,7 @@ class ProjectService {
       await duplicatedProject.save()
 
       // Criar chat para o projeto duplicado
-      await this.createProjectChat(duplicatedProject._id, userId)
+      await this.createProjectChat(duplicatedProject._id as Types.ObjectId, userId)
 
       logger.info('Project duplicated', {
         originalId: projectId,
@@ -295,7 +296,7 @@ class ProjectService {
         userId
       })
 
-      return duplicatedProject
+      return duplicatedProject.toJSON() as DuplicateProjectResponse
     } catch (error) {
       logger.error('Duplicate project failed:', error)
       throw error
@@ -452,9 +453,11 @@ class ProjectService {
   // Buscar projetos populares (públicos)
   async getPopularProjects(limit: number = 10): Promise<IProject[]> {
     try {
-      return await Project.find({ isPublic: true })
+      const projects = await Project.find({ isPublic: true })
         .sort({ 'stats.uses': -1, 'stats.opens': -1 })
         .limit(limit)
+      
+      return projects.map(p => p.toJSON() as IProject)
     } catch (error) {
       logger.error('Get popular projects failed:', error)
       throw error

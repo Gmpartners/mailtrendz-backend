@@ -135,7 +135,7 @@ class ChatService {
       })
 
       await userMessage.save()
-      await chat.addMessage(userMessage._id)
+      await chat.addMessage(userMessage._id as Types.ObjectId)
 
       // Se for mensagem do usuário, gerar resposta da IA
       let aiResponse
@@ -144,7 +144,7 @@ class ChatService {
       }
 
       return {
-        message: userMessage,
+        message: userMessage.toJSON() as IMessage,
         aiResponse
       }
     } catch (error) {
@@ -198,7 +198,7 @@ class ChatService {
       })
 
       await aiMessage.save()
-      await chat.addMessage(aiMessage._id)
+      await chat.addMessage(aiMessage._id as Types.ObjectId)
 
       // Se deve atualizar email, fazer a atualização
       if (aiResult.shouldUpdateEmail) {
@@ -316,7 +316,7 @@ class ChatService {
       const totalPages = Math.ceil(totalItems / limit)
 
       return {
-        messages,
+        messages: messages.map(m => m.toJSON() as IMessage),
         pagination: {
           currentPage: page,
           totalPages,
@@ -348,9 +348,10 @@ class ChatService {
 
       if (chat) {
         logger.info('Chat updated', { chatId, userId, updates: Object.keys(updates) })
+        return chat.toJSON() as IChat
       }
 
-      return chat
+      return null
     } catch (error) {
       logger.error('Update chat failed:', error)
       throw error
@@ -428,11 +429,13 @@ class ChatService {
       const sortObj: any = {}
       sortObj[sort.field] = sort.order === 'asc' ? 1 : -1
 
-      return await Chat.find(query)
+      const chats = await Chat.find(query)
         .populate('projectId', 'name type')
         .sort(sortObj)
         .skip(skip)
         .limit(limit)
+
+      return chats.map(chat => chat.toJSON() as IChat)
     } catch (error) {
       logger.error('Get user chats failed:', error)
       throw error
@@ -442,7 +445,8 @@ class ChatService {
   // Buscar chats ativos do usuário
   async getActiveChats(userId: string): Promise<IChat[]> {
     try {
-      return await ChatModel.getActiveChats(userId)
+      const chats = await ChatModel.getActiveChats(userId)
+      return chats.map((chat: any) => chat.toJSON() as IChat)
     } catch (error) {
       logger.error('Get active chats failed:', error)
       throw error
@@ -543,8 +547,8 @@ class ChatService {
     const aiMessageCount = stats.find(s => s._id === MESSAGE_TYPES.AI)?.count || 0
 
     return {
-      chat,
-      messages: recentMessages.reverse(),
+      chat: chat.toJSON() as IChat,
+      messages: recentMessages.reverse().map(m => m.toJSON() as IMessage),
       project: {
         id: project._id.toString(),
         name: project.name,
