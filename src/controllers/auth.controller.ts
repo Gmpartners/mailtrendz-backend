@@ -7,9 +7,9 @@ import { asyncHandler } from '../middleware/error.middleware'
 
 class AuthController {
   // Registro de usuário
-  register = asyncHandler(async (req: AuthRequest, res: Response) => {
+  register = asyncHandler(async (req: any, res: Response) => {
     const userData: RegisterDto = req.body
-    const ip = req.ip || req.connection.remoteAddress || 'unknown'
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown'
 
     const result = await AuthService.register(userData, ip)
 
@@ -27,9 +27,9 @@ class AuthController {
   })
 
   // Login de usuário
-  login = asyncHandler(async (req: AuthRequest, res: Response) => {
+  login = asyncHandler(async (req: any, res: Response) => {
     const credentials: LoginDto = req.body
-    const ip = req.ip || req.connection.remoteAddress || 'unknown'
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown'
 
     const result = await AuthService.login(credentials, ip)
 
@@ -47,7 +47,7 @@ class AuthController {
   })
 
   // Refresh token
-  refreshToken = asyncHandler(async (req: AuthRequest, res: Response) => {
+  refreshToken = asyncHandler(async (req: any, res: Response) => {
     // Tentar pegar refresh token do cookie ou body
     const refreshToken = req.cookies?.refreshToken || req.body.refreshToken
 
@@ -74,7 +74,7 @@ class AuthController {
   })
 
   // Logout
-  logout = asyncHandler(async (req: AuthRequest, res: Response) => {
+  logout = asyncHandler(async (req: any, res: Response) => {
     const userId = req.user?.id
 
     if (userId) {
@@ -91,8 +91,8 @@ class AuthController {
   })
 
   // Obter perfil do usuário atual
-  getProfile = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const userId = req.user!.id
+  getProfile = asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user?.id
 
     const profile = await AuthService.getUserProfile(userId)
 
@@ -103,8 +103,8 @@ class AuthController {
   })
 
   // Atualizar perfil
-  updateProfile = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const userId = req.user!.id
+  updateProfile = asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user?.id
     const updates = req.body
 
     const profile = await AuthService.updateProfile(userId, updates)
@@ -117,7 +117,7 @@ class AuthController {
   })
 
   // Solicitar reset de senha
-  requestPasswordReset = asyncHandler(async (req: AuthRequest, res: Response) => {
+  requestPasswordReset = asyncHandler(async (req: any, res: Response) => {
     const { email } = req.body
 
     await AuthService.requestPasswordReset(email)
@@ -129,7 +129,7 @@ class AuthController {
   })
 
   // Reset de senha
-  resetPassword = asyncHandler(async (req: AuthRequest, res: Response) => {
+  resetPassword = asyncHandler(async (req: any, res: Response) => {
     const { token, newPassword } = req.body
 
     await AuthService.resetPassword(token, newPassword)
@@ -141,7 +141,7 @@ class AuthController {
   })
 
   // Verificar email
-  verifyEmail = asyncHandler(async (req: AuthRequest, res: Response) => {
+  verifyEmail = asyncHandler(async (req: any, res: Response) => {
     const { token } = req.params
 
     await AuthService.verifyEmail(token)
@@ -153,8 +153,8 @@ class AuthController {
   })
 
   // Reenviar verificação de email
-  resendEmailVerification = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const userId = req.user!.id
+  resendEmailVerification = asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user?.id
 
     await AuthService.resendEmailVerification(userId)
 
@@ -165,23 +165,23 @@ class AuthController {
   })
 
   // Verificar status de autenticação
-  checkAuth = asyncHandler(async (req: AuthRequest, res: Response) => {
+  checkAuth = asyncHandler(async (req: any, res: Response) => {
     // Se chegou aqui, o middleware de auth já validou o token
     res.json({
       success: true,
       message: 'Token válido',
       data: {
         user: {
-          id: req.user!.id,
-          email: req.user!.email,
-          subscription: req.user!.subscription
+          id: req.user?.id,
+          email: req.user?.email,
+          subscription: req.user?.subscription
         }
       }
     })
   })
 
   // Validar força da senha (endpoint público)
-  validatePassword = asyncHandler(async (req: AuthRequest, res: Response) => {
+  validatePassword = asyncHandler(async (req: any, res: Response) => {
     const { password } = req.body
 
     if (!password) {
@@ -191,7 +191,9 @@ class AuthController {
       })
     }
 
-    const validation = AuthService.validatePasswordStrength(password)
+    // Use método estático da classe AuthService
+    const AuthServiceClass = require('../services/auth.service').default
+    const validation = AuthServiceClass.validatePasswordStrength(password)
 
     res.json({
       success: true,
@@ -200,7 +202,7 @@ class AuthController {
   })
 
   // Estatísticas de usuários (admin apenas)
-  getUserStats = asyncHandler(async (req: AuthRequest, res: Response) => {
+  getUserStats = asyncHandler(async (req: any, res: Response) => {
     // Verificação de admin pode ser feita via middleware
     const stats = await AuthService.getUserStats()
 
@@ -211,7 +213,7 @@ class AuthController {
   })
 
   // Health check do serviço de auth
-  healthCheck = asyncHandler(async (req: AuthRequest, res: Response) => {
+  healthCheck = asyncHandler(async (req: any, res: Response) => {
     const health = {
       status: 'ok',
       timestamp: new Date(),
