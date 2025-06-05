@@ -295,32 +295,31 @@ class AuthService {
 
   // Gerar tokens JWT - CORRIGIDO
   private generateTokens(userId: string, email: string, subscription: string) {
-    // Payload para access token
-    const payload = {
-      userId,
-      email,
-      subscription
-    }
+    const secret = process.env.JWT_SECRET!
+    const refreshSecret = process.env.JWT_REFRESH_SECRET!
+    const expiresIn = process.env.JWT_EXPIRES_IN || '24h'
+    const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '7d'
 
-    // Opções para access token
-    const accessOptions: SignOptions = {
-      expiresIn: process.env.JWT_EXPIRES_IN || '24h'
-    }
+    // Access token
+    const accessToken = jwt.sign(
+      {
+        userId,
+        email,
+        subscription
+      },
+      secret,
+      { expiresIn }
+    )
 
-    const accessToken = jwt.sign(payload, process.env.JWT_SECRET!, accessOptions)
-
-    // Payload para refresh token
-    const refreshPayload = {
-      userId,
-      tokenVersion: 1
-    }
-
-    // Opções para refresh token
-    const refreshOptions: SignOptions = {
-      expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d'
-    }
-
-    const refreshToken = jwt.sign(refreshPayload, process.env.JWT_REFRESH_SECRET!, refreshOptions)
+    // Refresh token
+    const refreshToken = jwt.sign(
+      {
+        userId,
+        tokenVersion: 1
+      },
+      refreshSecret,
+      { expiresIn: refreshExpiresIn }
+    )
 
     return { accessToken, refreshToken }
   }

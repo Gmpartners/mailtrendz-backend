@@ -35,12 +35,13 @@ class AIController {
       })
     }
 
-    // Garantir que type seja válido
-    const validType = Object.values(PROJECT_TYPES).includes(type) ? type : PROJECT_TYPES.CAMPAIGN
+    // Garantir que type seja válido - usar o valor ao invés da chave
+    const validProjectTypes = Object.values(PROJECT_TYPES)
+    const validType = validProjectTypes.includes(type) ? type : PROJECT_TYPES.CAMPAIGN
 
     const context = {
       userId,
-      type: validType as keyof typeof PROJECT_TYPES,
+      type: validType,
       industry,
       projectName: 'Teste'
     }
