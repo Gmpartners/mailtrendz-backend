@@ -139,18 +139,5 @@ export interface ProjectAnalytics {
   }
 }
 
-export interface DuplicateProjectResponse {
-  _id: Types.ObjectId
-  name: string
-  description: string
-  type: string
-  content: {
-    html: string
-    text: string
-    subject: string
-    previewText?: string
-  }
-  tags: string[]
-  color: string
-  createdAt: Date
-}
+// Corrigir DuplicateProjectResponse para ser igual a IProject
+export type DuplicateProjectResponse = IProject
