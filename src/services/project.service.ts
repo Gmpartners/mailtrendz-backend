@@ -51,7 +51,26 @@ class ProjectService {
         project.type
       )
 
-      return project.toJSON() as IProject
+      // Converter Document para interface usando spread operator
+      const projectData2: IProject = {
+        _id: project._id as Types.ObjectId,
+        userId: project.userId,
+        name: project.name,
+        description: project.description,
+        type: project.type,
+        status: project.status,
+        content: project.content,
+        metadata: project.metadata,
+        stats: project.stats,
+        tags: project.tags,
+        color: project.color,
+        isPublic: project.isPublic,
+        chatId: project.chatId,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt
+      }
+
+      return projectData2
     } catch (error) {
       logger.error('Create project failed:', error)
       throw error
@@ -171,8 +190,27 @@ class ProjectService {
         createdAt: { $gte: weekAgo }
       })
 
+      // Converter projects para interface usando spread operator
+      const convertedProjects: IProject[] = projects.map(p => ({
+        _id: p._id as Types.ObjectId,
+        userId: p.userId,
+        name: p.name,
+        description: p.description,
+        type: p.type,
+        status: p.status,
+        content: p.content,
+        metadata: p.metadata,
+        stats: p.stats,
+        tags: p.tags,
+        color: p.color,
+        isPublic: p.isPublic,
+        chatId: p.chatId,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt
+      }))
+
       return {
-        projects: projects.map(p => p.toJSON() as IProject),
+        projects: convertedProjects,
         pagination: {
           currentPage: page,
           totalPages,
@@ -201,7 +239,28 @@ class ProjectService {
         userId: new Types.ObjectId(userId)
       }).populate('chatId')
 
-      return project ? project.toJSON() as IProject : null
+      if (!project) return null
+
+      // Converter Document para interface usando spread operator
+      const projectData: IProject = {
+        _id: project._id as Types.ObjectId,
+        userId: project.userId,
+        name: project.name,
+        description: project.description,
+        type: project.type,
+        status: project.status,
+        content: project.content,
+        metadata: project.metadata,
+        stats: project.stats,
+        tags: project.tags,
+        color: project.color,
+        isPublic: project.isPublic,
+        chatId: project.chatId,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt
+      }
+
+      return projectData
     } catch (error) {
       logger.error('Get project by ID failed:', error)
       throw error
@@ -220,7 +279,27 @@ class ProjectService {
       if (project) {
         const changedFields = Object.keys(updates)
         loggerHelpers.project.updated(userId, projectId, changedFields)
-        return project.toJSON() as IProject
+        
+        // Converter Document para interface usando spread operator
+        const projectData: IProject = {
+          _id: project._id as Types.ObjectId,
+          userId: project.userId,
+          name: project.name,
+          description: project.description,
+          type: project.type,
+          status: project.status,
+          content: project.content,
+          metadata: project.metadata,
+          stats: project.stats,
+          tags: project.tags,
+          color: project.color,
+          isPublic: project.isPublic,
+          chatId: project.chatId,
+          createdAt: project.createdAt,
+          updatedAt: project.updatedAt
+        }
+        
+        return projectData
       }
 
       return null
@@ -296,7 +375,26 @@ class ProjectService {
         userId
       })
 
-      return duplicatedProject.toJSON() as DuplicateProjectResponse
+      // Converter Document para interface usando spread operator
+      const projectData: DuplicateProjectResponse = {
+        _id: duplicatedProject._id as Types.ObjectId,
+        userId: duplicatedProject.userId,
+        name: duplicatedProject.name,
+        description: duplicatedProject.description,
+        type: duplicatedProject.type,
+        status: duplicatedProject.status,
+        content: duplicatedProject.content,
+        metadata: duplicatedProject.metadata,
+        stats: duplicatedProject.stats,
+        tags: duplicatedProject.tags,
+        color: duplicatedProject.color,
+        isPublic: duplicatedProject.isPublic,
+        chatId: duplicatedProject.chatId,
+        createdAt: duplicatedProject.createdAt,
+        updatedAt: duplicatedProject.updatedAt
+      }
+
+      return projectData
     } catch (error) {
       logger.error('Duplicate project failed:', error)
       throw error
@@ -457,7 +555,24 @@ class ProjectService {
         .sort({ 'stats.uses': -1, 'stats.opens': -1 })
         .limit(limit)
       
-      return projects.map(p => p.toJSON() as IProject)
+      // Converter para interface usando spread operator
+      return projects.map(p => ({
+        _id: p._id as Types.ObjectId,
+        userId: p.userId,
+        name: p.name,
+        description: p.description,
+        type: p.type,
+        status: p.status,
+        content: p.content,
+        metadata: p.metadata,
+        stats: p.stats,
+        tags: p.tags,
+        color: p.color,
+        isPublic: p.isPublic,
+        chatId: p.chatId,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt
+      }))
     } catch (error) {
       logger.error('Get popular projects failed:', error)
       throw error

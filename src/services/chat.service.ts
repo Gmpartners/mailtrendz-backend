@@ -143,8 +143,18 @@ class ChatService {
         aiResponse = await this.generateAIResponse(chatId, messageDto.content, userId)
       }
 
+      // Converter para interface usando spread operator (mais seguro)
+      const messageData: IMessage = {
+        _id: userMessage._id as Types.ObjectId,
+        chatId: userMessage.chatId,
+        type: userMessage.type,
+        content: userMessage.content,
+        metadata: userMessage.metadata,
+        createdAt: userMessage.createdAt
+      }
+
       return {
-        message: userMessage.toJSON() as IMessage,
+        message: messageData,
         aiResponse
       }
     } catch (error) {
@@ -315,8 +325,18 @@ class ChatService {
 
       const totalPages = Math.ceil(totalItems / limit)
 
+      // Converter mensagens para interface usando spread operator
+      const convertedMessages: IMessage[] = messages.map(msg => ({
+        _id: msg._id as Types.ObjectId,
+        chatId: msg.chatId,
+        type: msg.type,
+        content: msg.content,
+        metadata: msg.metadata,
+        createdAt: msg.createdAt
+      }))
+
       return {
-        messages: messages.map(m => m.toJSON() as IMessage),
+        messages: convertedMessages,
         pagination: {
           currentPage: page,
           totalPages,
@@ -348,7 +368,21 @@ class ChatService {
 
       if (chat) {
         logger.info('Chat updated', { chatId, userId, updates: Object.keys(updates) })
-        return chat.toJSON() as IChat
+        
+        // Converter para interface usando spread operator
+        const chatData: IChat = {
+          _id: chat._id as Types.ObjectId,
+          userId: chat.userId,
+          projectId: chat.projectId,
+          title: chat.title,
+          messages: chat.messages,
+          isActive: chat.isActive,
+          metadata: chat.metadata,
+          createdAt: chat.createdAt,
+          updatedAt: chat.updatedAt
+        }
+        
+        return chatData
       }
 
       return null
@@ -435,7 +469,18 @@ class ChatService {
         .skip(skip)
         .limit(limit)
 
-      return chats.map(chat => chat.toJSON() as IChat)
+      // Converter para interface usando spread operator
+      return chats.map(chat => ({
+        _id: chat._id as Types.ObjectId,
+        userId: chat.userId,
+        projectId: chat.projectId,
+        title: chat.title,
+        messages: chat.messages,
+        isActive: chat.isActive,
+        metadata: chat.metadata,
+        createdAt: chat.createdAt,
+        updatedAt: chat.updatedAt
+      }))
     } catch (error) {
       logger.error('Get user chats failed:', error)
       throw error
@@ -446,7 +491,19 @@ class ChatService {
   async getActiveChats(userId: string): Promise<IChat[]> {
     try {
       const chats = await ChatModel.getActiveChats(userId)
-      return chats.map((chat: any) => chat.toJSON() as IChat)
+      
+      // Converter para interface usando spread operator
+      return chats.map((chat: any) => ({
+        _id: chat._id as Types.ObjectId,
+        userId: chat.userId,
+        projectId: chat.projectId,
+        title: chat.title,
+        messages: chat.messages,
+        isActive: chat.isActive,
+        metadata: chat.metadata,
+        createdAt: chat.createdAt,
+        updatedAt: chat.updatedAt
+      }))
     } catch (error) {
       logger.error('Get active chats failed:', error)
       throw error
@@ -546,9 +603,31 @@ class ChatService {
     const userMessageCount = stats.find(s => s._id === MESSAGE_TYPES.USER)?.count || 0
     const aiMessageCount = stats.find(s => s._id === MESSAGE_TYPES.AI)?.count || 0
 
+    // Converter para interfaces usando spread operator
+    const chatData: IChat = {
+      _id: chat._id as Types.ObjectId,
+      userId: chat.userId,
+      projectId: chat.projectId,
+      title: chat.title,
+      messages: chat.messages,
+      isActive: chat.isActive,
+      metadata: chat.metadata,
+      createdAt: chat.createdAt,
+      updatedAt: chat.updatedAt
+    }
+
+    const messagesData: IMessage[] = recentMessages.reverse().map(msg => ({
+      _id: msg._id as Types.ObjectId,
+      chatId: msg.chatId,
+      type: msg.type,
+      content: msg.content,
+      metadata: msg.metadata,
+      createdAt: msg.createdAt
+    }))
+
     return {
-      chat: chat.toJSON() as IChat,
-      messages: recentMessages.reverse().map(m => m.toJSON() as IMessage),
+      chat: chatData,
+      messages: messagesData,
       project: {
         id: project._id.toString(),
         name: project.name,

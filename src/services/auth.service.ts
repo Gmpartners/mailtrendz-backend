@@ -1,4 +1,4 @@
-import jwt, { SignOptions } from 'jsonwebtoken'
+import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
 import { User } from '../models/User.model'
 import { LoginDto, RegisterDto, AuthResponse, UserProfile, JwtTokenPayload } from '../types/auth.types'
@@ -293,35 +293,30 @@ class AuthService {
     }
   }
 
-  // Gerar tokens JWT - CORRIGIDO
+  // Gerar tokens JWT - SIMPLIFICADO
   private generateTokens(userId: string, email: string, subscription: string) {
-    const secret = process.env.JWT_SECRET!
-    const refreshSecret = process.env.JWT_REFRESH_SECRET!
-    const expiresIn = process.env.JWT_EXPIRES_IN || '24h'
-    const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '7d'
+    try {
+      // Access token - método mais simples
+      const accessPayload = { userId, email, subscription }
+      const accessToken = jwt.sign(
+        accessPayload,
+        process.env.JWT_SECRET as string,
+        { expiresIn: '24h' }
+      )
 
-    // Access token
-    const accessToken = jwt.sign(
-      {
-        userId,
-        email,
-        subscription
-      },
-      secret,
-      { expiresIn }
-    )
+      // Refresh token - método mais simples
+      const refreshPayload = { userId, tokenVersion: 1 }
+      const refreshToken = jwt.sign(
+        refreshPayload,
+        process.env.JWT_REFRESH_SECRET as string,
+        { expiresIn: '7d' }
+      )
 
-    // Refresh token
-    const refreshToken = jwt.sign(
-      {
-        userId,
-        tokenVersion: 1
-      },
-      refreshSecret,
-      { expiresIn: refreshExpiresIn }
-    )
-
-    return { accessToken, refreshToken }
+      return { accessToken, refreshToken }
+    } catch (error) {
+      logger.error('Generate tokens failed:', error)
+      throw new Error('Falha ao gerar tokens de autenticação')
+    }
   }
 
   // Gerar token de verificação
