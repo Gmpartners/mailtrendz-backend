@@ -1,6 +1,7 @@
 import { Types } from 'mongoose'
 import { Project, IProjectDocument } from '../models/Project.model'
 import { Chat } from '../models/Chat.model'
+import { User } from '../models/User.model'
 import { 
   IProject,
   CreateProjectDto,
@@ -10,7 +11,7 @@ import {
   ProjectAnalytics,
   DuplicateProjectResponse
 } from '../types/project.types'
-import { PAGINATION, PROJECT_STATUS } from '../utils/constants'
+import { PAGINATION, PROJECT_STATUS, API_LIMITS, EMAIL_COLORS, PROJECT_TYPES } from '../utils/constants'
 import { logger } from '../utils/logger'
 import { 
   createNotFoundError, 
@@ -20,16 +21,165 @@ import {
 import AIService from './ai.service'
 
 class ProjectService {
-  // Criar novo projeto
-  async createProject(userId: string, createProjectDto: CreateProjectDto): Promise<IProject> {
+  // Verificar limites do usuário
+  async checkUserLimits(userId: string): Promise<boolean> {
     try {
+      const user = await User.findById(userId)
+      if (!user) return false
+
+      const projectCount = await Project.countDocuments({ userId: new Types.ObjectId(userId) })
+      const limits = API_LIMITS[user.subscription as keyof typeof API_LIMITS]
+      
+      return projectCount < limits.MAX_PROJECTS
+    } catch (error) {
+      logger.error('Check user limits failed:', error)
+      return false
+    }
+  }
+
+  // Gerar nome do projeto baseado no prompt
+  generateProjectName(prompt: string): string {
+    try {
+      // Extrair palavras-chave do prompt
+      const words = prompt.toLowerCase()
+        .split(' ')
+        .filter(word => word.length > 3)
+        .slice(0, 3)
+      
+      if (words.length === 0) {
+        return `Projeto ${Date.now()}`
+      }
+
+      // Capitalizar primeira letra de cada palavra
+      const capitalizedWords = words.map(word => 
+        word.charAt(0).toUpperCase() + word.slice(1)
+      )
+
+      return `Email ${capitalizedWords.join(' ')}`
+    } catch (error) {
+      return `Projeto ${Date.now()}`
+    }
+  }
+
+  // Gerar tags baseadas no prompt e tipo
+  generateTags(prompt: string, type?: string): string[] {
+    try {
+      const tags: string[] = []
+      
+      // Adicionar tipo se fornecido
+      if (type) {
+        tags.push(type)
+      }
+
+      // Extrair tags do prompt (palavras-chave comuns)
+      const keywords = ['marketing', 'vendas', 'promocao', 'newsletter', 'boas-vindas', 'campanha']
+      const promptLower = prompt.toLowerCase()
+      
+      keywords.forEach(keyword => {
+        if (promptLower.includes(keyword)) {
+          tags.push(keyword)
+        }
+      })
+
+      // Garantir pelo menos 2 tags
+      if (tags.length === 0) {
+        tags.push('email', 'marketing')
+      } else if (tags.length === 1) {
+        tags.push('email')
+      }
+
+      return tags.slice(0, 5) // Máximo 5 tags
+    } catch (error) {
+      return ['email', 'marketing']
+    }
+  }
+
+  // Gerar cor baseada no tipo
+  generateColor(type?: string): string {
+    if (type && EMAIL_COLORS[type as keyof typeof EMAIL_COLORS]) {
+      return EMAIL_COLORS[type as keyof typeof EMAIL_COLORS]
+    }
+    return '#6b7280' // Cor padrão
+  }
+
+  // Criar novo projeto (versão atualizada)
+  async createProject(projectData: any): Promise<IProject> {
+    try {
+      // Criar projeto
+      const project = new Project({
+        userId: new Types.ObjectId(projectData.userId),
+        name: projectData.name,
+        description: projectData.description,
+        type: projectData.type || 'campaign',
+        status: PROJECT_STATUS.DRAFT,
+        content: projectData.content,
+        metadata: {
+          industry: projectData.metadata.industry || 'Geral',
+          targetAudience: projectData.metadata.targetAudience,
+          tone: projectData.metadata.tone || 'profissional',
+          originalPrompt: projectData.metadata.originalPrompt,
+          version: 1
+        },
+        tags: projectData.tags || ['email'],
+        color: projectData.color || '#6b7280',
+        isPublic: false
+      })
+
+      await project.save()
+
+      logger.info('Project created', { 
+        projectId: project._id.toString(), 
+        userId: projectData.userId,
+        type: project.type 
+      })
+
+      // Converter para interface
+      const projectDataResponse: IProject = {
+        _id: project._id as Types.ObjectId,
+        userId: project.userId,
+        name: project.name,
+        description: project.description,
+        type: project.type,
+        status: project.status,
+        content: project.content,
+        metadata: project.metadata,
+        stats: project.stats,
+        tags: project.tags,
+        color: project.color,
+        isPublic: project.isPublic,
+        chatId: project.chatId,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt
+      }
+
+      return projectDataResponse
+    } catch (error) {
+      logger.error('Create project failed:', error)
+      throw error
+    }
+  }
+
+  // Criar novo projeto com IA (método original corrigido)
+  async createProjectWithAI(userId: string, createProjectDto: CreateProjectDto): Promise<IProject> {
+    try {
+      // Preparar contexto para IA
+      const context = {
+        userId,
+        type: createProjectDto.type || 'campaign',
+        industry: createProjectDto.industry || 'geral',
+        targetAudience: createProjectDto.targetAudience,
+        tone: createProjectDto.tone || 'profissional',
+        projectName: this.generateProjectName(createProjectDto.prompt),
+        status: 'draft' as const
+      }
+
       // Gerar conteúdo do email com IA
-      const emailContent = await AIService.generateEmail(createProjectDto)
+      const emailContent = await AIService.generateEmail(createProjectDto.prompt, context)
 
       // Criar projeto
       const project = new Project({
         userId: new Types.ObjectId(userId),
-        name: `Email ${createProjectDto.type || 'campaign'}`,
+        name: this.generateProjectName(createProjectDto.prompt),
         description: `Projeto gerado a partir do prompt: ${createProjectDto.prompt.substring(0, 100)}...`,
         type: createProjectDto.type || 'campaign',
         status: PROJECT_STATUS.DRAFT,
@@ -41,8 +191,8 @@ class ProjectService {
           originalPrompt: createProjectDto.prompt,
           version: 1
         },
-        tags: [createProjectDto.type || 'campaign', createProjectDto.industry || 'geral'],
-        color: '#6b7280',
+        tags: this.generateTags(createProjectDto.prompt, createProjectDto.type),
+        color: this.generateColor(createProjectDto.type),
         isPublic: false
       })
 
@@ -51,7 +201,7 @@ class ProjectService {
       // Criar chat para o projeto
       await this.createProjectChat(project._id as Types.ObjectId, userId)
 
-      logger.info('Project created', { 
+      logger.info('Project created with AI', { 
         projectId: project._id.toString(), 
         userId,
         type: project.type 
@@ -78,8 +228,46 @@ class ProjectService {
 
       return projectData
     } catch (error) {
-      logger.error('Create project failed:', error)
+      logger.error('Create project with AI failed:', error)
       throw error
+    }
+  }
+
+  // Criar chat para projeto (agora público)
+  async createProjectChat(projectId: Types.ObjectId, userId: string): Promise<any> {
+    try {
+      const chat = new Chat({
+        userId: new Types.ObjectId(userId),
+        projectId,
+        title: 'Chat do Projeto',
+        isActive: true
+      })
+
+      await chat.save()
+
+      // Atualizar projeto com chat ID
+      await Project.findByIdAndUpdate(projectId, { chatId: chat._id })
+
+      return chat
+    } catch (error) {
+      logger.error('Create project chat failed:', error)
+      throw error
+    }
+  }
+
+  // Rastrear criação do projeto
+  async trackProjectCreation(userId: string, projectId: string): Promise<void> {
+    try {
+      // Atualizar uso da API do usuário
+      await User.findByIdAndUpdate(userId, {
+        $inc: { 'apiUsage.currentMonth': 1 },
+        $set: { 'apiUsage.lastUsed': new Date() }
+      })
+
+      logger.info('Project creation tracked', { userId, projectId })
+    } catch (error) {
+      logger.error('Track project creation failed:', error)
+      // Não lançar erro para não afetar o fluxo principal
     }
   }
 
@@ -224,6 +412,19 @@ class ProjectService {
     }
   }
 
+  // Incrementar visualizações do projeto
+  async incrementProjectViews(projectId: string): Promise<void> {
+    try {
+      await Project.findByIdAndUpdate(projectId, {
+        $inc: { 'stats.views': 1 }
+      })
+      logger.info('Project views incremented', { projectId })
+    } catch (error) {
+      logger.error('Increment project views failed:', error)
+      // Não lançar erro para não afetar o fluxo principal
+    }
+  }
+
   // Atualizar projeto
   async updateProject(projectId: string, userId: string, updates: UpdateProjectDto): Promise<IProject | null> {
     try {
@@ -336,7 +537,7 @@ class ProjectService {
         userId
       })
 
-      // Agora DuplicateProjectResponse = IProject, então usar a mesma conversão
+      // Converter para interface
       const projectData: DuplicateProjectResponse = {
         _id: duplicatedProject._id as Types.ObjectId,
         userId: duplicatedProject.userId,
@@ -358,6 +559,60 @@ class ProjectService {
       return projectData
     } catch (error) {
       logger.error('Duplicate project failed:', error)
+      throw error
+    }
+  }
+
+  // Buscar projetos populares (públicos)
+  async getPopularProjects(limit: number = 10): Promise<IProject[]> {
+    try {
+      const projects = await Project.find({ isPublic: true })
+        .sort({ 'stats.uses': -1, 'stats.views': -1 })
+        .limit(limit)
+
+      // Converter para interface
+      return projects.map(project => ({
+        _id: project._id as Types.ObjectId,
+        userId: project.userId,
+        name: project.name,
+        description: project.description,
+        type: project.type,
+        status: project.status,
+        content: project.content,
+        metadata: project.metadata,
+        stats: project.stats,
+        tags: project.tags,
+        color: project.color,
+        isPublic: project.isPublic,
+        chatId: project.chatId,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt
+      }))
+    } catch (error) {
+      logger.error('Get popular projects failed:', error)
+      throw error
+    }
+  }
+
+  // Buscar estatísticas de tipos de projeto
+  async getProjectTypeStats(userId: string): Promise<any> {
+    try {
+      const stats = await Project.aggregate([
+        { $match: { userId: new Types.ObjectId(userId) } },
+        {
+          $group: {
+            _id: '$type',
+            count: { $sum: 1 },
+            avgOpens: { $avg: '$stats.opens' },
+            avgClicks: { $avg: '$stats.clicks' },
+            totalUses: { $sum: '$stats.uses' }
+          }
+        }
+      ])
+      
+      return stats
+    } catch (error) {
+      logger.error('Get project type stats failed:', error)
       throw error
     }
   }
@@ -443,28 +698,42 @@ class ProjectService {
     }
   }
 
-  // Métodos auxiliares privados
-  private async createProjectChat(projectId: Types.ObjectId, userId: string): Promise<void> {
+  // Buscar estatísticas gerais dos projetos do usuário (agora público)
+  async getUserProjectStats(userId: string): Promise<any> {
     try {
-      const chat = new Chat({
-        userId: new Types.ObjectId(userId),
-        projectId,
-        title: 'Chat do Projeto',
-        isActive: true
-      })
-
-      await chat.save()
-
-      // Atualizar projeto com chat ID
-      await Project.findByIdAndUpdate(projectId, { chatId: chat._id })
+      const stats = await Project.aggregate([
+        { $match: { userId: new Types.ObjectId(userId) } },
+        {
+          $group: {
+            _id: null,
+            totalProjects: { $sum: 1 },
+            totalOpens: { $sum: '$stats.opens' },
+            totalClicks: { $sum: '$stats.clicks' },
+            totalUses: { $sum: '$stats.uses' },
+            avgConversion: { 
+              $avg: { 
+                $cond: [
+                  { $gt: ['$stats.opens', 0] },
+                  { $multiply: [{ $divide: ['$stats.clicks', '$stats.opens'] }, 100] },
+                  0
+                ]
+              }
+            }
+          }
+        }
+      ])
+      
+      return stats[0] || {
+        totalProjects: 0,
+        totalOpens: 0,
+        totalClicks: 0,
+        totalUses: 0,
+        avgConversion: 0
+      }
     } catch (error) {
-      logger.error('Create project chat failed:', error)
-      // Não lançar erro para não afetar a criação do projeto
+      logger.error('Get user project stats failed:', error)
+      throw error
     }
-  }
-
-  private async getUserProjectStats(userId: string) {
-    return await Project.getUserStats(userId)
   }
 }
 
