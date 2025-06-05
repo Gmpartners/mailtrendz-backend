@@ -35,9 +35,9 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ): void => {
-  let statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR
+  let statusCode: number = HTTP_STATUS.INTERNAL_SERVER_ERROR
   let message = 'Erro interno do servidor'
-  let code = ERROR_CODES.INTERNAL_ERROR
+  let code: string = ERROR_CODES.INTERNAL_ERROR
   let details: any = undefined
 
   // Log do erro

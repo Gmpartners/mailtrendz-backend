@@ -3,12 +3,13 @@ import bcrypt from 'bcryptjs'
 import { IUser } from '../types/auth.types'
 import { SUBSCRIPTION_TYPES, COLLECTIONS, API_LIMITS, SECURITY } from '../utils/constants'
 
-export interface IUserDocument extends IUser, Document {
+export interface IUserDocument extends Omit<IUser, '_id'>, Document {
   comparePassword(candidatePassword: string): Promise<boolean>
   incrementAPIUsage(): Promise<void>
   resetAPIUsage(): Promise<void>
   canMakeAPIRequest(): boolean
   getAPIUsagePercentage(): number
+  fullProfile: any
 }
 
 const userSchema = new Schema<IUserDocument>({

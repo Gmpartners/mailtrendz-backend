@@ -1,7 +1,7 @@
 import { Response } from 'express'
 import { AuthRequest } from '../types/auth.types'
 import AIService from '../services/ai.service'
-import { HTTP_STATUS } from '../utils/constants'
+import { HTTP_STATUS, PROJECT_TYPES } from '../utils/constants'
 import { asyncHandler } from '../middleware/error.middleware'
 
 class AIController {
@@ -35,9 +35,12 @@ class AIController {
       })
     }
 
+    // Garantir que type seja válido
+    const validType = Object.values(PROJECT_TYPES).includes(type) ? type : PROJECT_TYPES.CAMPAIGN
+
     const context = {
       userId,
-      type,
+      type: validType as keyof typeof PROJECT_TYPES,
       industry,
       projectName: 'Teste'
     }
@@ -65,7 +68,7 @@ class AIController {
 
     const context = {
       userId,
-      type: 'campaign',
+      type: PROJECT_TYPES.CAMPAIGN,
       industry: 'geral',
       projectName: 'Teste'
     }
@@ -93,7 +96,7 @@ class AIController {
 
     const projectContext = {
       userId,
-      type: 'campaign',
+      type: PROJECT_TYPES.CAMPAIGN,
       industry: 'geral',
       projectName: 'Teste'
     }

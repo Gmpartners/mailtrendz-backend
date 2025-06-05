@@ -1,14 +1,29 @@
 import { Response } from 'express'
+import mongoose from 'mongoose'
 import { AuthRequest } from '../types/auth.types'
 import { User } from '../models/User.model'
-import { Project } from '../models/Project.model'
-import { Chat } from '../models/Chat.model'
+import { Project, IProjectDocument } from '../models/Project.model'
+import { Chat, IChatDocument } from '../models/Chat.model'
 import { Message } from '../models/Message.model'
 import Database from '../config/database.config'
 import AIService from '../services/ai.service'
 import { HTTP_STATUS } from '../utils/constants'
 import { logger } from '../utils/logger'
 import { asyncHandler } from '../middleware/error.middleware'
+
+// Estender os tipos dos modelos para incluir métodos estáticos
+interface ProjectModelType extends mongoose.Model<IProjectDocument> {
+  getUserStats(userId: string): Promise<any>
+}
+
+interface ChatModelType extends mongoose.Model<IChatDocument> {
+  getUserStats(userId: string): Promise<any>
+  getActiveChats(userId: string): Promise<any>
+}
+
+// Usar type assertion para os modelos
+const ProjectModel = Project as ProjectModelType
+const ChatModel = Chat as ChatModelType
 
 class UserController {
   // Dashboard do usuário com estatísticas gerais
@@ -18,8 +33,8 @@ class UserController {
     // Buscar estatísticas do usuário
     const [userStats, projectStats, chatStats] = await Promise.all([
       User.findById(userId).select('apiUsage subscription createdAt'),
-      Project.getUserStats(userId),
-      Chat.getUserStats(userId)
+      ProjectModel.getUserStats(userId),
+      ChatModel.getUserStats(userId)
     ])
 
     // Projetos recentes
@@ -29,7 +44,7 @@ class UserController {
       .select('name type createdAt updatedAt')
 
     // Chats ativos
-    const activeChats = await Chat.getActiveChats(userId)
+    const activeChats = await ChatModel.getActiveChats(userId)
 
     const dashboard = {
       user: {

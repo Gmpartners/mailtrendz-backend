@@ -20,7 +20,7 @@ class AIService {
       apiKey: process.env.OPENROUTER_API_KEY!,
       baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
       defaultModel: AI_MODELS.PRIMARY,
-      fallbackModels: AI_MODELS.FALLBACKS
+      fallbackModels: [...AI_MODELS.FALLBACKS] // Converter readonly array para mutable
     }
 
     this.client = axios.create({

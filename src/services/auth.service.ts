@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken'
+import jwt, { SignOptions } from 'jsonwebtoken'
 import crypto from 'crypto'
 import { User } from '../models/User.model'
 import { LoginDto, RegisterDto, AuthResponse, UserProfile, JwtTokenPayload } from '../types/auth.types'
@@ -295,26 +295,32 @@ class AuthService {
 
   // Gerar tokens JWT - CORRIGIDO
   private generateTokens(userId: string, email: string, subscription: string) {
-    // Payload limpo sem propriedades extras
-    const payload: JwtTokenPayload = {
+    // Payload para access token
+    const payload = {
       userId,
       email,
       subscription
     }
 
-    const accessToken = jwt.sign(payload, process.env.JWT_SECRET!, {
+    // Opções para access token
+    const accessOptions: SignOptions = {
       expiresIn: process.env.JWT_EXPIRES_IN || '24h'
-    })
+    }
 
-    // Payload separado para refresh token
+    const accessToken = jwt.sign(payload, process.env.JWT_SECRET!, accessOptions)
+
+    // Payload para refresh token
     const refreshPayload = {
       userId,
       tokenVersion: 1
     }
 
-    const refreshToken = jwt.sign(refreshPayload, process.env.JWT_REFRESH_SECRET!, {
+    // Opções para refresh token
+    const refreshOptions: SignOptions = {
       expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d'
-    })
+    }
+
+    const refreshToken = jwt.sign(refreshPayload, process.env.JWT_REFRESH_SECRET!, refreshOptions)
 
     return { accessToken, refreshToken }
   }

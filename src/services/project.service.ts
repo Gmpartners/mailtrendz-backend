@@ -1,5 +1,6 @@
 import { Types } from 'mongoose'
-import { Project } from '../models/Project.model'
+import mongoose from 'mongoose'
+import { Project, IProjectDocument } from '../models/Project.model'
 import { Chat } from '../models/Chat.model'
 import { User } from '../models/User.model'
 import { 
@@ -21,6 +22,15 @@ import {
   AppError 
 } from '../middleware/error.middleware'
 import AIService from './ai.service'
+
+// Estender o tipo do modelo para incluir métodos estáticos
+interface ProjectModelType extends mongoose.Model<IProjectDocument> {
+  getTypeStats(userId: string): Promise<any>
+  getUserStats(userId: string): Promise<any>
+}
+
+// Usar type assertion para o modelo
+const ProjectModel = Project as ProjectModelType
 
 class ProjectService {
   // Criar novo projeto
@@ -454,7 +464,7 @@ class ProjectService {
   // Buscar estatísticas de tipos de projeto
   async getProjectTypeStats(userId: string) {
     try {
-      return await Project.getTypeStats(userId)
+      return await ProjectModel.getTypeStats(userId)
     } catch (error) {
       logger.error('Get project type stats failed:', error)
       throw error
@@ -464,7 +474,7 @@ class ProjectService {
   // Buscar estatísticas gerais do usuário
   async getUserProjectStats(userId: string) {
     try {
-      return await Project.getUserStats(userId)
+      return await ProjectModel.getUserStats(userId)
     } catch (error) {
       logger.error('Get user project stats failed:', error)
       throw error

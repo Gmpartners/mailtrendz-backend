@@ -1,4 +1,4 @@
-import { body, query, param, validationResult } from 'express-validator'
+import { body, query, param, validationResult, FieldValidationError } from 'express-validator'
 import { Request, Response, NextFunction } from 'express'
 import { HTTP_STATUS, ERROR_CODES, VALIDATION, PROJECT_TYPES } from '../utils/constants'
 
@@ -12,11 +12,15 @@ export const handleValidationErrors = (req: Request, res: Response, next: NextFu
       message: 'Dados de entrada inválidos',
       error: {
         code: ERROR_CODES.VALIDATION_ERROR,
-        details: errors.array().map(error => ({
-          field: error.param,
-          message: error.msg,
-          value: error.value
-        }))
+        details: errors.array().map(error => {
+          // Usar type assertion para acessar propriedades específicas
+          const fieldError = error as FieldValidationError
+          return {
+            field: fieldError.path || 'unknown',
+            message: fieldError.msg,
+            value: fieldError.value
+          }
+        })
       }
     })
   }

@@ -2,7 +2,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose'
 import { IChat } from '../types/chat.types'
 import { COLLECTIONS } from '../utils/constants'
 
-export interface IChatDocument extends IChat, Document {
+export interface IChatDocument extends Omit<IChat, '_id'>, Document {
   addMessage(messageId: Types.ObjectId): Promise<void>
   updateActivity(): Promise<void>
   incrementEmailUpdates(): Promise<void>

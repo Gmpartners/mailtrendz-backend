@@ -1,6 +1,7 @@
 import { Types } from 'mongoose'
-import { Chat } from '../models/Chat.model'
-import { Message } from '../models/Message.model'
+import mongoose from 'mongoose'
+import { Chat, IChatDocument } from '../models/Chat.model'
+import { Message, IMessageDocument } from '../models/Message.model'
 import { Project } from '../models/Project.model'
 import { 
   IChat, 
@@ -21,6 +22,21 @@ import { logger } from '../utils/logger'
 import { createNotFoundError, createForbiddenError } from '../middleware/error.middleware'
 import AIService from './ai.service'
 import ProjectService from './project.service'
+
+// Estender os tipos dos modelos para incluir métodos estáticos
+interface MessageModelType extends mongoose.Model<IMessageDocument> {
+  getChatStats(chatId: string): Promise<any>
+  getTokenUsage(chatId: string, dateFrom?: Date, dateTo?: Date): Promise<any>
+  getPerformanceMetrics(chatId: string): Promise<any>
+}
+
+interface ChatModelType extends mongoose.Model<IChatDocument> {
+  getActiveChats(userId: string): Promise<any>
+}
+
+// Usar type assertion para os modelos
+const MessageModel = Message as MessageModelType
+const ChatModel = Chat as ChatModelType
 
 class ChatService {
   // Criar novo chat
@@ -292,7 +308,7 @@ class ChatService {
       ])
 
       // Calcular estatísticas
-      const stats = await Message.getChatStats(chatId)
+      const stats = await MessageModel.getChatStats(chatId)
       const userMessages = stats.find(s => s._id === MESSAGE_TYPES.USER)?.count || 0
       const aiMessages = stats.find(s => s._id === MESSAGE_TYPES.AI)?.count || 0
       const avgResponseTime = stats.find(s => s._id === MESSAGE_TYPES.AI)?.avgExecutionTime || 0
@@ -426,7 +442,7 @@ class ChatService {
   // Buscar chats ativos do usuário
   async getActiveChats(userId: string): Promise<IChat[]> {
     try {
-      return await Chat.getActiveChats(userId)
+      return await ChatModel.getActiveChats(userId)
     } catch (error) {
       logger.error('Get active chats failed:', error)
       throw error
@@ -450,9 +466,9 @@ class ChatService {
 
       // Buscar estatísticas do chat
       const [stats, tokenUsage, performance] = await Promise.all([
-        Message.getChatStats(chatId),
-        Message.getTokenUsage(chatId),
-        Message.getPerformanceMetrics(chatId)
+        MessageModel.getChatStats(chatId),
+        MessageModel.getTokenUsage(chatId),
+        MessageModel.getPerformanceMetrics(chatId)
       ])
 
       // Calcular métricas
@@ -522,7 +538,7 @@ class ChatService {
       .sort({ createdAt: -1 })
       .limit(10)
 
-    const stats = await Message.getChatStats(chatId)
+    const stats = await MessageModel.getChatStats(chatId)
     const userMessageCount = stats.find(s => s._id === MESSAGE_TYPES.USER)?.count || 0
     const aiMessageCount = stats.find(s => s._id === MESSAGE_TYPES.AI)?.count || 0
 
