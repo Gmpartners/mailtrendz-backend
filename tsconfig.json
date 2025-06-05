@@ -39,12 +39,12 @@
     "strictPropertyInitialization": false
   },
   "include": [
-    "src/**/*",
-    "scripts/**/*"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules",
     "dist",
+    "scripts",
     "**/*.test.ts"
   ],
   "ts-node": {
