@@ -23,46 +23,19 @@ class ProjectController {
       })
     }
 
-    // Preparar contexto para IA
-    const context = {
-      userId,
-      type: type || 'campaign',
-      industry: industry || 'geral',
-      targetAudience,
-      tone: tone || 'profissional',
-      projectName: `Projeto ${Date.now()}`
-    }
-
     logger.info('Starting AI email generation', { 
       userId, 
       prompt: prompt.substring(0, 50) 
     })
 
-    // Gerar email com IA
-    const emailContent = await AIService.generateEmail(prompt, context)
-
-    // Preparar dados do projeto
-    const projectData = {
-      userId,
-      name: ProjectService.generateProjectName(prompt),
-      description: `Email gerado via IA: "${prompt.substring(0, 100)}..."`,
-      type: type || 'campaign',
-      content: emailContent,
-      metadata: {
-        industry: industry || 'geral',
-        targetAudience,
-        tone,
-        originalPrompt: prompt
-      },
-      tags: ProjectService.generateTags(prompt, type),
-      color: ProjectService.generateColor(type)
-    }
-
-    // Criar projeto
-    const project = await ProjectService.createProject(projectData)
-
-    // Criar chat associado
-    const chat = await ProjectService.createProjectChat(project._id, userId)
+    // Criar projeto usando IA
+    const project = await ProjectService.createProjectWithAI(userId, {
+      prompt,
+      type,
+      industry,
+      targetAudience,
+      tone
+    })
 
     // Rastrear criação do projeto
     await ProjectService.trackProjectCreation(userId, project._id.toString())
@@ -86,7 +59,7 @@ class ProjectController {
           tags: project.tags,
           color: project.color,
           createdAt: project.createdAt,
-          chatId: chat._id
+          chatId: project.chatId
         }
       }
     })
@@ -270,7 +243,10 @@ class ProjectController {
       userId,
       type: project.type,
       industry: project.metadata.industry,
-      projectName: project.name
+      projectName: project.name,
+      targetAudience: project.metadata.targetAudience,
+      tone: project.metadata.tone,
+      status: project.status
     }
 
     // Melhorar email com IA
