@@ -26,14 +26,15 @@ export const authenticateToken = async (
     // Verificar token
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtTokenPayload
 
-    // DEBUG: Log do JWT decodificado
-    logger.info('JWT decodificado:', decoded)
+    // DEBUG: Log direto no console para garantir visibilidade
+    console.log('=== DEBUG AUTH MIDDLEWARE ===')
+    console.log('JWT decodificado:', JSON.stringify(decoded, null, 2))
 
     // Verificar se usuário ainda existe
     const user = await User.findById(decoded.userId).select('email subscription')
     
     // DEBUG: Log do usuário encontrado
-    logger.info('Usuário encontrado no banco:', { 
+    console.log('Usuário encontrado no banco:', { 
       userId: decoded.userId, 
       userExists: !!user,
       userEmail: user?.email,
@@ -41,7 +42,7 @@ export const authenticateToken = async (
     })
 
     if (!user) {
-      logger.warn('Usuário não encontrado no banco com ID:', decoded.userId)
+      console.log('ERRO: Usuário não encontrado no banco com ID:', decoded.userId)
       res.status(HTTP_STATUS.UNAUTHORIZED).json({
         success: false,
         message: 'Usuário não encontrado',
@@ -58,10 +59,13 @@ export const authenticateToken = async (
     }
 
     // DEBUG: Log do req.user final
-    logger.info('req.user setado:', req.user)
+    console.log('req.user setado:', JSON.stringify(req.user, null, 2))
+    console.log('=== FIM DEBUG AUTH MIDDLEWARE ===')
 
     next()
   } catch (error) {
+    console.log('ERRO no middleware auth:', error)
+    
     if (error instanceof jwt.TokenExpiredError) {
       res.status(HTTP_STATUS.UNAUTHORIZED).json({
         success: false,

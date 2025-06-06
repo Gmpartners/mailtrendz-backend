@@ -44,6 +44,9 @@ class App {
   }
 
   private initializeMiddlewares(): void {
+    // IMPORTANTE: Configurar trust proxy para Render
+    this.app.set('trust proxy', true)
+    
     // Logs de requisições HTTP
     this.app.use(morgan('combined', { stream: morganStream }))
     
