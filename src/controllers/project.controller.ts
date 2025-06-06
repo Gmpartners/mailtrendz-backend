@@ -10,59 +10,146 @@ import { asyncHandler, createNotFoundError } from '../middleware/error.middlewar
 class ProjectController {
   // Criar novo projeto
   createProject = asyncHandler(async (req: AuthRequest, res: Response) => {
+    // Log detalhado dos dados recebidos
+    console.log('📝 [CREATE PROJECT] Dados recebidos:', {
+      body: JSON.stringify(req.body, null, 2),
+      userId: req.user?.id,
+      headers: {
+        'content-type': req.headers['content-type'],
+        'authorization': req.headers['authorization'] ? 'Bearer [TOKEN]' : 'undefined'
+      },
+      timestamp: new Date().toISOString()
+    })
+
     const { prompt, type, industry, targetAudience, tone } = req.body as CreateProjectDto
     const userId = req.user!.id
 
-    // Verificar limites do usuário
-    const canCreate = await ProjectService.checkUserLimits(userId)
-    if (!canCreate) {
-      return res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
+    // Verificar campos obrigatórios
+    if (!prompt || prompt.trim().length < 10) {
+      console.log('❌ [CREATE PROJECT] Prompt inválido:', { prompt, length: prompt?.length })
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
-        message: 'Limite de projetos atingido. Faça upgrade do plano.',
-        error: { code: 'LIMIT_EXCEEDED' }
+        message: 'Prompt deve ter pelo menos 10 caracteres',
+        error: { code: 'INVALID_PROMPT' }
+      })
+    }
+
+    // Aplicar valores padrão para campos opcionais
+    const projectData = {
+      prompt: prompt.trim(),
+      type: type || 'campaign',
+      industry: industry || 'geral',
+      targetAudience: targetAudience || 'Geral',
+      tone: tone || 'profissional'
+    }
+
+    console.log('🔄 [CREATE PROJECT] Dados processados:', {
+      userId,
+      projectData,
+      timestamp: new Date().toISOString()
+    })
+
+    // Verificar limites do usuário
+    try {
+      const canCreate = await ProjectService.checkUserLimits(userId)
+      if (!canCreate) {
+        console.log('⚠️ [CREATE PROJECT] Limite excedido:', { userId })
+        return res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
+          success: false,
+          message: 'Limite de projetos atingido. Faça upgrade do plano.',
+          error: { code: 'LIMIT_EXCEEDED' }
+        })
+      }
+    } catch (error) {
+      console.error('❌ [CREATE PROJECT] Erro verificando limites:', error)
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro interno ao verificar limites',
+        error: { code: 'INTERNAL_ERROR' }
       })
     }
 
     logger.info('Starting AI email generation', { 
       userId, 
-      prompt: prompt.substring(0, 50) 
+      prompt: prompt.substring(0, 50),
+      type: projectData.type,
+      industry: projectData.industry
     })
 
-    // Criar projeto usando IA
-    const project = await ProjectService.createProjectWithAI(userId, {
-      prompt,
-      type,
-      industry,
-      targetAudience,
-      tone
-    })
-
-    // Rastrear criação do projeto
-    await ProjectService.trackProjectCreation(userId, project._id.toString())
-
-    logger.info('Project created successfully', { 
-      projectId: project._id, 
-      userId, 
-      type: project.type 
-    })
-
-    res.status(HTTP_STATUS.CREATED).json({
-      success: true,
-      message: 'Projeto criado com sucesso!',
-      data: {
-        project: {
-          id: project._id,
-          name: project.name,
-          description: project.description,
-          type: project.type,
-          content: project.content,
-          tags: project.tags,
-          color: project.color,
-          createdAt: project.createdAt,
-          chatId: project.chatId
-        }
+    console.log('🤖 [CREATE PROJECT] Iniciando geração com IA...', {
+      userId,
+      promptPreview: prompt.substring(0, 100),
+      aiConfig: {
+        type: projectData.type,
+        industry: projectData.industry,
+        tone: projectData.tone
       }
     })
+
+    try {
+      // Criar projeto usando IA
+      const project = await ProjectService.createProjectWithAI(userId, projectData)
+
+      // Rastrear criação do projeto
+      await ProjectService.trackProjectCreation(userId, project._id.toString())
+
+      console.log('✅ [CREATE PROJECT] Projeto criado com sucesso:', {
+        projectId: project._id.toString(),
+        userId,
+        type: project.type,
+        hasContent: !!project.content,
+        contentLength: project.content ? Object.keys(project.content).length : 0
+      })
+
+      logger.info('Project created successfully', { 
+        projectId: project._id, 
+        userId, 
+        type: project.type 
+      })
+
+      res.status(HTTP_STATUS.CREATED).json({
+        success: true,
+        message: 'Projeto criado com sucesso!',
+        data: {
+          project: {
+            id: project._id,
+            name: project.name,
+            description: project.description,
+            type: project.type,
+            content: project.content,
+            tags: project.tags,
+            color: project.color,
+            createdAt: project.createdAt,
+            chatId: project.chatId
+          }
+        }
+      })
+    } catch (error: any) {
+      console.error('❌ [CREATE PROJECT] Erro na criação:', {
+        error: error.message,
+        stack: error.stack,
+        userId,
+        prompt: prompt.substring(0, 50),
+        aiService: error.message?.includes('OpenRouter') ? 'OpenRouter Error' : 'Other Error'
+      })
+
+      logger.error('Project creation failed:', error)
+
+      // Determinar tipo de erro
+      if (error.message?.includes('OpenRouter') || error.message?.includes('AI')) {
+        return res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: 'Serviço de IA temporariamente indisponível. Tente novamente em alguns minutos.',
+          error: { code: 'AI_SERVICE_ERROR' }
+        })
+      }
+
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro interno ao criar projeto. Nossa equipe foi notificada.',
+        error: { code: 'INTERNAL_ERROR' }
+      })
+    }
   })
 
   // Buscar projetos do usuário

@@ -92,14 +92,36 @@ class AuthController {
 
   // Obter perfil do usuário atual
   getProfile = asyncHandler(async (req: any, res: Response) => {
+    console.log('=== DEBUG CONTROLLER getProfile ===')
+    console.log('req.user recebido:', JSON.stringify(req.user, null, 2))
+    
     const userId = req.user?.id
+    console.log('userId extraído:', userId)
 
-    const profile = await AuthService.getUserProfile(userId)
+    if (!userId) {
+      console.log('ERRO: userId está vazio ou undefined')
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+        success: false,
+        message: 'ID do usuário não encontrado'
+      })
+    }
 
-    res.json({
-      success: true,
-      data: { user: profile }
-    })
+    try {
+      const profile = await AuthService.getUserProfile(userId)
+      console.log('Profile retornado do service:', JSON.stringify(profile, null, 2))
+
+      const response = {
+        success: true,
+        data: { user: profile }
+      }
+      console.log('Resposta final:', JSON.stringify(response, null, 2))
+      console.log('=== FIM DEBUG CONTROLLER getProfile ===')
+
+      res.json(response)
+    } catch (error) {
+      console.log('ERRO no getUserProfile:', error)
+      throw error
+    }
   })
 
   // Atualizar perfil
@@ -166,8 +188,10 @@ class AuthController {
 
   // Verificar status de autenticação
   checkAuth = asyncHandler(async (req: any, res: Response) => {
-    // Se chegou aqui, o middleware de auth já validou o token
-    res.json({
+    console.log('=== DEBUG CONTROLLER checkAuth ===')
+    console.log('req.user:', JSON.stringify(req.user, null, 2))
+    
+    const response = {
       success: true,
       message: 'Token válido',
       data: {
@@ -177,7 +201,11 @@ class AuthController {
           subscription: req.user?.subscription
         }
       }
-    })
+    }
+    console.log('checkAuth response:', JSON.stringify(response, null, 2))
+    console.log('=== FIM DEBUG CONTROLLER checkAuth ===')
+
+    res.json(response)
   })
 
   // Validar força da senha (endpoint público)

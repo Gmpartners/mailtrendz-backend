@@ -7,6 +7,14 @@ export const handleValidationErrors = (req: Request, res: Response, next: NextFu
   const errors = validationResult(req)
   
   if (!errors.isEmpty()) {
+    // Log detalhado do erro de validação
+    console.log('❌ Erro de validação:', {
+      body: req.body,
+      errors: errors.array(),
+      url: req.url,
+      method: req.method
+    })
+    
     return res.status(HTTP_STATUS.BAD_REQUEST).json({
       success: false,
       message: 'Dados de entrada inválidos',
@@ -113,7 +121,7 @@ export const validatePasswordUpdate = [
   handleValidationErrors
 ]
 
-// Validações para projetos
+// Validações para projetos - CORRIGIDA
 export const validateCreateProject = [
   body('prompt')
     .trim()
@@ -122,11 +130,13 @@ export const validateCreateProject = [
   
   body('type')
     .optional()
+    .default('campaign')
     .isIn(Object.values(PROJECT_TYPES))
     .withMessage('Tipo de projeto inválido'),
   
   body('industry')
     .optional()
+    .default('geral')
     .trim()
     .isLength({ max: 50 })
     .withMessage('Indústria deve ter no máximo 50 caracteres'),
@@ -139,6 +149,7 @@ export const validateCreateProject = [
   
   body('tone')
     .optional()
+    .default('profissional')
     .trim()
     .isLength({ max: 30 })
     .withMessage('Tom deve ter no máximo 30 caracteres'),
