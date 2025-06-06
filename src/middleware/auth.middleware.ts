@@ -26,9 +26,22 @@ export const authenticateToken = async (
     // Verificar token
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtTokenPayload
 
+    // DEBUG: Log do JWT decodificado
+    logger.info('JWT decodificado:', decoded)
+
     // Verificar se usuário ainda existe
     const user = await User.findById(decoded.userId).select('email subscription')
+    
+    // DEBUG: Log do usuário encontrado
+    logger.info('Usuário encontrado no banco:', { 
+      userId: decoded.userId, 
+      userExists: !!user,
+      userEmail: user?.email,
+      userSubscription: user?.subscription 
+    })
+
     if (!user) {
+      logger.warn('Usuário não encontrado no banco com ID:', decoded.userId)
       res.status(HTTP_STATUS.UNAUTHORIZED).json({
         success: false,
         message: 'Usuário não encontrado',
@@ -43,6 +56,9 @@ export const authenticateToken = async (
       email: user.email,
       subscription: user.subscription
     }
+
+    // DEBUG: Log do req.user final
+    logger.info('req.user setado:', req.user)
 
     next()
   } catch (error) {
