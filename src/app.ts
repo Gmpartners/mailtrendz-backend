@@ -149,6 +149,34 @@ class App {
       }
     })
 
+    // Health check da API (padronizado)
+    this.app.get(`${API_PREFIX}/health`, async (req, res) => {
+      try {
+        const dbHealth = await Database.healthCheck()
+        
+        const health = {
+          status: 'ok',
+          service: 'MailTrendz API',
+          timestamp: new Date(),
+          uptime: process.uptime(),
+          version: process.env.npm_package_version || '1.0.0',
+          environment: process.env.NODE_ENV || 'development',
+          database: dbHealth
+        }
+
+        res.json({
+          success: true,
+          data: health
+        })
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          message: 'API health check failed',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        })
+      }
+    })
+
     // API Routes
     this.app.use(`${API_PREFIX}/auth`, authRoutes)
     this.app.use(`${API_PREFIX}/projects`, projectRoutes)
@@ -167,7 +195,8 @@ class App {
           projects: `${API_PREFIX}/projects`,
           chats: `${API_PREFIX}/chats`,
           ai: `${API_PREFIX}/ai`,
-          users: `${API_PREFIX}/users`
+          users: `${API_PREFIX}/users`,
+          health: `${API_PREFIX}/health`
         },
         documentation: `${API_PREFIX}/docs`,
         timestamp: new Date()
