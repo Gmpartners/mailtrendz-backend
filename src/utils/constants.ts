@@ -68,19 +68,19 @@ export const API_LIMITS = {
 export const RATE_LIMITS = {
   GENERAL: {
     WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-    MAX_REQUESTS: 100
+    MAX_REQUESTS: 1000 // Aumentado de 100 para 1000
   },
   AUTH: {
     WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-    MAX_REQUESTS: 5
+    MAX_REQUESTS: 50 // Aumentado de 5 para 50 (muito mais generoso)
   },
   AI: {
     WINDOW_MS: 60 * 1000, // 1 minute
-    MAX_REQUESTS: 10
+    MAX_REQUESTS: 50 // Aumentado de 10 para 50
   },
   PROJECTS: {
     WINDOW_MS: 60 * 1000, // 1 minute
-    MAX_REQUESTS: 20
+    MAX_REQUESTS: 100 // Aumentado de 20 para 100
   }
 } as const
 
