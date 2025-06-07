@@ -100,14 +100,28 @@ chatSchema.methods.isOwner = function(userId: string): boolean {
   return this.userId.toString() === userId
 }
 
-// Método virtual para estatísticas
+// ✅ CORREÇÃO CRÍTICA: Método virtual para estatísticas com validação defensiva
 chatSchema.virtual('stats').get(function() {
+  // Garantir que sempre temos uma data válida para lastActivity
+  const lastActivity = this.metadata?.lastActivity || this.createdAt || new Date()
+  const createdAt = this.createdAt || new Date()
+  
+  // Validar se lastActivity é uma data válida
+  const lastActivityTime = lastActivity instanceof Date ? lastActivity.getTime() : new Date(lastActivity).getTime()
+  const createdAtTime = createdAt instanceof Date ? createdAt.getTime() : new Date(createdAt).getTime()
+  
+  // Calcular se é recente (últimas 24 horas) de forma segura
+  const isRecent = !isNaN(lastActivityTime) && (Date.now() - lastActivityTime) < (24 * 60 * 60 * 1000)
+  
+  // Calcular idade em dias de forma segura
+  const ageInDays = !isNaN(createdAtTime) ? Math.floor((Date.now() - createdAtTime) / (24 * 60 * 60 * 1000)) : 0
+  
   return {
-    totalMessages: this.metadata.totalMessages,
-    emailUpdates: this.metadata.emailUpdates,
-    lastActivity: this.metadata.lastActivity,
-    isRecent: (Date.now() - this.metadata.lastActivity.getTime()) < (24 * 60 * 60 * 1000),
-    ageInDays: Math.floor((Date.now() - this.createdAt.getTime()) / (24 * 60 * 60 * 1000))
+    totalMessages: this.metadata?.totalMessages || 0,
+    emailUpdates: this.metadata?.emailUpdates || 0,
+    lastActivity: lastActivity,
+    isRecent: isRecent,
+    ageInDays: ageInDays
   }
 })
 
