@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from 'express'
-import { MongoError } from 'mongodb'
 import mongoose from 'mongoose'
 import { ApiError } from '../types/api.types'
 import { HTTP_STATUS, ERROR_CODES } from '../utils/constants'
@@ -30,7 +29,7 @@ export class AppError extends Error implements ApiError {
 
 // Middleware principal de tratamento de erros
 export const errorHandler = (
-  error: Error | AppError | MongoError,
+  error: Error | AppError | mongoose.Error,
   req: Request,
   res: Response,
   next: NextFunction
@@ -75,8 +74,8 @@ export const errorHandler = (
       field: error.path,
       value: error.value
     }
-  } else if ((error as MongoError).code === 11000) {
-    // Erro de duplicação no MongoDB
+  } else if ((error as any).code === 11000) {
+    // Erro de duplicação no MongoDB (E11000)
     statusCode = HTTP_STATUS.CONFLICT
     message = 'Recurso já existe'
     code = ERROR_CODES.RESOURCE_ALREADY_EXISTS
