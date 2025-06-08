@@ -152,44 +152,97 @@ class ProjectController {
     }
   })
 
-  // Buscar projetos do usuário
+  // Buscar projetos do usuário - CORRIGIDO COM LOGS
   getUserProjects = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const userId = req.user!.id
-    const {
-      page = 1,
-      limit = 12,
-      search,
-      type,
-      category,
-      sortBy = 'updatedAt',
-      sortOrder = 'desc'
-    } = req.query
-
-    const filters: ProjectFilters = {
-      userId,
-      search: search as string,
-      type: type as string,
-      category: category as string,
-      pagination: {
-        page: parseInt(page as string),
-        limit: parseInt(limit as string)
-      },
-      sort: {
-        field: sortBy as string,
-        order: sortOrder as 'asc' | 'desc'
-      }
-    }
-
-    const result = await ProjectService.getUserProjects(filters)
-
-    res.json({
-      success: true,
-      data: {
-        projects: result.projects,
-        pagination: result.pagination,
-        stats: result.stats
-      }
+    console.log('📋 [GET PROJECTS] Iniciando busca de projetos:', {
+      userId: req.user?.id,
+      query: req.query,
+      url: req.url,
+      timestamp: new Date().toISOString()
     })
+
+    try {
+      const userId = req.user!.id
+      const {
+        page = 1,
+        limit = 12,
+        search,
+        type,
+        category,
+        sortBy = 'updatedAt',
+        sortOrder = 'desc'
+      } = req.query
+
+      console.log('🔍 [GET PROJECTS] Parâmetros processados:', {
+        userId,
+        page: parseInt(page as string),
+        limit: parseInt(limit as string),
+        search,
+        type,
+        category,
+        sortBy,
+        sortOrder
+      })
+
+      const filters: ProjectFilters = {
+        userId,
+        search: search as string,
+        type: type as string,
+        category: category as string,
+        pagination: {
+          page: parseInt(page as string),
+          limit: parseInt(limit as string)
+        },
+        sort: {
+          field: sortBy as string,
+          order: sortOrder as 'asc' | 'desc'
+        }
+      }
+
+      console.log('⚙️ [GET PROJECTS] Chamando ProjectService.getUserProjects...')
+      
+      const result = await ProjectService.getUserProjects(filters)
+
+      console.log('✅ [GET PROJECTS] Resultado obtido:', {
+        projectsCount: result.projects.length,
+        currentPage: result.pagination.currentPage,
+        totalPages: result.pagination.totalPages,
+        totalItems: result.pagination.totalItems,
+        statsTotal: result.stats.total
+      })
+
+      res.json({
+        success: true,
+        data: {
+          projects: result.projects,
+          pagination: result.pagination,
+          stats: result.stats
+        }
+      })
+
+    } catch (error: any) {
+      console.error('❌ [GET PROJECTS] Erro detalhado:', {
+        message: error.message,
+        stack: error.stack,
+        userId: req.user?.id,
+        query: req.query,
+        name: error.name,
+        code: error.code,
+        timestamp: new Date().toISOString()
+      })
+
+      logger.error('Get user projects failed:', error)
+
+      // Retornar erro 500 com mais detalhes para debug
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro interno ao buscar projetos',
+        error: { 
+          code: 'INTERNAL_ERROR',
+          details: error.message
+        }
+      })
+    }
   })
 
   // Buscar projeto específico

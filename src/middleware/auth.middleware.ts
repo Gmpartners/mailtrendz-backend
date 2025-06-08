@@ -14,7 +14,17 @@ export const authenticateToken = async (
     const authHeader = req.headers.authorization
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
 
+    // Log da requisição para debug
+    console.log('🔐 [AUTH] Nova requisição:', {
+      url: req.url,
+      method: req.method,
+      hasToken: !!token,
+      userAgent: req.headers['user-agent']?.substring(0, 100),
+      timestamp: new Date().toISOString()
+    })
+
     if (!token) {
+      console.log('❌ [AUTH] Token não fornecido')
       res.status(HTTP_STATUS.UNAUTHORIZED).json({
         success: false,
         message: 'Token de acesso requerido',
@@ -23,26 +33,77 @@ export const authenticateToken = async (
       return
     }
 
-    // Verificar token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtTokenPayload
+    // Verificar token JWT
+    let decoded: JwtTokenPayload
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtTokenPayload
+      console.log('✅ [AUTH] Token válido para usuário:', decoded.userId)
+    } catch (jwtError) {
+      console.log('❌ [AUTH] Erro JWT:', {
+        error: jwtError instanceof Error ? jwtError.constructor.name : 'Unknown',
+        message: jwtError instanceof Error ? jwtError.message : 'Unknown error'
+      })
+      
+      if (jwtError instanceof jwt.TokenExpiredError) {
+        res.status(HTTP_STATUS.UNAUTHORIZED).json({
+          success: false,
+          message: 'Token expirado',
+          error: { code: ERROR_CODES.TOKEN_EXPIRED }
+        })
+        return
+      }
 
-    // DEBUG: Log direto no console para garantir visibilidade
-    console.log('=== DEBUG AUTH MIDDLEWARE ===')
-    console.log('JWT decodificado:', JSON.stringify(decoded, null, 2))
+      if (jwtError instanceof jwt.JsonWebTokenError) {
+        res.status(HTTP_STATUS.UNAUTHORIZED).json({
+          success: false,
+          message: 'Token inválido',
+          error: { code: ERROR_CODES.TOKEN_INVALID }
+        })
+        return
+      }
 
-    // Verificar se usuário ainda existe
-    const user = await User.findById(decoded.userId).select('email subscription')
-    
-    // DEBUG: Log do usuário encontrado
-    console.log('Usuário encontrado no banco:', { 
-      userId: decoded.userId, 
-      userExists: !!user,
-      userEmail: user?.email,
-      userSubscription: user?.subscription 
-    })
+      // Outro erro JWT
+      res.status(HTTP_STATUS.UNAUTHORIZED).json({
+        success: false,
+        message: 'Erro no token de acesso',
+        error: { code: ERROR_CODES.TOKEN_INVALID }
+      })
+      return
+    }
+
+    // Verificar se usuário ainda existe no banco
+    let user
+    try {
+      console.log('🔍 [AUTH] Buscando usuário no banco:', decoded.userId)
+      user = await User.findById(decoded.userId).select('email subscription')
+      console.log('📊 [AUTH] Resultado da busca:', {
+        userId: decoded.userId,
+        found: !!user,
+        email: user?.email,
+        subscription: user?.subscription
+      })
+    } catch (dbError) {
+      console.error('❌ [AUTH] Erro ao buscar usuário no banco:', {
+        error: dbError instanceof Error ? dbError.message : 'Unknown database error',
+        userId: decoded.userId,
+        stack: dbError instanceof Error ? dbError.stack : undefined
+      })
+      
+      // Em caso de erro de DB, retornar 500 mas com log específico
+      logger.error('Database error during authentication', dbError)
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro interno do servidor',
+        error: { 
+          code: ERROR_CODES.INTERNAL_ERROR,
+          details: 'Database connection issue'
+        }
+      })
+      return
+    }
 
     if (!user) {
-      console.log('ERRO: Usuário não encontrado no banco com ID:', decoded.userId)
+      console.log('❌ [AUTH] Usuário não encontrado:', decoded.userId)
       res.status(HTTP_STATUS.UNAUTHORIZED).json({
         success: false,
         message: 'Usuário não encontrado',
@@ -58,37 +119,33 @@ export const authenticateToken = async (
       subscription: user.subscription
     }
 
-    // DEBUG: Log do req.user final
-    console.log('req.user setado:', JSON.stringify(req.user, null, 2))
-    console.log('=== FIM DEBUG AUTH MIDDLEWARE ===')
+    console.log('✅ [AUTH] Autenticação bem-sucedida:', {
+      userId: req.user.id,
+      email: req.user.email,
+      subscription: req.user.subscription
+    })
 
     next()
   } catch (error) {
-    console.log('ERRO no middleware auth:', error)
+    // Capturar qualquer erro não tratado
+    console.error('❌ [AUTH] Erro inesperado no middleware:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      url: req.url,
+      method: req.method,
+      timestamp: new Date().toISOString()
+    })
     
-    if (error instanceof jwt.TokenExpiredError) {
-      res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        message: 'Token expirado',
-        error: { code: ERROR_CODES.TOKEN_EXPIRED }
-      })
-      return
-    }
-
-    if (error instanceof jwt.JsonWebTokenError) {
-      res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        message: 'Token inválido',
-        error: { code: ERROR_CODES.TOKEN_INVALID }
-      })
-      return
-    }
-
-    logger.error('Authentication error:', error)
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+    logger.error('Unexpected authentication error:', error)
+    
+    // SEMPRE retornar 401 para problemas de auth, nunca 500
+    res.status(HTTP_STATUS.UNAUTHORIZED).json({
       success: false,
-      message: 'Erro interno do servidor',
-      error: { code: ERROR_CODES.INTERNAL_ERROR }
+      message: 'Erro de autenticação',
+      error: { 
+        code: ERROR_CODES.TOKEN_INVALID,
+        details: 'Authentication failed'
+      }
     })
   }
 }
@@ -118,6 +175,7 @@ export const optionalAuth = async (
     next()
   } catch (error) {
     // Em caso de erro, continua sem autenticação
+    console.log('⚠️ [AUTH] Erro em optionalAuth (continuando):', error instanceof Error ? error.message : 'Unknown')
     next()
   }
 }

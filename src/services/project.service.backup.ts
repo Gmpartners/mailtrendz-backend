@@ -342,10 +342,7 @@ class ProjectService {
           .sort(sortObj)
           .skip(skip)
           .limit(limit)
-          .populate({
-          path: 'chatId',
-          select: 'title metadata.totalMessages'
-        }),
+          .populate('chatId', 'title metadata.totalMessages'),
         Project.countDocuments(query)
       ])
 
@@ -447,10 +444,7 @@ class ProjectService {
       const project = await Project.findOne({
         _id: projectId,
         userId: new Types.ObjectId(userId)
-      }).populate({
-          path: 'chatId',
-          select: 'title metadata.totalMessages'
-        })
+      }).populate('chatId', 'title metadata.totalMessages')
 
       if (!project) {
         return null
