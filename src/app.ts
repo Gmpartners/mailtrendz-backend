@@ -29,6 +29,8 @@ import projectRoutes from './routes/project.routes'
 import chatRoutes from './routes/chat.routes'
 import aiRoutes from './routes/ai.routes'
 import userRoutes from './routes/user.routes'
+// 🚀 NOVO: Rotas da IA melhorada
+import enhancedAIRoutes from './routes/enhanced-ai.routes'
 
 class App {
   public app: express.Application
@@ -112,7 +114,13 @@ class App {
         message: 'MailTrendz API is running!',
         version: process.env.npm_package_version || '1.0.0',
         timestamp: new Date(),
-        environment: process.env.NODE_ENV || 'development'
+        environment: process.env.NODE_ENV || 'development',
+        // 🚀 NOVO: Indicar recursos melhorados
+        features: {
+          enhancedAI: true,
+          smartAnalysis: true,
+          intelligentChat: true
+        }
       })
     })
 
@@ -122,6 +130,19 @@ class App {
         const dbHealth = await Database.healthCheck()
         const memoryUsage = process.memoryUsage()
         
+        // 🚀 NOVO: Verificar saúde da IA melhorada
+        let enhancedAIHealth = { status: 'unknown', available: false }
+        try {
+          const AIService = (await import('./services/ai.service')).default
+          const baseAIHealth = await AIService.healthCheck()
+          enhancedAIHealth = {
+            status: baseAIHealth.status,
+            available: baseAIHealth.status === 'available'
+          }
+        } catch (error) {
+          enhancedAIHealth = { status: 'error', available: false }
+        }
+        
         const health = {
           status: 'ok',
           timestamp: new Date(),
@@ -130,7 +151,8 @@ class App {
           environment: process.env.NODE_ENV || 'development',
           services: {
             database: dbHealth,
-            api: { status: 'ok' }
+            api: { status: 'ok' },
+            enhancedAI: enhancedAIHealth // 🚀 NOVO
           },
           memory: {
             used: Math.round(memoryUsage.heapUsed / 1024 / 1024 * 100) / 100,
@@ -185,6 +207,8 @@ class App {
     this.app.use(`${API_PREFIX}/projects`, projectRoutes)
     this.app.use(`${API_PREFIX}/chats`, chatRoutes)
     this.app.use(`${API_PREFIX}/ai`, aiRoutes)
+    // 🚀 NOVO: Rotas da IA melhorada
+    this.app.use(`${API_PREFIX}/ai/enhanced`, enhancedAIRoutes)
     this.app.use(`${API_PREFIX}/users`, userRoutes)
 
     // Rota de informações da API
@@ -198,10 +222,19 @@ class App {
           projects: `${API_PREFIX}/projects`,
           chats: `${API_PREFIX}/chats`,
           ai: `${API_PREFIX}/ai`,
+          enhancedAI: `${API_PREFIX}/ai/enhanced`, // 🚀 NOVO
           users: `${API_PREFIX}/users`,
           health: `${API_PREFIX}/health`
         },
         documentation: `${API_PREFIX}/docs`,
+        // 🚀 NOVO: Informações sobre recursos melhorados
+        enhancedFeatures: {
+          smartEmailGeneration: `${API_PREFIX}/ai/enhanced/generate`,
+          intelligentChat: `${API_PREFIX}/ai/enhanced/chat`,
+          promptAnalysis: `${API_PREFIX}/ai/enhanced/analyze`,
+          aiComparison: `${API_PREFIX}/ai/enhanced/compare`,
+          enhancedStatus: `${API_PREFIX}/ai/enhanced/status`
+        },
         timestamp: new Date()
       })
     })
@@ -220,6 +253,9 @@ class App {
       // Conectar ao banco de dados
       await Database.connect()
       
+      // 🚀 NOVO: Log sobre IA melhorada
+      console.log('🧠 [APP] Inicializando recursos de IA melhorada...')
+      
       // Iniciar servidor
       this.app.listen(this.port, () => {
         logger.info(`🚀 Server running on port ${this.port}`, {
@@ -231,8 +267,16 @@ class App {
         logger.info('📡 API endpoints available:', {
           base: `http://localhost:${this.port}`,
           api: `http://localhost:${this.port}${API_PREFIX}`,
+          enhancedAI: `http://localhost:${this.port}${API_PREFIX}/ai/enhanced`, // 🚀 NOVO
           health: `http://localhost:${this.port}/health`
         })
+
+        // 🚀 NOVO: Log específico para IA melhorada
+        console.log('✨ [APP] IA Melhorada disponível em:')
+        console.log(`   📧 Geração Inteligente: POST ${API_PREFIX}/ai/enhanced/generate`)
+        console.log(`   💬 Chat Inteligente: POST ${API_PREFIX}/ai/enhanced/chat`)
+        console.log(`   🔍 Análise de Prompts: POST ${API_PREFIX}/ai/enhanced/analyze`)
+        console.log(`   📊 Status: GET ${API_PREFIX}/ai/enhanced/status`)
       })
       
       // Graceful shutdown

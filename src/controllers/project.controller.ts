@@ -3,21 +3,17 @@ import { AuthRequest } from '../types/auth.types'
 import { CreateProjectDto, UpdateProjectDto, ProjectFilters } from '../types/project.types'
 import ProjectService from '../services/project.service'
 import AIService from '../services/ai.service'
+import { projectQueue } from '../services/queue.service'
 import { HTTP_STATUS } from '../utils/constants'
 import { logger } from '../utils/logger'
 import { asyncHandler, createNotFoundError } from '../middleware/error.middleware'
 
 class ProjectController {
-  // Criar novo projeto
+  // Criar novo projeto COM FILA
   createProject = asyncHandler(async (req: AuthRequest, res: Response) => {
-    // Log detalhado dos dados recebidos
     console.log('📝 [CREATE PROJECT] Dados recebidos:', {
       body: JSON.stringify(req.body, null, 2),
       userId: req.user?.id,
-      headers: {
-        'content-type': req.headers['content-type'],
-        'authorization': req.headers['authorization'] ? 'Bearer [TOKEN]' : 'undefined'
-      },
       timestamp: new Date().toISOString()
     })
 
@@ -43,12 +39,6 @@ class ProjectController {
       tone: tone || 'profissional'
     }
 
-    console.log('🔄 [CREATE PROJECT] Dados processados:', {
-      userId,
-      projectData,
-      timestamp: new Date().toISOString()
-    })
-
     // Verificar limites do usuário
     try {
       const canCreate = await ProjectService.checkUserLimits(userId)
@@ -69,36 +59,55 @@ class ProjectController {
       })
     }
 
-    logger.info('Starting AI email generation', { 
-      userId, 
-      prompt: prompt.substring(0, 50),
-      type: projectData.type,
-      industry: projectData.industry
+    // ✅ NOVO: Verificar status da fila
+    const queueStatus = projectQueue.getQueueStatus()
+    const userPosition = projectQueue.getUserQueuePosition(userId)
+    
+    console.log('📊 [CREATE PROJECT] Status da fila:', {
+      queueLength: queueStatus.queueLength,
+      processing: queueStatus.processing,
+      userPosition,
+      userCooldown: queueStatus.userCooldowns[userId]
     })
 
-    console.log('🤖 [CREATE PROJECT] Iniciando geração com IA...', {
-      userId,
-      promptPreview: prompt.substring(0, 100),
-      aiConfig: {
-        type: projectData.type,
-        industry: projectData.industry,
-        tone: projectData.tone
-      }
-    })
-
+    // ✅ NOVO: Adicionar à fila ao invés de processar diretamente
     try {
-      // Criar projeto usando IA
-      const project = await ProjectService.createProjectWithAI(userId, projectData)
+      logger.info('Adding project to queue', { 
+        userId, 
+        prompt: prompt.substring(0, 50),
+        type: projectData.type,
+        queueStatus
+      })
 
-      // Rastrear criação do projeto
-      await ProjectService.trackProjectCreation(userId, project.id || project._id.toString())
+      // Adicionar à fila com processador
+      const project = await projectQueue.add(
+        userId,
+        projectData,
+        async (data) => {
+          // Este código será executado quando chegar a vez na fila
+          console.log('🤖 [QUEUE] Processando projeto:', {
+            userId,
+            promptPreview: data.prompt.substring(0, 100)
+          })
+
+          // Criar projeto usando IA
+          const createdProject = await ProjectService.createProjectWithAI(userId, data)
+
+          // Rastrear criação do projeto
+          await ProjectService.trackProjectCreation(
+            userId, 
+            createdProject.id || createdProject._id.toString()
+          )
+
+          return createdProject
+        },
+        2 // Prioridade padrão
+      )
 
       console.log('✅ [CREATE PROJECT] Projeto criado com sucesso:', {
         projectId: project.id || project._id.toString(),
         userId,
-        type: project.type,
-        hasContent: !!project.content,
-        contentLength: project.content ? Object.keys(project.content).length : 0
+        type: project.type
       })
 
       logger.info('Project created successfully', { 
@@ -117,28 +126,44 @@ class ProjectController {
         tags: project.tags,
         color: project.color,
         createdAt: project.createdAt,
-        chatId: project.chatId
+        chatId: project.chatId,
+        metadata: project.metadata,
+        status: project.status
       }
 
       res.status(HTTP_STATUS.CREATED).json({
         success: true,
         message: 'Projeto criado com sucesso!',
         data: {
-          project: responseProject
+          project: responseProject,
+          queue: {
+            position: userPosition,
+            estimatedTime: userPosition > 0 ? userPosition * 3 : 0 // segundos estimados
+          }
         }
       })
+
     } catch (error: any) {
       console.error('❌ [CREATE PROJECT] Erro na criação:', {
         error: error.message,
-        stack: error.stack,
         userId,
-        prompt: prompt.substring(0, 50),
-        aiService: error.message?.includes('OpenRouter') ? 'OpenRouter Error' : 'Other Error'
+        prompt: prompt.substring(0, 50)
       })
 
       logger.error('Project creation failed:', error)
 
-      // Determinar tipo de erro
+      // ✅ NOVO: Mensagens de erro mais específicas
+      if (error.message?.includes('aguarde')) {
+        return res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
+          success: false,
+          message: error.message,
+          error: { 
+            code: 'RATE_LIMIT',
+            cooldownSeconds: parseInt(error.message.match(/\d+/)?.[0] || '60')
+          }
+        })
+      }
+
       if (error.message?.includes('OpenRouter') || error.message?.includes('AI')) {
         return res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
           success: false,
@@ -153,6 +178,26 @@ class ProjectController {
         error: { code: 'INTERNAL_ERROR' }
       })
     }
+  })
+
+  // ✅ NOVO: Endpoint para verificar status da fila
+  getQueueStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
+    const userId = req.user!.id
+    const status = projectQueue.getQueueStatus()
+    const position = projectQueue.getUserQueuePosition(userId)
+
+    res.json({
+      success: true,
+      data: {
+        queue: {
+          length: status.queueLength,
+          processing: status.processing,
+          userPosition: position,
+          userCooldown: status.userCooldowns[userId] || 0,
+          estimatedWaitTime: position > 0 ? position * 3 : 0
+        }
+      }
+    })
   })
 
   // Buscar projetos do usuário - CORRIGIDO COM LOGS
@@ -312,7 +357,7 @@ class ProjectController {
     })
   })
 
-  // Duplicar projeto
+  // Duplicar projeto COM FILA
   duplicateProject = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params
     const userId = req.user!.id
@@ -327,23 +372,44 @@ class ProjectController {
       })
     }
 
-    const duplicatedProject = await ProjectService.duplicateProject(id, userId)
+    // ✅ NOVO: Usar fila para duplicação também
+    try {
+      const duplicatedProject = await projectQueue.add(
+        userId,
+        { originalId: id },
+        async (data) => {
+          return await ProjectService.duplicateProject(data.originalId, userId)
+        },
+        1 // Prioridade menor que criação nova
+      )
 
-    if (!duplicatedProject) {
-      throw createNotFoundError('Projeto original')
+      if (!duplicatedProject) {
+        throw createNotFoundError('Projeto original')
+      }
+
+      logger.info('Project duplicated', { 
+        originalId: id, 
+        duplicatedId: duplicatedProject.id || duplicatedProject._id, 
+        userId 
+      })
+
+      res.status(HTTP_STATUS.CREATED).json({
+        success: true,
+        message: 'Projeto duplicado com sucesso!',
+        data: { project: duplicatedProject }
+      })
+
+    } catch (error: any) {
+      if (error.message?.includes('aguarde')) {
+        return res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
+          success: false,
+          message: error.message,
+          error: { code: 'RATE_LIMIT' }
+        })
+      }
+
+      throw error
     }
-
-    logger.info('Project duplicated', { 
-      originalId: id, 
-      duplicatedId: duplicatedProject.id || duplicatedProject._id, 
-      userId 
-    })
-
-    res.status(HTTP_STATUS.CREATED).json({
-      success: true,
-      message: 'Projeto duplicado com sucesso!',
-      data: { project: duplicatedProject }
-    })
   })
 
   // Buscar analytics do projeto
@@ -363,7 +429,7 @@ class ProjectController {
     })
   })
 
-  // Melhorar email do projeto
+  // Melhorar email do projeto COM FILA
   improveProjectEmail = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params
     const { feedback } = req.body
@@ -381,56 +447,77 @@ class ProjectController {
       throw createNotFoundError('Projeto')
     }
 
-    // Preparar contexto
-    const context = {
-      userId,
-      type: project.type,
-      industry: project.metadata.industry,
-      projectName: project.name,
-      targetAudience: project.metadata.targetAudience,
-      tone: project.metadata.tone,
-      status: project.status
+    // ✅ NOVO: Usar fila para melhorias também
+    try {
+      const improvedProject = await projectQueue.add(
+        userId,
+        { projectId: id, feedback, project },
+        async (data) => {
+          // Preparar contexto
+          const context = {
+            userId,
+            type: data.project.type,
+            industry: data.project.metadata.industry,
+            projectName: data.project.name,
+            targetAudience: data.project.metadata.targetAudience,
+            tone: data.project.metadata.tone,
+            status: data.project.status
+          }
+
+          // Melhorar email com IA
+          const improvedContent = await AIService.improveEmail(
+            data.project.content,
+            data.feedback,
+            context
+          )
+
+          // Atualizar projeto
+          return await ProjectService.updateProject(data.projectId, userId, {
+            content: improvedContent,
+            metadata: {
+              ...data.project.metadata,
+              version: (data.project.metadata.version || 1) + 1,
+              lastImprovement: {
+                feedback: data.feedback,
+                timestamp: new Date(),
+                version: (data.project.metadata.version || 1) + 1
+              }
+            }
+          })
+        },
+        3 // Alta prioridade para melhorias
+      )
+
+      logger.info('Project email improved', { 
+        projectId: id, 
+        userId, 
+        feedback: feedback.substring(0, 50) 
+      })
+
+      res.json({
+        success: true,
+        message: 'Email melhorado com sucesso!',
+        data: { 
+          project: improvedProject,
+          improvements: {
+            version: improvedProject?.metadata.version,
+            feedback,
+            timestamp: new Date()
+          }
+        }
+      })
+
+    } catch (error: any) {
+      if (error.message?.includes('aguarde')) {
+        return res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
+          success: false,
+          message: error.message,
+          error: { code: 'RATE_LIMIT' }
+        })
+      }
+
+      throw error
     }
-
-    // Melhorar email com IA
-    const improvedContent = await AIService.improveEmail(
-      project.content,
-      feedback,
-      context
-    )
-
-    // Atualizar projeto
-    const updatedProject = await ProjectService.updateProject(id, userId, {
-      content: improvedContent,
-      metadata: {
-        ...project.metadata,
-        version: (project.metadata.version || 1) + 1,
-        lastImprovement: {
-          feedback,
-          timestamp: new Date(),
-          version: (project.metadata.version || 1) + 1
-        }
-      }
-    })
-
-    logger.info('Project email improved', { 
-      projectId: id, 
-      userId, 
-      feedback: feedback.substring(0, 50) 
-    })
-
-    res.json({
-      success: true,
-      message: 'Email melhorado com sucesso!',
-      data: { 
-        project: updatedProject,
-        improvements: {
-          version: updatedProject?.metadata.version,
-          feedback,
-          timestamp: new Date()
-        }
-      }
-    })
   })
 
   // Buscar projetos populares (públicos)

@@ -20,6 +20,9 @@ router.get('/popular', ProjectController.getPopularProjects)
 // ✅ AGORA aplicar autenticação para o resto das rotas
 router.use(authenticateToken)
 
+// ✅ NOVO: Rota para verificar status da fila
+router.get('/queue/status', projectLimiter, ProjectController.getQueueStatus)
+
 // Rotas de busca e listagem
 router.get(
   '/',

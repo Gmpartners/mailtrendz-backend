@@ -42,45 +42,45 @@ export const MESSAGE_TYPES = {
   SYSTEM: 'system'
 } as const
 
-// API Limits per subscription
+// ✅ ATUALIZADO: Limites mais generosos por plano
 export const API_LIMITS = {
   [SUBSCRIPTION_TYPES.FREE]: {
-    MONTHLY_PROJECTS: 20,    // Aumentado de 10 para 20
-    MONTHLY_AI_REQUESTS: 100, // Aumentado de 50 para 100
-    MONTHLY_CHAT_MESSAGES: 200, // Aumentado de 100 para 200
-    MAX_PROJECTS: 10         // Aumentado de 5 para 10
+    MONTHLY_PROJECTS: 50,        // Aumentado de 20 para 50
+    MONTHLY_AI_REQUESTS: 200,    // Aumentado de 100 para 200
+    MONTHLY_CHAT_MESSAGES: 500,  // Aumentado de 200 para 500
+    MAX_PROJECTS: 25            // Aumentado de 10 para 25
   },
   [SUBSCRIPTION_TYPES.PRO]: {
-    MONTHLY_PROJECTS: 200,   // Aumentado de 100 para 200
-    MONTHLY_AI_REQUESTS: 1000, // Aumentado de 500 para 1000
-    MONTHLY_CHAT_MESSAGES: 2000, // Aumentado de 1000 para 2000
-    MAX_PROJECTS: 100        // Aumentado de 50 para 100
+    MONTHLY_PROJECTS: 500,      // Aumentado de 200 para 500
+    MONTHLY_AI_REQUESTS: 2000,  // Aumentado de 1000 para 2000
+    MONTHLY_CHAT_MESSAGES: 5000, // Aumentado de 2000 para 5000
+    MAX_PROJECTS: 250           // Aumentado de 100 para 250
   },
   [SUBSCRIPTION_TYPES.ENTERPRISE]: {
-    MONTHLY_PROJECTS: 2000,  // Aumentado de 1000 para 2000
-    MONTHLY_AI_REQUESTS: 10000, // Aumentado de 5000 para 10000
-    MONTHLY_CHAT_MESSAGES: 20000, // Aumentado de 10000 para 20000
-    MAX_PROJECTS: 1000       // Aumentado de 500 para 1000
+    MONTHLY_PROJECTS: 5000,     // Aumentado de 2000 para 5000
+    MONTHLY_AI_REQUESTS: 20000, // Aumentado de 10000 para 20000
+    MONTHLY_CHAT_MESSAGES: 50000, // Aumentado de 20000 para 50000
+    MAX_PROJECTS: 2500          // Aumentado de 1000 para 2500
   }
 } as const
 
-// ✅ CORREÇÃO: Rate Limiting menos restritivo
+// ✅ ATUALIZADO: Rate Limiting mais inteligente
 export const RATE_LIMITS = {
   GENERAL: {
     WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-    MAX_REQUESTS: 2000 // ✅ Aumentado de 1000 para 2000
+    MAX_REQUESTS: 3000 // Aumentado de 2000 para 3000
   },
   AUTH: {
     WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-    MAX_REQUESTS: 100 // ✅ Aumentado de 50 para 100 (mais generoso)
+    MAX_REQUESTS: 150 // Aumentado de 100 para 150
   },
   AI: {
     WINDOW_MS: 60 * 1000, // 1 minute
-    MAX_REQUESTS: 100 // ✅ Aumentado de 50 para 100
+    MAX_REQUESTS: 150 // Aumentado de 100 para 150
   },
   PROJECTS: {
     WINDOW_MS: 60 * 1000, // 1 minute
-    MAX_REQUESTS: 200 // ✅ Aumentado de 100 para 200
+    MAX_REQUESTS: 300 // Aumentado de 200 para 300
   }
 } as const
 
@@ -98,9 +98,9 @@ export const AI_MODELS = {
 export const AI_CONFIG = {
   DEFAULT_TEMPERATURE: 0.7,
   MAX_TOKENS: 4000,
-  TIMEOUT: 45000, // ✅ Aumentado de 30000 para 45000 (45s)
-  RETRY_ATTEMPTS: 2, // ✅ Reduzido de 3 para 2
-  RETRY_DELAY: 2000  // ✅ Aumentado de 1000 para 2000
+  TIMEOUT: 60000, // Aumentado de 45000 para 60000 (60s)
+  RETRY_ATTEMPTS: 2,
+  RETRY_DELAY: 3000 // Aumentado de 2000 para 3000
 } as const
 
 // Email Template Colors
@@ -200,21 +200,21 @@ export const PAGINATION = {
   MAX_LIMIT: 100
 } as const
 
-// ✅ NOVO: Cache TTL mais otimizado
+// ✅ ATUALIZADO: Cache TTL otimizado
 export const CACHE_TTL = {
-  USER_PROFILE: 600,     // ✅ Aumentado de 300 para 600 (10 minutes)
-  PROJECTS_LIST: 300,    // ✅ Aumentado de 180 para 300 (5 minutes)
-  PROJECT_DETAILS: 600,  // ✅ Aumentado de 300 para 600 (10 minutes)
-  CHAT_HISTORY: 240,     // ✅ Aumentado de 120 para 240 (4 minutes)
-  ANALYTICS: 900,        // ✅ Aumentado de 600 para 900 (15 minutes)
-  AI_MODELS: 7200        // ✅ Aumentado de 3600 para 7200 (2 hours)
+  USER_PROFILE: 900,     // 15 minutes
+  PROJECTS_LIST: 600,    // 10 minutes
+  PROJECT_DETAILS: 900,  // 15 minutes
+  CHAT_HISTORY: 300,     // 5 minutes
+  ANALYTICS: 1800,       // 30 minutes
+  AI_MODELS: 3600       // 1 hour
 } as const
 
 // File Upload Limits
 export const UPLOAD_LIMITS = {
-  MAX_FILE_SIZE: 10 * 1024 * 1024, // ✅ Aumentado de 5MB para 10MB
+  MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB
   ALLOWED_TYPES: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-  MAX_FILES: 10 // ✅ Aumentado de 5 para 10
+  MAX_FILES: 10
 } as const
 
 // Security
@@ -234,25 +234,64 @@ export const EMAIL_CONFIG = {
   RECOMMENDED_PREVIEW_LENGTH: 90
 } as const
 
-// ✅ NOVO: Rate Limiting específico por funcionalidade
+// ✅ NOVO: Configuração do sistema de filas
+export const QUEUE_CONFIG = {
+  PROJECT_CREATION: {
+    MAX_CONCURRENT: 3,      // Processar até 3 projetos simultaneamente
+    RETRY_LIMIT: 2,         // Tentar 2 vezes em caso de erro
+    RETRY_DELAY: 3000,      // 3 segundos entre tentativas
+    PROCESS_INTERVAL: 200,  // Verificar fila a cada 200ms
+    USER_COOLDOWN: 3000     // 3 segundos de cooldown entre criações
+  },
+  AI_GENERATION: {
+    MAX_CONCURRENT: 2,      // Máximo 2 gerações de IA simultâneas
+    TIMEOUT: 60000,         // 60 segundos de timeout
+    PRIORITY_LEVELS: {
+      HIGH: 3,
+      NORMAL: 2,
+      LOW: 1
+    }
+  }
+} as const
+
+// ✅ NOVO: Rate Limiting dinâmico por funcionalidade
 export const FEATURE_RATE_LIMITS = {
   PROJECT_CREATION: {
-    FREE_PER_MINUTE: 10,    // 10 criações por minuto para free
-    PRO_PER_MINUTE: 30,     // 30 criações por minuto para pro
-    ENTERPRISE_PER_MINUTE: 100, // 100 criações por minuto para enterprise
-    COOLDOWN_SECONDS: 3     // 3 segundos entre criações
+    FREE_PER_MINUTE: 20,        // 20 criações por minuto para free
+    PRO_PER_MINUTE: 60,         // 60 criações por minuto para pro
+    ENTERPRISE_PER_MINUTE: 200,  // 200 criações por minuto para enterprise
+    COOLDOWN_SECONDS: 3,         // 3 segundos entre criações
+    BURST_LIMIT: 5               // Permitir até 5 criações rápidas
   },
   AI_CHAT: {
-    FREE_PER_MINUTE: 15,
-    PRO_PER_MINUTE: 50,
-    ENTERPRISE_PER_MINUTE: 200,
+    FREE_PER_MINUTE: 30,
+    PRO_PER_MINUTE: 100,
+    ENTERPRISE_PER_MINUTE: 500,
     COOLDOWN_SECONDS: 1
   },
   PROJECT_IMPROVEMENT: {
-    FREE_PER_MINUTE: 5,
-    PRO_PER_MINUTE: 20,
+    FREE_PER_MINUTE: 10,
+    PRO_PER_MINUTE: 30,
     ENTERPRISE_PER_MINUTE: 100,
     COOLDOWN_SECONDS: 5
+  }
+} as const
+
+// ✅ NOVO: Mensagens de erro amigáveis
+export const ERROR_MESSAGES = {
+  RATE_LIMIT: {
+    DEFAULT: 'Você está fazendo muitas requisições. Por favor, aguarde um momento.',
+    PROJECT_CREATION: 'Muitas criações de projeto. Aguarde alguns segundos antes de criar outro.',
+    WITH_TIME: (seconds: number) => `Por favor, aguarde ${seconds} segundos antes de tentar novamente.`
+  },
+  AI_SERVICE: {
+    UNAVAILABLE: 'O serviço de IA está temporariamente indisponível. Tente novamente em alguns minutos.',
+    TIMEOUT: 'A geração de conteúdo está demorando mais que o esperado. Por favor, tente novamente.',
+    OVERLOADED: 'Sistema sobrecarregado. Sua requisição foi adicionada à fila.'
+  },
+  QUEUE: {
+    POSITION: (position: number) => `Você está na posição ${position} da fila.`,
+    ESTIMATED_TIME: (seconds: number) => `Tempo estimado: ${seconds} segundos.`
   }
 } as const
 
@@ -277,5 +316,7 @@ export default {
   UPLOAD_LIMITS,
   SECURITY,
   EMAIL_CONFIG,
-  FEATURE_RATE_LIMITS
+  QUEUE_CONFIG,
+  FEATURE_RATE_LIMITS,
+  ERROR_MESSAGES
 }

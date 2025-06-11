@@ -1,4 +1,5 @@
 import { EmailContent, ProjectContext, AIResponse, ChatMessage, AIChatResponse } from '../types/ai.types'
+import { EnhancedEmailContent, SmartEmailRequest, EnhancedChatResponse, UserHistory } from '../types/enhanced-ai.types'
 import { AI_MODELS, AI_CONFIG } from '../utils/constants'
 import { logger, loggerHelpers } from '../utils/logger'
 import { createExternalServiceError } from '../middleware/error.middleware'
@@ -31,6 +32,8 @@ interface OpenRouterResponse {
 class AIService {
   private client: any
   private config: OpenRouterConfig
+  // 🚀 NOVO: Referência para o serviço melhorado (lazy loading)
+  private enhancedService: any = null
 
   constructor() {
     // ✅ CORREÇÃO: Converter readonly arrays para mutable
@@ -52,9 +55,77 @@ class AIService {
     console.log('🤖 [AI SERVICE] IA configurada:', {
       baseURL: this.config.baseURL,
       model: this.config.defaultModel,
-      hasApiKey: !!this.config.apiKey
+      hasApiKey: !!this.config.apiKey,
+      enhancedModeAvailable: true // 🚀 NOVO
     })
   }
+
+  // 🚀 NOVO: Método para carregamento lazy do serviço melhorado
+  private async getEnhancedService() {
+    if (!this.enhancedService) {
+      try {
+        // ✅ CORREÇÃO: Path correto para import
+        const { default: EnhancedAIService } = await import('./ai/enhanced/EnhancedAIService')
+        this.enhancedService = EnhancedAIService
+        console.log('🧠 [AI SERVICE] Serviço melhorado carregado')
+      } catch (error) {
+        console.error('❌ [AI SERVICE] Falha ao carregar serviço melhorado:', error)
+        this.enhancedService = null
+      }
+    }
+    return this.enhancedService
+  }
+
+  // 🚀 NOVO: Método principal para geração inteligente
+  async generateSmartEmail(request: SmartEmailRequest): Promise<EnhancedEmailContent> {
+    console.log('🧠 [AI SERVICE] Tentando geração inteligente...')
+    
+    const enhancedService = await this.getEnhancedService()
+    
+    if (enhancedService && this.shouldUseEnhancedMode(request)) {
+      try {
+        console.log('✨ [AI SERVICE] Usando modo inteligente')
+        return await enhancedService.generateSmartEmail(request)
+      } catch (error) {
+        console.warn('⚠️ [AI SERVICE] Modo inteligente falhou, usando fallback:', error.message)
+      }
+    }
+
+    // Fallback para modo atual
+    console.log('🔄 [AI SERVICE] Usando modo padrão')
+    const currentResult = await this.generateEmail(request.prompt, request.projectContext)
+    return this.convertToEnhanced(currentResult, request.projectContext)
+  }
+
+  // 🚀 NOVO: Chat inteligente melhorado
+  async smartChatWithAI(
+    message: string,
+    chatHistory: ChatMessage[],
+    projectContext: ProjectContext,
+    userHistory?: UserHistory
+  ): Promise<EnhancedChatResponse> {
+    console.log('💬 [AI SERVICE] Tentando chat inteligente...')
+    
+    const enhancedService = await this.getEnhancedService()
+    
+    if (enhancedService && this.shouldUseEnhancedMode({ prompt: message, projectContext })) {
+      try {
+        console.log('✨ [AI SERVICE] Usando chat inteligente')
+        return await enhancedService.smartChatWithAI(message, chatHistory, projectContext, userHistory)
+      } catch (error) {
+        console.warn('⚠️ [AI SERVICE] Chat inteligente falhou, usando fallback:', error.message)
+      }
+    }
+
+    // Fallback para chat atual
+    console.log('🔄 [AI SERVICE] Usando chat padrão')
+    const currentResult = await this.chatWithAI(message, chatHistory, projectContext)
+    return this.convertChatToEnhanced(currentResult, message, projectContext)
+  }
+
+  // ===============================
+  // MÉTODOS ORIGINAIS (MANTIDOS)
+  // ===============================
 
   async generateEmail(prompt: string, context: ProjectContext): Promise<EmailContent> {
     const startTime = Date.now()
@@ -188,6 +259,160 @@ IMPORTANTE: Retorne apenas o JSON, sem explicações.`
       throw error
     }
   }
+
+  // ===============================
+  // MÉTODOS AUXILIARES NOVOS
+  // ===============================
+
+  // 🚀 NOVO: Verificar se deve usar modo melhorado
+  private shouldUseEnhancedMode(request: Partial<SmartEmailRequest>): boolean {
+    // Por enquanto, critério simples baseado na complexidade do prompt
+    if (!request.prompt) return false
+    
+    const prompt = request.prompt.toLowerCase()
+    
+    // Usar modo melhorado se:
+    // 1. Prompt menciona elementos visuais específicos
+    const hasVisualElements = prompt.includes('cor') || 
+                             prompt.includes('layout') || 
+                             prompt.includes('botão') ||
+                             prompt.includes('fonte') ||
+                             prompt.includes('design')
+    
+    // 2. Prompt é complexo (mais de 50 caracteres)
+    const isComplexPrompt = request.prompt.length > 50
+    
+    // 3. Usa palavras que indicam personalização avançada
+    const hasAdvancedRequirements = prompt.includes('personaliz') ||
+                                   prompt.includes('específico') ||
+                                   prompt.includes('único') ||
+                                   prompt.includes('customiz')
+    
+    // 4. Explicitamente solicitado no request
+    if (request.useEnhanced === true) return true
+    if (request.useEnhanced === false) return false
+    
+    const shouldUse = hasVisualElements || isComplexPrompt || hasAdvancedRequirements
+    
+    console.log('🤔 [AI SERVICE] Decisão modo melhorado:', {
+      promptLength: request.prompt.length,
+      hasVisualElements,
+      isComplexPrompt,
+      hasAdvancedRequirements,
+      decision: shouldUse
+    })
+    
+    return shouldUse
+  }
+
+  // 🚀 NOVO: Converter resultado atual para formato melhorado
+  private convertToEnhanced(
+    currentResult: EmailContent, 
+    context: ProjectContext,
+    metadata?: any
+  ): EnhancedEmailContent {
+    return {
+      subject: currentResult.subject,
+      previewText: currentResult.previewText || '',
+      html: currentResult.html,
+      css: this.generateBasicCSS(),
+      components: [],
+      analysis: {
+        intentions: [],
+        visualRequirements: {},
+        contentRequirements: {
+          tone: (context.tone as any) || 'professional', // ✅ CORREÇÃO: Type assertion
+          length: 'medium',
+          focus: ['information'],
+          urgency: 'low',
+          personalization: 'none'
+        },
+        confidence: 0.5,
+        processingTime: 0,
+        originalPrompt: 'legacy conversion'
+      },
+      metadata: {
+        version: '1.0.0-legacy',
+        generated: new Date(),
+        model: 'current-system',
+        tokens: 0,
+        qualityScore: 0.7,
+        compatibilityScore: 0.9,
+        accessibilityScore: 0.8,
+        estimatedRenderTime: 1000,
+        supportedClients: ['Gmail', 'Outlook', 'Apple Mail'],
+        enhancedFeatures: metadata?.fallback ? ['legacy-fallback'] : ['legacy-conversion']
+      }
+    }
+  }
+
+  // 🚀 NOVO: Converter resposta de chat para formato melhorado
+  private convertChatToEnhanced(
+    currentResult: AIChatResponse,
+    message: string,
+    context: ProjectContext
+  ): EnhancedChatResponse {
+    return {
+      response: currentResult.response,
+      shouldUpdateEmail: currentResult.shouldUpdateEmail,
+      analysis: {
+        intentions: [],
+        visualRequirements: {},
+        contentRequirements: {
+          tone: (context.tone as any) || 'professional', // ✅ CORREÇÃO: Type assertion
+          length: 'medium',
+          focus: ['information'],
+          urgency: 'low',
+          personalization: 'none'
+        },
+        confidence: currentResult.metadata?.confidence || 0.5,
+        processingTime: 0,
+        originalPrompt: message
+      },
+      suggestions: currentResult.suggestions || [],
+      metadata: {
+        model: currentResult.metadata?.model || 'current-system',
+        tokens: currentResult.metadata?.tokens || 0,
+        confidence: currentResult.metadata?.confidence || 0.5,
+        enhancedFeatures: ['legacy-chat'],
+        processingTime: 0
+      }
+    }
+  }
+
+  // 🚀 NOVO: Gerar CSS básico para conversões
+  private generateBasicCSS(): string {
+    return `
+/* CSS Básico MailTrendz */
+.email-container { 
+  max-width: 600px; 
+  margin: 0 auto; 
+  font-family: Arial, sans-serif; 
+}
+
+@media only screen and (max-width: 600px) {
+  .responsive-hide { display: none !important; }
+  .responsive-stack { 
+    display: block !important; 
+    width: 100% !important; 
+  }
+}
+
+.cta-button {
+  background-color: #f59e0b;
+  color: #ffffff;
+  padding: 12px 24px;
+  border-radius: 8px;
+  text-decoration: none;
+  display: inline-block;
+  font-weight: bold;
+}
+`
+  }
+
+  // ===============================
+  // MÉTODOS ORIGINAIS (MANTIDOS)
+  // ===============================
 
   // 🔥 DETECÇÃO SIMPLES DE INTENÇÃO
   private detectSimpleIntent(message: string): boolean {

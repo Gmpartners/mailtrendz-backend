@@ -265,19 +265,19 @@ export const createUserBasedLimiter = (
   })
 }
 
-// ✅ CORREÇÃO: Rate limiter menos restritivo para criação de projetos
+// ✅ AJUSTE TEMPORÁRIO: Rate limiter mais generoso para criação de projetos
 export const projectCreationLimiter = createUserBasedLimiter(
-  10,  // Free: 10 projetos por minuto (era 2)
-  30,  // Pro: 30 projetos por minuto (era 10) 
-  100, // Enterprise: 100 projetos por minuto (era 50)
+  50,   // Free: 50 projetos por minuto (era 10)
+  150,  // Pro: 150 projetos por minuto (era 30) 
+  500,  // Enterprise: 500 projetos por minuto (era 100)
   60000 // 1 minuto
 )
 
-// ✅ CORREÇÃO: Rate limiter menos restritivo para chat com IA
+// ✅ AJUSTE TEMPORÁRIO: Rate limiter mais generoso para chat com IA
 export const aiChatLimiter = createUserBasedLimiter(
-  15,  // Free: 15 mensagens por minuto (era 5)
-  50,  // Pro: 50 mensagens por minuto (era 20)
-  200, // Enterprise: 200 mensagens por minuto (era 100)
+  50,   // Free: 50 mensagens por minuto (era 15)
+  200,  // Pro: 200 mensagens por minuto (era 50)
+  1000, // Enterprise: 1000 mensagens por minuto (era 200)
   60000 // 1 minuto
 )
 

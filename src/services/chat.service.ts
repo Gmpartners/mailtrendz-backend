@@ -94,6 +94,15 @@ const MessageModel = Message as MessageModelType
 const ChatModel = Chat as ChatModelType
 
 class ChatService {
+  
+  // 🚀 NOVO: Flag para controlar uso da IA melhorada
+  private useEnhancedAI: boolean = true
+
+  constructor() {
+    // Log sobre IA melhorada
+    console.log('💬 [CHAT SERVICE] Inicializado com suporte à IA melhorada')
+  }
+
   async createChat(userId: string, createChatDto: CreateChatDto): Promise<ChatResponse> {
     try {
       console.log('🆕 [CHAT SERVICE] Criando chat:', { userId, projectId: createChatDto.projectId })
@@ -126,7 +135,10 @@ class ChatService {
         metadata: {
           totalMessages: 0,
           lastActivity: new Date(),
-          emailUpdates: 0
+          emailUpdates: 0,
+          // 🚀 NOVO: Metadata para IA melhorada
+          enhancedAIEnabled: this.useEnhancedAI,
+          aiMode: 'adaptive' // adaptive, standard, enhanced
         }
       })
 
@@ -138,7 +150,8 @@ class ChatService {
       logger.info('Chat created', { 
         chatId: chat._id, 
         projectId: createChatDto.projectId, 
-        userId 
+        userId,
+        enhancedAI: this.useEnhancedAI // 🚀 NOVO
       })
 
       return this.getChatResponse(chat._id.toString(), userId)
@@ -187,7 +200,10 @@ class ChatService {
           metadata: {
             totalMessages: 0,
             lastActivity: new Date(),
-            emailUpdates: 0
+            emailUpdates: 0,
+            // 🚀 NOVO: Metadata para IA melhorada
+            enhancedAIEnabled: this.useEnhancedAI,
+            aiMode: 'adaptive'
           }
         })
 
@@ -264,6 +280,16 @@ class ChatService {
           aiMessages: aiMessageCount,
           emailUpdates: chat.metadata?.emailUpdates || 0,
           lastActivity: chat.metadata?.lastActivity || new Date()
+        },
+        // 🚀 NOVO: Informações sobre IA melhorada
+        aiCapabilities: {
+          enhancedMode: chat.metadata?.enhancedAIEnabled || false,
+          currentMode: chat.metadata?.aiMode || 'standard',
+          features: chat.metadata?.enhancedAIEnabled ? [
+            'smart-analysis', 
+            'visual-customization', 
+            'intelligent-suggestions'
+          ] : ['basic-chat']
         }
       }
 
@@ -311,7 +337,8 @@ class ChatService {
 
       let aiResponse
       if (userMessage.type === MESSAGE_TYPES.USER) {
-        aiResponse = await this.generateAIResponse(chatId, messageDto.content.trim(), userId)
+        // 🚀 NOVO: Usar IA melhorada quando apropriado
+        aiResponse = await this.generateEnhancedAIResponse(chatId, messageDto.content.trim(), userId, chat)
       }
 
       const messageData = convertMessageToInterface(userMessage)
@@ -326,20 +353,20 @@ class ChatService {
     }
   }
 
-  // 🔥 FUNÇÃO SIMPLIFICADA: generateAIResponse
-  private async generateAIResponse(chatId: string, userMessage: string, userId: string) {
+  // 🚀 NOVA FUNÇÃO: generateEnhancedAIResponse - com IA melhorada
+  private async generateEnhancedAIResponse(chatId: string, userMessage: string, userId: string, chat: IChatDocument) {
     try {
-      console.log('🤖 [CHAT SERVICE] Gerando resposta da IA:', {
+      console.log('🧠 [CHAT SERVICE] Gerando resposta com IA melhorada:', {
         chatId,
         userMessage: userMessage.substring(0, 100),
-        userId
+        userId,
+        enhancedEnabled: chat.metadata?.enhancedAIEnabled
       })
 
       const chatObjectId = ID_UTILS.toObjectId(chatId)
 
-      // 1. Buscar chat e projeto
-      const chat = await Chat.findById(chatObjectId).populate('projectId')
-      const project = chat?.projectId as any
+      // 1. Buscar projeto
+      const project = chat?.projectId as any || await Project.findById(chat.projectId)
 
       if (!project) {
         throw createNotFoundError('Projeto')
@@ -359,31 +386,117 @@ class ChatService {
         status: project.status || 'ativo'
       }
 
-      // 4. Chamar IA
+      // 🚀 DECISÃO: Usar IA melhorada ou padrão?
+      const shouldUseEnhanced = this.shouldUseEnhancedForMessage(
+        userMessage, 
+        projectContext, 
+        chat.metadata?.enhancedAIEnabled
+      )
+
+      console.log('🤔 [CHAT SERVICE] Decisão de IA:', {
+        shouldUseEnhanced,
+        messageLength: userMessage.length,
+        chatMode: chat.metadata?.aiMode,
+        enhancedEnabled: chat.metadata?.enhancedAIEnabled
+      })
+
+      let aiResult: any
       const startTime = Date.now()
-      const aiResult = await AIService.chatWithAI(userMessage, chatHistory, projectContext)
+
+      if (shouldUseEnhanced) {
+        try {
+          // 🚀 Usar IA melhorada
+          console.log('✨ [CHAT SERVICE] Usando IA melhorada')
+          
+          const smartResponse = await AIService.smartChatWithAI(
+            userMessage,
+            chatHistory,
+            projectContext,
+            undefined // userHistory - TODO: implementar na Fase 3
+          )
+
+          aiResult = {
+            response: smartResponse.response,
+            shouldUpdateEmail: smartResponse.shouldUpdateEmail,
+            suggestions: smartResponse.suggestions || [],
+            metadata: {
+              model: smartResponse.metadata.model,
+              tokens: smartResponse.metadata.tokens,
+              confidence: smartResponse.metadata.confidence,
+              enhancedFeatures: smartResponse.metadata.enhancedFeatures,
+              aiMode: 'enhanced'
+            },
+            // 🚀 NOVO: Dados específicos da IA melhorada
+            analysis: smartResponse.analysis,
+            enhancedContent: smartResponse.enhancedContent
+          }
+
+        } catch (enhancedError) {
+          console.warn('⚠️ [CHAT SERVICE] IA melhorada falhou, usando fallback:', enhancedError.message)
+          
+          // Fallback para IA padrão
+          const fallbackResult = await AIService.chatWithAI(userMessage, chatHistory, projectContext)
+          aiResult = {
+            ...fallbackResult,
+            metadata: {
+              ...fallbackResult.metadata,
+              aiMode: 'fallback',
+              enhancedAttempted: true,
+              enhancedError: enhancedError.message
+            }
+          }
+        }
+      } else {
+        // 🔄 Usar IA padrão
+        console.log('🔄 [CHAT SERVICE] Usando IA padrão')
+        
+        const standardResult = await AIService.chatWithAI(userMessage, chatHistory, projectContext)
+        aiResult = {
+          ...standardResult,
+          metadata: {
+            ...standardResult.metadata,
+            aiMode: 'standard'
+          }
+        }
+      }
+
       const executionTime = Date.now() - startTime
 
       console.log('🤖 [CHAT SERVICE] Resposta da IA recebida:', {
         hasResponse: !!aiResult.response,
         shouldUpdateEmail: aiResult.shouldUpdateEmail,
-        executionTime
+        aiMode: aiResult.metadata?.aiMode,
+        executionTime,
+        hasAnalysis: !!aiResult.analysis,
+        hasEnhancedContent: !!aiResult.enhancedContent
       })
 
-      // 5. Se deve atualizar email, tentar atualizar
+      // 4. Atualizar projeto se necessário
       let projectUpdated = false
       if (aiResult.shouldUpdateEmail) {
         console.log('🔄 [CHAT SERVICE] Tentando atualizar projeto...')
         
         try {
-          // Usar função de melhoria do próprio AI Service
-          const improvedContent = await AIService.improveEmail(
-            project.content,
-            userMessage,
-            projectContext
-          )
+          let improvedContent
+
+          // 🚀 NOVO: Usar conteúdo melhorado se disponível
+          if (aiResult.enhancedContent) {
+            console.log('✨ [CHAT SERVICE] Usando conteúdo melhorado da IA')
+            improvedContent = {
+              subject: aiResult.enhancedContent.subject,
+              previewText: aiResult.enhancedContent.previewText,
+              html: aiResult.enhancedContent.html,
+              text: aiResult.enhancedContent.html.replace(/<[^>]*>/g, '') // conversão simples
+            }
+          } else {
+            // Usar função de melhoria padrão
+            improvedContent = await AIService.improveEmail(
+              project.content,
+              userMessage,
+              projectContext
+            )
+          }
           
-          // ✅ CORREÇÃO: Usar string em vez de ObjectId para o ID
           const updatedProject = await ProjectService.updateProject(project._id.toString(), userId, {
             content: improvedContent,
             metadata: {
@@ -392,7 +505,9 @@ class ChatService {
               lastImprovement: {
                 feedback: userMessage,
                 timestamp: new Date(),
-                version: (project.metadata?.version || 1) + 1
+                version: (project.metadata?.version || 1) + 1,
+                aiMode: aiResult.metadata?.aiMode, // 🚀 NOVO
+                enhancedFeatures: aiResult.metadata?.enhancedFeatures || [] // 🚀 NOVO
               }
             }
           })
@@ -408,7 +523,7 @@ class ChatService {
         }
       }
 
-      // 6. Salvar mensagem da IA
+      // 5. Salvar mensagem da IA
       const aiMessage = new Message({
         chatId: chatObjectId,
         type: MESSAGE_TYPES.AI,
@@ -419,16 +534,33 @@ class ChatService {
           model: aiResult.metadata?.model,
           tokens: aiResult.metadata?.tokens,
           confidence: aiResult.metadata?.confidence,
-          executionTime
+          executionTime,
+          // 🚀 NOVO: Metadata da IA melhorada
+          aiMode: aiResult.metadata?.aiMode,
+          enhancedFeatures: aiResult.metadata?.enhancedFeatures,
+          analysis: aiResult.analysis ? {
+            confidence: aiResult.analysis.confidence,
+            intentionsCount: aiResult.analysis.intentions?.length || 0,
+            hasVisualReqs: Object.keys(aiResult.analysis.visualRequirements || {}).length > 0
+          } : undefined
         }
       })
 
       await aiMessage.save()
       await chat.addMessage(aiMessage._id as Types.ObjectId)
 
+      // 🚀 NOVO: Atualizar metadata do chat se usou IA melhorada
+      if (aiResult.metadata?.aiMode === 'enhanced') {
+        await Chat.findByIdAndUpdate(chatObjectId, {
+          'metadata.lastEnhancedInteraction': new Date(),
+          'metadata.enhancedInteractions': (chat.metadata?.enhancedInteractions || 0) + 1
+        })
+      }
+
       console.log('💾 [CHAT SERVICE] Mensagem da IA salva:', {
         messageId: aiMessage._id.toString(),
-        projectUpdated
+        projectUpdated,
+        aiMode: aiResult.metadata?.aiMode
       })
 
       return {
@@ -439,24 +571,148 @@ class ChatService {
           model: aiResult.metadata?.model || 'claude-3-sonnet',
           tokens: aiResult.metadata?.tokens || 0,
           executionTime,
-          confidence: aiResult.metadata?.confidence || 0
-        }
+          confidence: aiResult.metadata?.confidence || 0,
+          // 🚀 NOVO: Metadata estendida
+          aiMode: aiResult.metadata?.aiMode,
+          enhancedFeatures: aiResult.metadata?.enhancedFeatures,
+          hasAnalysis: !!aiResult.analysis,
+          hasEnhancedContent: !!aiResult.enhancedContent
+        },
+        // 🚀 NOVO: Dados adicionais da IA melhorada
+        analysis: aiResult.analysis,
+        enhancedContent: aiResult.enhancedContent
       }
 
     } catch (error) {
-      console.error('❌ [CHAT SERVICE] Erro na geração de resposta IA:', error)
-      logger.error('Generate AI response failed:', error)
+      console.error('❌ [CHAT SERVICE] Erro na geração de resposta IA melhorada:', error)
+      logger.error('Generate enhanced AI response failed:', error)
+      
+      // Fallback para geração padrão
+      return this.generateFallbackAIResponse(chatId, userMessage, userId)
+    }
+  }
+
+  // 🚀 NOVA FUNÇÃO: Decidir quando usar IA melhorada
+  private shouldUseEnhancedForMessage(
+    message: string, 
+    projectContext: ProjectContext, 
+    chatEnhancedEnabled?: boolean
+  ): boolean {
+    
+    // Se desabilitado no chat, não usar
+    if (chatEnhancedEnabled === false) return false
+
+    // Se desabilitado globalmente, não usar
+    if (!this.useEnhancedAI) return false
+
+    const messageLower = message.toLowerCase()
+    
+    // 1. Mensagens com elementos visuais específicos
+    const hasVisualElements = messageLower.includes('cor') || 
+                             messageLower.includes('layout') || 
+                             messageLower.includes('botão') ||
+                             messageLower.includes('fonte') ||
+                             messageLower.includes('design') ||
+                             messageLower.includes('estilo')
+
+    // 2. Mensagens complexas (mais de 30 caracteres)
+    const isComplexMessage = message.length > 30
+
+    // 3. Palavras que indicam personalização avançada
+    const hasAdvancedRequirements = messageLower.includes('personaliz') ||
+                                   messageLower.includes('específico') ||
+                                   messageLower.includes('único') ||
+                                   messageLower.includes('customiz') ||
+                                   messageLower.includes('diferente')
+
+    // 4. Pedidos de modificação específica
+    const hasSpecificModification = messageLower.includes('mude para') ||
+                                   messageLower.includes('altere para') ||
+                                   messageLower.includes('troque para') ||
+                                   messageLower.includes('adicione') ||
+                                   messageLower.includes('remova')
+
+    // 5. Projetos promocionais ou campanhas (mais propensos a customização)
+    const isPromotionalProject = projectContext.type === 'promotional' || 
+                                projectContext.type === 'campaign'
+
+    const shouldUse = hasVisualElements || 
+                     (isComplexMessage && hasAdvancedRequirements) ||
+                     hasSpecificModification ||
+                     (isPromotionalProject && isComplexMessage)
+
+    return shouldUse
+  }
+
+  // 🚀 NOVA FUNÇÃO: Fallback para erro na IA melhorada
+  private async generateFallbackAIResponse(chatId: string, userMessage: string, userId: string) {
+    try {
+      console.log('🔄 [CHAT SERVICE] Usando fallback padrão')
       
       const chatObjectId = ID_UTILS.toObjectId(chatId)
+      const chat = await Chat.findById(chatObjectId).populate('projectId')
+      const project = chat?.projectId as any
+
+      if (!project) {
+        throw createNotFoundError('Projeto')
+      }
+
+      const chatHistory = await this.getChatHistoryForAI(chatId)
+      const projectContext: ProjectContext = {
+        userId,
+        projectName: project.name,
+        type: project.type,
+        industry: project.metadata?.industry || 'geral',
+        targetAudience: project.metadata?.targetAudience || 'geral',
+        tone: project.metadata?.tone || 'profissional',
+        status: project.status || 'ativo'
+      }
+
+      const aiResult = await AIService.chatWithAI(userMessage, chatHistory, projectContext)
+      
+      const aiMessage = new Message({
+        chatId: chatObjectId,
+        type: MESSAGE_TYPES.AI,
+        content: aiResult.response,
+        metadata: {
+          emailUpdated: false,
+          suggestions: aiResult.suggestions,
+          model: aiResult.metadata?.model,
+          tokens: aiResult.metadata?.tokens,
+          confidence: aiResult.metadata?.confidence,
+          executionTime: 0,
+          aiMode: 'fallback-error'
+        }
+      })
+
+      await aiMessage.save()
+      await chat.addMessage(aiMessage._id as Types.ObjectId)
+
+      return {
+        content: aiResult.response,
+        suggestions: aiResult.suggestions || ['Tente reformular sua mensagem', 'Verifique sua conexão'],
+        emailUpdated: false,
+        metadata: {
+          model: aiResult.metadata?.model || 'fallback',
+          tokens: aiResult.metadata?.tokens || 0,
+          executionTime: 0,
+          confidence: aiResult.metadata?.confidence || 0,
+          aiMode: 'fallback-error'
+        }
+      }
+      
+    } catch (fallbackError) {
+      console.error('❌ [CHAT SERVICE] Fallback também falhou:', fallbackError)
       
       const errorMessage = new Message({
-        chatId: chatObjectId,
+        chatId: ID_UTILS.toObjectId(chatId),
         type: MESSAGE_TYPES.AI,
         content: 'Desculpe, houve um erro ao processar sua mensagem. Tente novamente.',
         metadata: {
           emailUpdated: false,
           executionTime: 0,
-          error: true
+          error: true,
+          aiMode: 'error'
         }
       })
 
@@ -469,11 +725,16 @@ class ChatService {
         metadata: {
           model: 'error',
           tokens: 0,
-          executionTime: 0
+          executionTime: 0,
+          aiMode: 'error'
         }
       }
     }
   }
+
+  // ===============================
+  // MÉTODOS ORIGINAIS (MANTIDOS)
+  // ===============================
 
   async getChatHistory(chatId: string, userId: string, page: number = 1, limit: number = 50): Promise<ChatHistoryResponse> {
     try {
@@ -760,6 +1021,79 @@ class ChatService {
       content: msg.content || '',
       timestamp: msg.createdAt || new Date()
     }))
+  }
+
+  // 🚀 NOVOS MÉTODOS PARA CONTROLE DA IA MELHORADA
+
+  // Habilitar/desabilitar IA melhorada para um chat específico
+  async toggleEnhancedAI(chatId: string, userId: string, enabled: boolean): Promise<boolean> {
+    try {
+      const chatObjectId = ID_UTILS.toObjectId(chatId)
+      const userObjectId = ID_UTILS.toObjectId(userId)
+
+      const chat = await Chat.findOneAndUpdate(
+        { _id: chatObjectId, userId: userObjectId },
+        { 
+          'metadata.enhancedAIEnabled': enabled,
+          'metadata.lastActivity': new Date()
+        },
+        { new: true }
+      )
+
+      if (chat) {
+        console.log(`🔧 [CHAT SERVICE] IA melhorada ${enabled ? 'habilitada' : 'desabilitada'} para chat:`, chatId)
+        return true
+      }
+
+      return false
+    } catch (error) {
+      console.error('❌ [CHAT SERVICE] Erro ao alterar IA melhorada:', error)
+      return false
+    }
+  }
+
+  // Obter estatísticas de uso da IA melhorada
+  async getEnhancedAIStats(userId: string): Promise<any> {
+    try {
+      const userObjectId = ID_UTILS.toObjectId(userId)
+
+      const stats = await Chat.aggregate([
+        { $match: { userId: userObjectId } },
+        {
+          $group: {
+            _id: null,
+            totalChats: { $sum: 1 },
+            enhancedChats: {
+              $sum: { $cond: ['$metadata.enhancedAIEnabled', 1, 0] }
+            },
+            totalEnhancedInteractions: {
+              $sum: { $ifNull: ['$metadata.enhancedInteractions', 0] }
+            }
+          }
+        }
+      ])
+
+      const result = stats[0] || {
+        totalChats: 0,
+        enhancedChats: 0,
+        totalEnhancedInteractions: 0
+      }
+
+      return {
+        ...result,
+        enhancedUsagePercentage: result.totalChats > 0 
+          ? Math.round((result.enhancedChats / result.totalChats) * 100) 
+          : 0
+      }
+    } catch (error) {
+      console.error('❌ [CHAT SERVICE] Erro ao obter stats IA melhorada:', error)
+      return {
+        totalChats: 0,
+        enhancedChats: 0,
+        totalEnhancedInteractions: 0,
+        enhancedUsagePercentage: 0
+      }
+    }
   }
 }
 
