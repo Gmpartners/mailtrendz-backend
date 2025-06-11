@@ -18,13 +18,12 @@ import {
   createForbiddenError,
   createConflictError 
 } from '../middleware/error.middleware'
-import AIService from './ai.service'
+import EnhancedAIService from './ai/enhanced/EnhancedAIService'
 
-// FUNÇÃO HELPER PARA CONVERTER _id → id
 const convertProjectToInterface = (project: IProjectDocument): IProject => {
   return {
     _id: project._id as Types.ObjectId,
-    id: project._id.toString(), // SEMPRE GARANTIR QUE TENHA ID
+    id: project._id.toString(),
     userId: project.userId,
     name: project.name,
     description: project.description,
@@ -43,7 +42,6 @@ const convertProjectToInterface = (project: IProjectDocument): IProject => {
 }
 
 class ProjectService {
-  // Verificar limites do usuário
   async checkUserLimits(userId: string): Promise<boolean> {
     try {
       const user = await User.findById(userId)
@@ -59,10 +57,8 @@ class ProjectService {
     }
   }
 
-  // Gerar nome do projeto baseado no prompt
   generateProjectName(prompt: string): string {
     try {
-      // Extrair palavras-chave do prompt
       const words = prompt.toLowerCase()
         .split(' ')
         .filter(word => word.length > 3)
@@ -72,7 +68,6 @@ class ProjectService {
         return `Projeto ${Date.now()}`
       }
 
-      // Capitalizar primeira letra de cada palavra
       const capitalizedWords = words.map(word => 
         word.charAt(0).toUpperCase() + word.slice(1)
       )
@@ -83,17 +78,14 @@ class ProjectService {
     }
   }
 
-  // Gerar tags baseadas no prompt e tipo
   generateTags(prompt: string, type?: string): string[] {
     try {
       const tags: string[] = []
       
-      // Adicionar tipo se fornecido
       if (type) {
         tags.push(type)
       }
 
-      // Extrair tags do prompt (palavras-chave comuns)
       const keywords = ['marketing', 'vendas', 'promocao', 'newsletter', 'boas-vindas', 'campanha']
       const promptLower = prompt.toLowerCase()
       
@@ -103,31 +95,27 @@ class ProjectService {
         }
       })
 
-      // Garantir pelo menos 2 tags
       if (tags.length === 0) {
         tags.push('email', 'marketing')
       } else if (tags.length === 1) {
         tags.push('email')
       }
 
-      return tags.slice(0, 5) // Máximo 5 tags
+      return tags.slice(0, 5)
     } catch (error) {
       return ['email', 'marketing']
     }
   }
 
-  // Gerar cor baseada no tipo
   generateColor(type?: string): string {
     if (type && EMAIL_COLORS[type as keyof typeof EMAIL_COLORS]) {
       return EMAIL_COLORS[type as keyof typeof EMAIL_COLORS]
     }
-    return '#6b7280' // Cor padrão
+    return '#6b7280'
   }
 
-  // Criar novo projeto (versão atualizada)
   async createProject(projectData: any): Promise<IProject> {
     try {
-      // Criar projeto
       const project = new Project({
         userId: new Types.ObjectId(projectData.userId),
         name: projectData.name,
@@ -162,10 +150,14 @@ class ProjectService {
     }
   }
 
-  // Criar novo projeto com IA (método original corrigido)
   async createProjectWithAI(userId: string, createProjectDto: CreateProjectDto): Promise<IProject> {
     try {
-      // Preparar contexto para IA
+      console.log('🚀 [PROJECT SERVICE] Criando projeto com IA Enhanced:', {
+        userId,
+        promptLength: createProjectDto.prompt.length,
+        type: createProjectDto.type
+      })
+
       const context = {
         userId,
         type: createProjectDto.type || 'campaign',
@@ -176,23 +168,35 @@ class ProjectService {
         status: 'draft' as const
       }
 
-      // Gerar conteúdo do email com IA
-      const emailContent = await AIService.generateEmail(createProjectDto.prompt, context)
+      const smartRequest = {
+        prompt: createProjectDto.prompt,
+        projectContext: context,
+        useEnhanced: true
+      }
 
-      // Criar projeto
+      const enhancedResult = await EnhancedAIService.generateSmartEmail(smartRequest)
+
       const project = new Project({
         userId: new Types.ObjectId(userId),
         name: this.generateProjectName(createProjectDto.prompt),
-        description: `Projeto gerado a partir do prompt: ${createProjectDto.prompt.substring(0, 100)}...`,
+        description: `Projeto inteligente gerado: ${createProjectDto.prompt.substring(0, 100)}...`,
         type: createProjectDto.type || 'campaign',
         status: PROJECT_STATUS.DRAFT,
-        content: emailContent,
+        content: {
+          subject: enhancedResult.subject,
+          previewText: enhancedResult.previewText,
+          html: enhancedResult.html,
+          text: enhancedResult.html.replace(/<[^>]*>/g, '')
+        },
         metadata: {
           industry: createProjectDto.industry || 'Geral',
           targetAudience: createProjectDto.targetAudience,
           tone: createProjectDto.tone || 'profissional',
           originalPrompt: createProjectDto.prompt,
-          version: 1
+          version: 1,
+          enhancedFeatures: enhancedResult.metadata.enhancedFeatures,
+          qualityScore: enhancedResult.metadata.qualityScore,
+          aiModel: enhancedResult.metadata.model
         },
         tags: this.generateTags(createProjectDto.prompt, createProjectDto.type),
         color: this.generateColor(createProjectDto.type),
@@ -200,36 +204,33 @@ class ProjectService {
       })
 
       await project.save()
-
-      // Criar chat para o projeto
       await this.createProjectChat(project._id as Types.ObjectId, userId)
 
-      logger.info('Project created with AI', { 
+      logger.info('Project created with Enhanced AI', { 
         projectId: project._id.toString(), 
         userId,
-        type: project.type 
+        type: project.type,
+        qualityScore: enhancedResult.metadata.qualityScore,
+        enhancedFeatures: enhancedResult.metadata.enhancedFeatures.length
       })
 
       return convertProjectToInterface(project)
     } catch (error) {
-      logger.error('Create project with AI failed:', error)
+      logger.error('Create project with Enhanced AI failed:', error)
       throw error
     }
   }
 
-  // Criar chat para projeto (agora público)
   async createProjectChat(projectId: Types.ObjectId, userId: string): Promise<any> {
     try {
       const chat = new Chat({
         userId: new Types.ObjectId(userId),
         projectId,
-        title: 'Chat do Projeto',
+        title: 'Chat Inteligente',
         isActive: true
       })
 
       await chat.save()
-
-      // Atualizar projeto com chat ID
       await Project.findByIdAndUpdate(projectId, { chatId: chat._id })
 
       return chat
@@ -239,10 +240,72 @@ class ProjectService {
     }
   }
 
-  // Rastrear criação do projeto
+  async improveProjectWithAI(projectId: string, userId: string, feedback: string): Promise<IProject | null> {
+    try {
+      console.log('🔧 [PROJECT SERVICE] Melhorando projeto com IA Enhanced:', {
+        projectId,
+        userId,
+        feedbackLength: feedback.length
+      })
+
+      const project = await Project.findOne({
+        _id: projectId,
+        userId: new Types.ObjectId(userId)
+      })
+
+      if (!project) {
+        return null
+      }
+
+      const context = {
+        userId,
+        type: project.type,
+        industry: project.metadata.industry,
+        targetAudience: project.metadata.targetAudience,
+        tone: project.metadata.tone,
+        projectName: project.name,
+        status: project.status
+      }
+
+      const enhancedResponse = await EnhancedAIService.smartChatWithAI(
+        feedback,
+        [],
+        context
+      )
+
+      if (enhancedResponse.shouldUpdateEmail && enhancedResponse.enhancedContent) {
+        project.content = {
+          subject: enhancedResponse.enhancedContent.subject,
+          previewText: enhancedResponse.enhancedContent.previewText,
+          html: enhancedResponse.enhancedContent.html,
+          text: enhancedResponse.enhancedContent.html.replace(/<[^>]*>/g, '')
+        }
+
+        project.metadata.version += 1
+        project.metadata.lastImprovement = {
+          feedback,
+          timestamp: new Date().toISOString(),
+          version: project.metadata.version
+        }
+
+        await project.save()
+
+        logger.info('Project improved with Enhanced AI', {
+          projectId,
+          userId,
+          newVersion: project.metadata.version
+        })
+      }
+
+      return convertProjectToInterface(project)
+    } catch (error) {
+      logger.error('Improve project with Enhanced AI failed:', error)
+      throw error
+    }
+  }
+
   async trackProjectCreation(userId: string, projectId: string): Promise<void> {
     try {
-      // Atualizar uso da API do usuário
       await User.findByIdAndUpdate(userId, {
         $inc: { 'apiUsage.currentMonth': 1 },
         $set: { 'apiUsage.lastUsed': new Date() }
@@ -251,11 +314,9 @@ class ProjectService {
       logger.info('Project creation tracked', { userId, projectId })
     } catch (error) {
       logger.error('Track project creation failed:', error)
-      // Não lançar erro para não afetar o fluxo principal
     }
   }
 
-  // Buscar projetos do usuário - CORRIGIDO COM LOGS
   async getUserProjects(filters: ProjectFilters): Promise<ProjectResponse> {
     console.log('🔧 [PROJECT SERVICE] Iniciando getUserProjects:', {
       userId: filters.userId,
@@ -277,14 +338,12 @@ class ProjectService {
         sort
       } = filters
 
-      // Validar userId
       if (!userId) {
         throw new Error('UserId é obrigatório')
       }
 
       console.log('📝 [PROJECT SERVICE] Validação passou, construindo query...')
 
-      // Construir query
       const query: any = { userId: new Types.ObjectId(userId) }
 
       if (search) {
@@ -305,20 +364,17 @@ class ProjectService {
 
       console.log('🔍 [PROJECT SERVICE] Query construída:', JSON.stringify(query, null, 2))
 
-      // Paginação
       const page = pagination.page || 1
       const limit = pagination.limit || PAGINATION.DEFAULT_LIMIT
       const skip = (page - 1) * limit
 
       console.log('📄 [PROJECT SERVICE] Parâmetros de paginação:', { page, limit, skip })
 
-      // Ordenação
       const sortObj: any = {}
       sortObj[sort.field] = sort.order === 'asc' ? 1 : -1
 
       console.log('📊 [PROJECT SERVICE] Ordenação:', sortObj)
 
-      // Buscar projetos e contar total
       console.log('🔍 [PROJECT SERVICE] Executando busca no banco...')
       
       const [projects, totalItems] = await Promise.all([
@@ -339,7 +395,6 @@ class ProjectService {
         query: JSON.stringify(query)
       })
 
-      // Buscar estatísticas separadamente para evitar erro
       console.log('📊 [PROJECT SERVICE] Buscando estatísticas...')
       
       let stats
@@ -361,7 +416,6 @@ class ProjectService {
 
       console.log('🔧 [PROJECT SERVICE] Convertendo projetos para interface...')
 
-      // USAR FUNÇÃO HELPER PARA CONVERSÃO
       const projectsData: IProject[] = projects.map(project => convertProjectToInterface(project))
 
       console.log('✅ [PROJECT SERVICE] Conversão concluída, montando resposta final...')
@@ -409,7 +463,6 @@ class ProjectService {
     }
   }
 
-  // Buscar projeto por ID - CORRIGIDO
   async getProjectById(projectId: string, userId: string): Promise<IProject | null> {
     try {
       const project = await Project.findOne({
@@ -424,10 +477,8 @@ class ProjectService {
         return null
       }
 
-      // Incrementar visualizações
       await project.incrementViews()
 
-      // USAR FUNÇÃO HELPER PARA CONVERSÃO
       return convertProjectToInterface(project)
     } catch (error) {
       logger.error('Get project by ID failed:', error)
@@ -435,7 +486,6 @@ class ProjectService {
     }
   }
 
-  // Incrementar visualizações do projeto
   async incrementProjectViews(projectId: string): Promise<void> {
     try {
       await Project.findByIdAndUpdate(projectId, {
@@ -444,11 +494,9 @@ class ProjectService {
       logger.info('Project views incremented', { projectId })
     } catch (error) {
       logger.error('Increment project views failed:', error)
-      // Não lançar erro para não afetar o fluxo principal
     }
   }
 
-  // Atualizar projeto - CORRIGIDO
   async updateProject(projectId: string, userId: string, updates: UpdateProjectDto): Promise<IProject | null> {
     try {
       const project = await Project.findOneAndUpdate(
@@ -464,7 +512,6 @@ class ProjectService {
           updates: Object.keys(updates) 
         })
 
-        // USAR FUNÇÃO HELPER PARA CONVERSÃO
         return convertProjectToInterface(project)
       }
 
@@ -475,7 +522,6 @@ class ProjectService {
     }
   }
 
-  // Deletar projeto
   async deleteProject(projectId: string, userId: string): Promise<boolean> {
     try {
       const project = await Project.findOne({
@@ -487,12 +533,10 @@ class ProjectService {
         return false
       }
 
-      // Deletar chat associado se existir
       if (project.chatId) {
         await Chat.findByIdAndDelete(project.chatId)
       }
 
-      // Deletar projeto
       await Project.findByIdAndDelete(projectId)
 
       logger.info('Project deleted', { projectId, userId })
@@ -503,7 +547,6 @@ class ProjectService {
     }
   }
 
-  // Duplicar projeto - CORRIGIDO
   async duplicateProject(projectId: string, userId: string): Promise<DuplicateProjectResponse | null> {
     try {
       const originalProject = await Project.findOne({
@@ -532,8 +575,6 @@ class ProjectService {
       })
 
       await duplicatedProject.save()
-
-      // Criar chat para o projeto duplicado
       await this.createProjectChat(duplicatedProject._id as Types.ObjectId, userId)
 
       logger.info('Project duplicated', {
@@ -542,7 +583,6 @@ class ProjectService {
         userId
       })
 
-      // USAR FUNÇÃO HELPER PARA CONVERSÃO
       return convertProjectToInterface(duplicatedProject)
     } catch (error) {
       logger.error('Duplicate project failed:', error)
@@ -550,14 +590,12 @@ class ProjectService {
     }
   }
 
-  // Buscar projetos populares (públicos) - CORRIGIDO
   async getPopularProjects(limit: number = 10): Promise<IProject[]> {
     try {
       const projects = await Project.find({ isPublic: true })
         .sort({ 'stats.uses': -1, 'stats.views': -1 })
         .limit(limit)
 
-      // USAR FUNÇÃO HELPER PARA CONVERSÃO
       return projects.map(project => convertProjectToInterface(project))
     } catch (error) {
       logger.error('Get popular projects failed:', error)
@@ -565,7 +603,6 @@ class ProjectService {
     }
   }
 
-  // Buscar estatísticas de tipos de projeto
   async getProjectTypeStats(userId: string): Promise<any> {
     try {
       const stats = await Project.aggregate([
@@ -588,7 +625,6 @@ class ProjectService {
     }
   }
 
-  // Buscar analytics do projeto
   async getProjectAnalytics(projectId: string, userId: string): Promise<ProjectAnalytics | null> {
     try {
       const project = await Project.findOne({
@@ -600,7 +636,6 @@ class ProjectService {
         return null
       }
 
-      // Timeline simulada (implementar com dados reais posteriormente)
       const timeline = []
       for (let i = 29; i >= 0; i--) {
         const date = new Date()
@@ -614,7 +649,6 @@ class ProjectService {
         })
       }
 
-      // Histórico de melhorias
       const improvements = project.metadata.lastImprovement ? [{
         date: project.metadata.lastImprovement.timestamp,
         feedback: project.metadata.lastImprovement.feedback,
@@ -651,7 +685,6 @@ class ProjectService {
     }
   }
 
-  // Incrementar uso do projeto
   async incrementProjectUse(projectId: string, userId: string): Promise<void> {
     try {
       const project = await Project.findOne({
@@ -669,7 +702,6 @@ class ProjectService {
     }
   }
 
-  // Buscar estatísticas gerais dos projetos do usuário (agora público) - CORRIGIDO
   async getUserProjectStats(userId: string): Promise<any> {
     console.log('📊 [PROJECT SERVICE] Buscando stats para usuário:', userId)
     
@@ -711,7 +743,6 @@ class ProjectService {
       console.error('❌ [PROJECT SERVICE] Erro ao calcular stats:', error)
       logger.error('Get user project stats failed:', error)
       
-      // Retornar stats vazias em caso de erro
       return {
         totalProjects: 0,
         totalOpens: 0,

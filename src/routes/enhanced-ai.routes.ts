@@ -5,7 +5,6 @@ import { aiLimiter } from '../middleware/rate-limit.middleware'
 
 const router = Router()
 
-// Rotas simplificadas para deploy
 router.post('/generate', [authenticateToken, aiLimiter], EnhancedAIController.generateSmartEmail)
 router.post('/chat', [authenticateToken, aiLimiter], EnhancedAIController.smartChat)
 router.post('/analyze', [authenticateToken, aiLimiter], EnhancedAIController.analyzePrompt)

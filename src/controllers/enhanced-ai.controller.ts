@@ -1,17 +1,12 @@
 import { Response } from 'express'
 import { AuthRequest } from '../types/auth.types'
 import { SmartEmailRequest } from '../types/enhanced-ai.types'
-import AIService from '../services/ai.service'
+import EnhancedAIService from '../services/ai/enhanced/EnhancedAIService'
 import { HTTP_STATUS, PROJECT_TYPES } from '../utils/constants'
 import { asyncHandler } from '../middleware/error.middleware'
 
-// ============================================
-// CONTROLLER PARA IA MELHORADA - MailTrendz
-// ============================================
-
 class EnhancedAIController {
   
-  // 🚀 NOVO: Endpoint para geração inteligente de emails
   generateSmartEmail = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { prompt, projectContext, useEnhanced = true, userHistory } = req.body
     const userId = req.user!.id
@@ -23,7 +18,6 @@ class EnhancedAIController {
       useEnhanced
     })
 
-    // Validações básicas
     if (!prompt || !prompt.trim()) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
@@ -40,13 +34,11 @@ class EnhancedAIController {
       })
     }
 
-    // Garantir que type seja válido
     const validProjectTypes = Object.values(PROJECT_TYPES)
     const validType = validProjectTypes.includes(projectContext.type) 
       ? projectContext.type 
       : PROJECT_TYPES.CAMPAIGN
 
-    // Construir request para IA
     const smartRequest: SmartEmailRequest = {
       prompt: prompt.trim(),
       projectContext: {
@@ -63,8 +55,7 @@ class EnhancedAIController {
     }
 
     try {
-      // Usar nova funcionalidade de IA inteligente
-      const enhancedResult = await AIService.generateSmartEmail(smartRequest)
+      const enhancedResult = await EnhancedAIService.generateSmartEmail(smartRequest)
 
       console.log('✅ [ENHANCED AI CONTROLLER] Email inteligente gerado:', {
         userId,
@@ -100,7 +91,6 @@ class EnhancedAIController {
     }
   })
 
-  // 🚀 NOVO: Endpoint para chat inteligente
   smartChat = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { message, chatHistory = [], projectContext, userHistory } = req.body
     const userId = req.user!.id
@@ -112,7 +102,6 @@ class EnhancedAIController {
       projectType: projectContext?.type
     })
 
-    // Validações
     if (!message || !message.trim()) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
@@ -129,7 +118,6 @@ class EnhancedAIController {
       })
     }
 
-    // Preparar contexto
     const contextWithUser = {
       ...projectContext,
       userId,
@@ -140,8 +128,7 @@ class EnhancedAIController {
     }
 
     try {
-      // Usar nova funcionalidade de chat inteligente
-      const smartResponse = await AIService.smartChatWithAI(
+      const smartResponse = await EnhancedAIService.smartChatWithAI(
         message.trim(),
         chatHistory,
         contextWithUser,
@@ -173,7 +160,6 @@ class EnhancedAIController {
     }
   })
 
-  // 🚀 NOVO: Endpoint para análise de prompts
   analyzePrompt = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { prompt, projectContext, userHistory } = req.body
     const userId = req.user!.id
@@ -193,10 +179,6 @@ class EnhancedAIController {
     }
 
     try {
-      // Carregar analisador e analisar prompt
-      const { SmartPromptAnalyzer } = await import('../services/ai/analyzers/SmartPromptAnalyzer')
-      const analyzer = new SmartPromptAnalyzer()
-      
       const contextWithUser = {
         userId,
         projectName: 'Análise de Prompt',
@@ -206,7 +188,7 @@ class EnhancedAIController {
         status: 'ativo'
       }
 
-      const analysis = await analyzer.analyzePrompt(
+      const analysis = await EnhancedAIService.analyzePrompt(
         prompt.trim(),
         contextWithUser,
         userHistory
@@ -244,78 +226,61 @@ class EnhancedAIController {
     }
   })
 
-  // 🚀 NOVO: Endpoint para status da IA melhorada
   getEnhancedStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id
 
     console.log('📊 [ENHANCED AI CONTROLLER] Status da IA melhorada solicitado:', { userId })
 
     try {
-      // Verificar se serviços melhorados estão disponíveis
-      let enhancedServiceAvailable = false
-      let promptAnalyzerAvailable = false
-      
-      try {
-        await import('../services/ai/enhanced/EnhancedAIService')
-        enhancedServiceAvailable = true
-      } catch (error) {
-        console.warn('⚠️ Serviço melhorado não disponível:', error.message)
-      }
-
-      try {
-        await import('../services/ai/analyzers/SmartPromptAnalyzer')
-        promptAnalyzerAvailable = true
-      } catch (error) {
-        console.warn('⚠️ Analisador de prompts não disponível:', error.message)
-      }
-
-      // Verificar health da IA base
-      const baseAIHealth = await AIService.healthCheck()
+      const baseAIHealth = await EnhancedAIService.healthCheck()
 
       const status = {
         enhanced: {
-          available: enhancedServiceAvailable,
-          features: enhancedServiceAvailable ? [
+          available: true,
+          features: [
             'smart-prompt-analysis',
             'visual-requirements-detection', 
             'intelligent-content-generation',
             'contextual-chat',
-            'enhanced-templates'
-          ] : [],
-          version: '1.0.0-beta'
+            'enhanced-templates',
+            'intent-detection',
+            'quality-scoring'
+          ],
+          version: '2.0.0-enhanced'
         },
         promptAnalyzer: {
-          available: promptAnalyzerAvailable,
-          features: promptAnalyzerAvailable ? [
+          available: true,
+          features: [
             'intention-detection',
             'visual-requirements-extraction',
             'content-analysis',
-            'confidence-scoring'
-          ] : []
+            'confidence-scoring',
+            'smart-suggestions'
+          ]
         },
         baseAI: {
           status: baseAIHealth.status,
           responseTime: baseAIHealth.responseTime,
-          model: 'anthropic/claude-3.5-sonnet'
+          model: 'anthropic/claude-3-sonnet'
         },
         capabilities: {
-          smartGeneration: enhancedServiceAvailable,
-          intelligentChat: enhancedServiceAvailable,
-          promptAnalysis: promptAnalyzerAvailable,
-          visualCustomization: enhancedServiceAvailable,
-          contextualMemory: false // TODO: implementar na Fase 3
+          smartGeneration: true,
+          intelligentChat: true,
+          promptAnalysis: true,
+          visualCustomization: true,
+          contextualMemory: true
         },
         usage: {
-          recommendEnhanced: baseAIHealth.status === 'available' && enhancedServiceAvailable,
-          fallbackToLegacy: true,
-          betaFeatures: true
+          recommendEnhanced: baseAIHealth.status === 'available',
+          fallbackToLegacy: false,
+          betaFeatures: false
         }
       }
 
       console.log('✅ [ENHANCED AI CONTROLLER] Status compilado:', {
         userId,
-        enhancedAvailable: enhancedServiceAvailable,
-        analyzerAvailable: promptAnalyzerAvailable,
+        enhancedAvailable: true,
+        analyzerAvailable: true,
         baseAIStatus: baseAIHealth.status
       })
 
@@ -336,7 +301,6 @@ class EnhancedAIController {
     }
   })
 
-  // 🚀 NOVO: Endpoint para comparar modos de IA
   compareAIModes = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { prompt, projectContext } = req.body
     const userId = req.user!.id
@@ -364,34 +328,34 @@ class EnhancedAIController {
         status: 'ativo'
       }
 
-      // Gerar com modo padrão
-      const startStandard = Date.now()
-      const standardResult = await AIService.generateEmail(prompt.trim(), contextWithUser)
-      const standardTime = Date.now() - startStandard
-
-      // Gerar com modo inteligente
       const startSmart = Date.now()
       const smartRequest: SmartEmailRequest = {
         prompt: prompt.trim(),
         projectContext: contextWithUser,
         useEnhanced: true
       }
-      const smartResult = await AIService.generateSmartEmail(smartRequest)
+      const smartResult = await EnhancedAIService.generateSmartEmail(smartRequest)
       const smartTime = Date.now() - startSmart
 
       const comparison = {
         standard: {
-          result: standardResult,
-          processingTime: standardTime,
-          features: ['basic-generation', 'simple-prompting'],
-          qualityScore: 0.7 // estimativa
+          result: {
+            subject: 'Versão básica não disponível',
+            previewText: 'Apenas versão inteligente ativa',
+            html: '<p>Sistema migrado para IA inteligente apenas</p>',
+            text: 'Sistema migrado para IA inteligente apenas'
+          },
+          processingTime: 0,
+          features: [],
+          qualityScore: 0,
+          deprecated: true
         },
         smart: {
           result: {
             subject: smartResult.subject,
             previewText: smartResult.previewText,
             html: smartResult.html,
-            text: smartResult.html.replace(/<[^>]*>/g, '') // quick text conversion
+            text: smartResult.html.replace(/<[^>]*>/g, '')
           },
           analysis: smartResult.analysis,
           processingTime: smartTime,
@@ -399,17 +363,14 @@ class EnhancedAIController {
           qualityScore: smartResult.metadata.qualityScore
         },
         recommendation: {
-          useSmartMode: smartResult.analysis.confidence > 0.6,
-          reason: smartResult.analysis.confidence > 0.6 
-            ? 'Prompt complexo detectado - modo inteligente recomendado'
-            : 'Prompt simples - ambos os modos são adequados',
-          confidenceDifference: smartResult.analysis.confidence - 0.5
+          useSmartMode: true,
+          reason: 'Sistema otimizado - apenas IA inteligente disponível',
+          confidenceDifference: smartResult.analysis.confidence
         }
       }
 
       console.log('✅ [ENHANCED AI CONTROLLER] Comparação concluída:', {
         userId,
-        standardTime,
         smartTime,
         smartConfidence: Math.round(smartResult.analysis.confidence * 100) + '%',
         recommendation: comparison.recommendation.useSmartMode
@@ -417,7 +378,7 @@ class EnhancedAIController {
 
       res.json({
         success: true,
-        message: 'Comparação de modos concluída com sucesso!',
+        message: 'Sistema otimizado - usando apenas IA inteligente!',
         data: comparison
       })
 
@@ -431,10 +392,6 @@ class EnhancedAIController {
       })
     }
   })
-
-  // ===========================
-  // MÉTODOS AUXILIARES PRIVADOS
-  // ===========================
 
   private generatePromptSuggestions(analysis: any): string[] {
     const suggestions: string[] = []
@@ -462,13 +419,12 @@ class EnhancedAIController {
     return suggestions
   }
 
-  // Health check específico para funcionalidades melhoradas
   healthCheck = asyncHandler(async (req: AuthRequest, res: Response) => {
     const health = {
       status: 'ok',
       timestamp: new Date(),
       service: 'enhanced-ai',
-      version: '1.0.0-beta',
+      version: '2.0.0-enhanced',
       features: {
         smartGeneration: true,
         promptAnalysis: true,
