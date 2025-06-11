@@ -3,8 +3,8 @@ import { Types } from 'mongoose'
 export interface IChat {
   _id: Types.ObjectId
   id?: string // ADICIONADO PARA COMPATIBILIDADE - será sempre o _id.toString()
-  userId: Types.ObjectId
-  projectId: Types.ObjectId
+  userId: string | Types.ObjectId // ✅ CORRIGIDO: aceita ambos os tipos
+  projectId: string | Types.ObjectId // ✅ CORRIGIDO: aceita ambos os tipos
   title: string
   messages: Types.ObjectId[]
   isActive: boolean
@@ -12,6 +12,11 @@ export interface IChat {
     totalMessages: number
     lastActivity: Date
     emailUpdates: number
+    // ✅ ADICIONADO: Propriedades da IA melhorada
+    enhancedAIEnabled?: boolean
+    aiMode?: 'standard' | 'enhanced' | 'adaptive'
+    enhancedInteractions?: number
+    lastEnhancedInteraction?: Date
   }
   createdAt: Date
   updatedAt: Date
@@ -20,7 +25,7 @@ export interface IChat {
 export interface IMessage {
   _id: Types.ObjectId
   id?: string // ADICIONADO PARA COMPATIBILIDADE - será sempre o _id.toString()
-  chatId: Types.ObjectId
+  chatId: string | Types.ObjectId // ✅ CORRIGIDO: aceita ambos os tipos
   type: 'user' | 'ai' | 'system'
   content: string
   metadata?: {
@@ -30,6 +35,15 @@ export interface IMessage {
     tokens?: number
     confidence?: number
     executionTime?: number
+    // ✅ ADICIONADO: Metadata da IA melhorada
+    aiMode?: 'standard' | 'enhanced' | 'adaptive' | 'fallback' | 'error'
+    enhancedFeatures?: string[]
+    analysis?: {
+      confidence: number
+      intentionsCount: number
+      hasVisualReqs: boolean
+    }
+    error?: boolean
   }
   createdAt: Date
 }
@@ -64,6 +78,12 @@ export interface ChatResponse {
     emailUpdates: number
     lastActivity: Date
   }
+  // ✅ ADICIONADO: Capacidades da IA melhorada
+  aiCapabilities?: {
+    enhancedMode: boolean
+    currentMode: 'standard' | 'enhanced' | 'adaptive'
+    features: string[]
+  }
 }
 
 export interface ChatHistoryResponse {
@@ -93,7 +113,16 @@ export interface MessageResponse {
       model: string
       tokens: number
       executionTime: number
+      confidence?: number
+      // ✅ ADICIONADO: Metadata da IA melhorada
+      aiMode?: string
+      enhancedFeatures?: string[]
+      hasAnalysis?: boolean
+      hasEnhancedContent?: boolean
     }
+    // ✅ ADICIONADO: Dados da IA melhorada
+    analysis?: any
+    enhancedContent?: any
   }
 }
 

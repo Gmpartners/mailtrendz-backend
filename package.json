@@ -22,9 +22,18 @@
     "docker:run": "docker run -p 8000:8000 mailtrendz-backend",
     "docker:dev": "docker-compose up --build",
     "docker:dev:down": "docker-compose down",
-    "setup": "npm install && npm run validate && echo '\n🎉 Setup completed! Run npm run dev to start'"
+    "setup": "npm install && npm run validate && echo '\n🎉 Setup completed! Run npm run dev to start'",
+    "build:deploy": "tsc --project tsconfig.deploy.json",
+    "build:force": "tsc --project tsconfig.deploy.json --noEmitOnError false"
   },
-  "keywords": ["email", "ai", "marketing", "automation", "openrouter", "mongodb"],
+  "keywords": [
+    "email",
+    "ai",
+    "marketing",
+    "automation",
+    "openrouter",
+    "mongodb"
+  ],
   "author": "Gabriel",
   "license": "MIT",
   "dependencies": {

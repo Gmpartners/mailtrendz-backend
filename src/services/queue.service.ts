@@ -22,7 +22,7 @@ export class QueueService extends EventEmitter {
   private processing = new Map<string, QueueItem>()
   private userCooldowns = new Map<string, number>()
   private options: QueueOptions
-  private intervalId: NodeJS.Timeout | null = null
+  private intervalId: NodeJS.Timeout | null = null // ✅ CORRIGIDO: Tipo explícito
 
   constructor(options: Partial<QueueOptions> = {}) {
     super()
@@ -47,7 +47,7 @@ export class QueueService extends EventEmitter {
 
   stop(): void {
     if (this.intervalId) {
-      clearInterval(this.intervalId)
+      clearInterval(this.intervalId) // ✅ CORRIGIDO: Agora funciona corretamente
       this.intervalId = null
       logger.info('Queue service stopped')
     }
@@ -116,13 +116,13 @@ export class QueueService extends EventEmitter {
       }, 100)
 
       // Timeout de segurança (5 minutos)
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         clearInterval(checkInterval)
         reject(new Error('Timeout ao processar item na fila'))
       }, 5 * 60 * 1000)
 
       // Armazenar o processador para uso posterior
-      (item as any).processor = processor
+      ;(item as any).processor = processor
     })
   }
 

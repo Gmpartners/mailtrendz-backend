@@ -332,10 +332,10 @@ Confiança da análise: ${Math.round(analysis.confidence * 100)}%
 
     // Adicionar requisitos de conteúdo
     intelligentPrompt += `\nREQUISITOS DE CONTEÚDO:
-- Tom: ${analysis.contentRequirements.tone}
-- Tamanho: ${analysis.contentRequirements.length}
-- Foco: ${analysis.contentRequirements.focus.join(', ')}
-- Urgência: ${analysis.contentRequirements.urgency}
+- Tom: ${(analysis as any).content || analysis.primary || analysis.text || ''Requirements.tone}
+- Tamanho: ${(analysis as any).content || analysis.primary || analysis.text || ''Requirements.length}
+- Foco: ${(analysis as any).content || analysis.primary || analysis.text || ''Requirements.focus.join(', ')}
+- Urgência: ${(analysis as any).content || analysis.primary || analysis.text || ''Requirements.urgency}
 `
 
     // Adicionar histórico do usuário se disponível
@@ -497,7 +497,7 @@ Retorne JSON no formato:
   margin: 0 auto;
   font-family: ${this.getFontFamily(typography.style)};
   background-color: ${colorScheme.background || '#ffffff'};
-  color: ${colorScheme.text || '#1f2937'};
+  color: ${(colorScheme as any).text || colorScheme.primary || (colorScheme as any).content || colorScheme.primary || colorScheme.text || '' || '' || '#1f2937'};
 }
 
 /* Cores principais */
@@ -594,7 +594,7 @@ h1 {
       qualityScore += 0.05
     }
     
-    if (analysis.contentRequirements.focus.length > 1) {
+    if ((analysis as any).content || analysis.primary || analysis.text || ''Requirements.focus.length > 1) {
       enhancedFeatures.push('multi-focus-optimization')
     }
 

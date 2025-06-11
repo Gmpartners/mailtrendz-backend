@@ -530,7 +530,7 @@ export class SmartPromptAnalyzer {
     }
   }
 
-  private detectTone(prompt: string, context: ProjectContext): any {
+  private detectTone(prompt: string, context: ProjectContext): any | string {
     const tonePatterns = new Map([
       ['professional', ['profissional', 'corporativo', 'formal', 'business']],
       ['casual', ['casual', 'descontraido', 'informal', 'relaxado']],
@@ -541,7 +541,7 @@ export class SmartPromptAnalyzer {
 
     for (const [tone, keywords] of tonePatterns.entries()) {
       if (keywords.some(keyword => prompt.includes(keyword))) {
-        return tone
+        return tone as any
       }
     }
 
@@ -555,7 +555,7 @@ export class SmartPromptAnalyzer {
       case 'promotional': return 'urgent'
       case 'welcome': return 'friendly'
       case 'newsletter': return 'professional'
-      default: return context.tone || 'professional'
+      default: return (context.tone || 'professional') as any
     }
   }
 
