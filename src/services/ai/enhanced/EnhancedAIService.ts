@@ -1,19 +1,19 @@
-// VERSÃO ULTRA SIMPLIFICADA PARA DEPLOY EMERGENCIAL
+// VERSÃO CORRIGIDA PARA DEPLOY - INTERFACES COMPATÍVEIS
 import AIService from '../../ai.service'
 
 class EnhancedAIService {
   
   async generateSmartEmail(request: any): Promise<any> {
     try {
+      // AIService.generateEmail retorna EmailContent (subject, html, text, previewText)
       const result = await AIService.generateEmail(
         request.prompt,
-        request.projectContext?.type || 'email',
         request.projectContext || {}
       )
 
       return {
-        response: result.response,
-        suggestions: result.suggestions || [],
+        response: result.html, // usar o HTML como response
+        suggestions: ['Melhorar Assunto', 'Otimizar CTA', 'Adicionar Urgência'],
         shouldUpdateEmail: true,
         metadata: {
           model: 'claude-3-sonnet',
@@ -36,9 +36,9 @@ class EnhancedAIService {
           originalPrompt: request.prompt
         },
         enhancedContent: {
-          subject: result.content?.subject || 'Email gerado',
-          previewText: result.content?.previewText || '',
-          html: result.content?.html || result.response,
+          subject: result.subject,
+          previewText: result.previewText || '',
+          html: result.html,
           visualElements: {
             colorScheme: { primary: '#3b82f6' },
             layout: { type: 'single-column' },
@@ -62,6 +62,7 @@ class EnhancedAIService {
 
   async smartChat(request: any): Promise<any> {
     try {
+      // AIService.chatWithAI retorna AIChatResponse (response, shouldUpdateEmail, suggestions, metadata)
       const result = await AIService.chatWithAI(
         request.message,
         request.chatHistory || [],
@@ -71,11 +72,11 @@ class EnhancedAIService {
       return {
         response: result.response,
         suggestions: result.suggestions || [],
-        shouldUpdateEmail: false,
+        shouldUpdateEmail: result.shouldUpdateEmail || false,
         metadata: {
-          model: 'claude-3-sonnet',
-          tokens: 50,
-          confidence: 0.8,
+          model: result.metadata?.model || 'claude-3-sonnet',
+          tokens: result.metadata?.tokens || 0,
+          confidence: result.metadata?.confidence || 0.8,
           enhancedFeatures: ['chat-fallback']
         },
         analysis: {
@@ -121,11 +122,12 @@ class EnhancedAIService {
 
   async compareAIModes(prompt: string, context: any): Promise<any> {
     try {
-      const result = await AIService.generateEmail(prompt, context?.type || 'email', context || {})
+      // AIService.generateEmail só aceita 2 argumentos: prompt e context
+      const result = await AIService.generateEmail(prompt, context || {})
       
       return {
-        standard: { response: result.response, metadata: result.metadata },
-        enhanced: { response: result.response + '\n\n[Enhanced mode em desenvolvimento]', metadata: { mode: 'enhanced-fallback' } },
+        standard: { response: result.html, metadata: { model: 'claude-3-sonnet' } },
+        enhanced: { response: result.html + '\n\n[Enhanced mode em desenvolvimento]', metadata: { mode: 'enhanced-fallback' } },
         comparison: { recommendedMode: 'standard', differences: ['Enhanced mode temporariamente indisponível'], reasoning: 'Usando versão padrão' }
       }
       
