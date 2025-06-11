@@ -383,8 +383,8 @@ class ChatService {
             projectContext
           )
           
-          // Atualizar projeto
-          const updatedProject = await ProjectService.updateProject(project._id, userId, {
+          // ✅ CORREÇÃO: Usar string em vez de ObjectId para o ID
+          const updatedProject = await ProjectService.updateProject(project._id.toString(), userId, {
             content: improvedContent,
             metadata: {
               ...project.metadata,

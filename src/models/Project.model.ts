@@ -2,7 +2,8 @@ import mongoose, { Schema, Document, Types } from 'mongoose'
 import { IProject } from '../types/project.types'
 import { PROJECT_TYPES, PROJECT_STATUS, COLLECTIONS, EMAIL_COLORS } from '../utils/constants'
 
-export interface IProjectDocument extends Omit<IProject, '_id'>, Document {
+// ✅ CORREÇÃO: Remover 'id' do Omit para evitar conflito com Document
+export interface IProjectDocument extends Omit<IProject, '_id' | 'id'>, Document {
   incrementViews(): Promise<void>
   incrementUses(): Promise<void>
   updateStats(opens: number, clicks: number): Promise<void>

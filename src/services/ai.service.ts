@@ -10,16 +10,39 @@ interface OpenRouterConfig {
   fallbackModels: string[]
 }
 
+// ✅ CORREÇÃO: Interface para resposta da API
+interface OpenRouterResponse {
+  choices?: Array<{
+    message: {
+      content: string
+    }
+  }>
+  usage?: {
+    total_tokens?: number
+    prompt_tokens?: number
+    completion_tokens?: number
+  }
+  error?: {
+    message: string
+    type: string
+  }
+}
+
 class AIService {
   private client: any
   private config: OpenRouterConfig
 
   constructor() {
+    // ✅ CORREÇÃO: Converter readonly arrays para mutable
+    const fallbackModels = Array.isArray(AI_MODELS?.FALLBACKS) 
+      ? [...AI_MODELS.FALLBACKS] 
+      : ['anthropic/claude-3-sonnet']
+
     this.config = {
       apiKey: process.env.OPENROUTER_API_KEY!,
       baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
       defaultModel: AI_MODELS?.PRIMARY || 'anthropic/claude-3-sonnet',
-      fallbackModels: AI_MODELS?.FALLBACKS || ['anthropic/claude-3-sonnet']
+      fallbackModels
     }
 
     if (!this.config.apiKey || !this.config.apiKey.startsWith('sk-or-v1-')) {
@@ -62,7 +85,7 @@ class AIService {
         userId: context.userId,
         duration: `${duration}ms`,
         model: response.model,
-        tokens: response.usage?.total_tokens
+        tokens: response.usage?.total_tokens || 0
       })
       
       return emailContent
@@ -201,6 +224,10 @@ IMPORTANTE: Retorne apenas o JSON, sem explicações.`
     const model = modelOverride || this.config.defaultModel
     
     try {
+      // ✅ CORREÇÃO: Usar AbortController para timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), AI_CONFIG.TIMEOUT || 45000)
+
       const response = await fetch(`${this.config.baseURL}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -215,19 +242,27 @@ IMPORTANTE: Retorne apenas o JSON, sem explicações.`
           temperature: 0.7,
           max_tokens: 1000,
           stream: false
-        })
+        }),
+        signal: controller.signal
       })
+
+      clearTimeout(timeoutId)
 
       if (!response.ok) {
         throw new Error(`OpenRouter API error: ${response.status}`)
       }
 
-      const data = await response.json()
+      const data: OpenRouterResponse = await response.json()
+      
+      // ✅ CORREÇÃO: Verificar se as propriedades existem
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error('Resposta inválida da API')
+      }
       
       return {
         content: data.choices[0].message.content,
         model,
-        usage: data.usage
+        usage: data.usage || { total_tokens: 0 }
       }
     } catch (error: any) {
       console.error(`❌ [AI SERVICE] Modelo ${model} falhou:`, error.message)
@@ -351,10 +386,16 @@ Responda sempre em português brasileiro de forma profissional.`
   async healthCheck(): Promise<{ status: 'available' | 'unavailable', responseTime?: number }> {
     const startTime = Date.now()
     try {
+      // ✅ CORREÇÃO: Usar AbortController para timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5000)
+
       const testResponse = await fetch(`${this.config.baseURL}/models`, {
         headers: { 'Authorization': `Bearer ${this.config.apiKey}` },
-        timeout: 5000
+        signal: controller.signal
       })
+
+      clearTimeout(timeoutId)
       return { status: 'available', responseTime: Date.now() - startTime }
     } catch (error) {
       console.error('⚠️ [AI SERVICE] Health check falhou:', error)

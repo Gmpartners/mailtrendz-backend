@@ -2,7 +2,8 @@ import mongoose, { Schema, Document, Types } from 'mongoose'
 import { IMessage } from '../types/chat.types'
 import { MESSAGE_TYPES, COLLECTIONS } from '../utils/constants'
 
-export interface IMessageDocument extends Omit<IMessage, '_id'>, Document {
+// ✅ CORREÇÃO: Remover 'id' do Omit para evitar conflito com Document
+export interface IMessageDocument extends Omit<IMessage, '_id' | 'id'>, Document {
   isUserMessage(): boolean
   isAIMessage(): boolean
   hasEmailUpdate(): boolean

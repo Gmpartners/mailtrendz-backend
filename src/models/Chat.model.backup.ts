@@ -2,7 +2,8 @@ import mongoose, { Schema, Document, Types } from 'mongoose'
 import { IChat } from '../types/chat.types'
 import { COLLECTIONS } from '../utils/constants'
 
-export interface IChatDocument extends Omit<IChat, '_id'>, Document {
+// ✅ CORREÇÃO: Remover 'id' do Omit para evitar conflito com Document
+export interface IChatDocument extends Omit<IChat, '_id' | 'id'>, Document {
   addMessage(messageId: Types.ObjectId): Promise<void>
   updateActivity(): Promise<void>
   incrementEmailUpdates(): Promise<void>
@@ -102,12 +103,16 @@ chatSchema.methods.isOwner = function(userId: string): boolean {
 
 // Método virtual para estatísticas
 chatSchema.virtual('stats').get(function() {
+  // ✅ CORREÇÃO: Adicionar verificações de segurança
+  const lastActivity = this.metadata?.lastActivity || new Date()
+  const createdAt = this.createdAt || new Date()
+  
   return {
-    totalMessages: this.metadata.totalMessages,
-    emailUpdates: this.metadata.emailUpdates,
-    lastActivity: this.metadata.lastActivity,
-    isRecent: (Date.now() - this.metadata.lastActivity.getTime()) < (24 * 60 * 60 * 1000),
-    ageInDays: Math.floor((Date.now() - this.createdAt.getTime()) / (24 * 60 * 60 * 1000))
+    totalMessages: this.metadata?.totalMessages || 0,
+    emailUpdates: this.metadata?.emailUpdates || 0,
+    lastActivity: lastActivity,
+    isRecent: (Date.now() - (lastActivity instanceof Date ? lastActivity.getTime() : Date.parse(lastActivity))) < (24 * 60 * 60 * 1000),
+    ageInDays: Math.floor((Date.now() - (createdAt instanceof Date ? createdAt.getTime() : Date.parse(createdAt))) / (24 * 60 * 60 * 1000))
   }
 })
 
