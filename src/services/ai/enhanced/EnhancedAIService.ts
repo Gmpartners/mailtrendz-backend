@@ -1,5 +1,5 @@
 // VERSÃO ULTRA SIMPLIFICADA PARA DEPLOY EMERGENCIAL
-import AIService from '../ai.service'
+import AIService from '../../ai.service'
 
 class EnhancedAIService {
   
