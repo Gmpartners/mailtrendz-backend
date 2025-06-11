@@ -13,12 +13,12 @@ import {
 
 const router = Router()
 
-// Todas as rotas de projeto requerem autenticação
-router.use(authenticateToken)
-
-// Rotas públicas (dentro da autenticação)
-router.get('/popular', ProjectController.getPopularProjects)
+// ✅ CORREÇÃO: Rotas públicas ANTES da autenticação
 router.get('/health', ProjectController.healthCheck)
+router.get('/popular', ProjectController.getPopularProjects)
+
+// ✅ AGORA aplicar autenticação para o resto das rotas
+router.use(authenticateToken)
 
 // Rotas de busca e listagem
 router.get(
