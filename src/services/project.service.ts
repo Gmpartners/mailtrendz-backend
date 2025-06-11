@@ -20,6 +20,28 @@ import {
 } from '../middleware/error.middleware'
 import AIService from './ai.service'
 
+// FUNÇÃO HELPER PARA CONVERTER _id → id
+const convertProjectToInterface = (project: IProjectDocument): IProject => {
+  return {
+    _id: project._id as Types.ObjectId,
+    id: project._id.toString(), // SEMPRE GARANTIR QUE TENHA ID
+    userId: project.userId,
+    name: project.name,
+    description: project.description,
+    type: project.type,
+    status: project.status,
+    content: project.content,
+    metadata: project.metadata,
+    stats: project.stats,
+    tags: project.tags,
+    color: project.color,
+    isPublic: project.isPublic,
+    chatId: project.chatId,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt
+  }
+}
+
 class ProjectService {
   // Verificar limites do usuário
   async checkUserLimits(userId: string): Promise<boolean> {
@@ -133,26 +155,7 @@ class ProjectService {
         type: project.type 
       })
 
-      // Converter para interface
-      const projectDataResponse: IProject = {
-        _id: project._id as Types.ObjectId,
-        userId: project.userId,
-        name: project.name,
-        description: project.description,
-        type: project.type,
-        status: project.status,
-        content: project.content,
-        metadata: project.metadata,
-        stats: project.stats,
-        tags: project.tags,
-        color: project.color,
-        isPublic: project.isPublic,
-        chatId: project.chatId,
-        createdAt: project.createdAt,
-        updatedAt: project.updatedAt
-      }
-
-      return projectDataResponse
+      return convertProjectToInterface(project)
     } catch (error) {
       logger.error('Create project failed:', error)
       throw error
@@ -207,26 +210,7 @@ class ProjectService {
         type: project.type 
       })
 
-      // Converter para interface
-      const projectData: IProject = {
-        _id: project._id as Types.ObjectId,
-        userId: project.userId,
-        name: project.name,
-        description: project.description,
-        type: project.type,
-        status: project.status,
-        content: project.content,
-        metadata: project.metadata,
-        stats: project.stats,
-        tags: project.tags,
-        color: project.color,
-        isPublic: project.isPublic,
-        chatId: project.chatId,
-        createdAt: project.createdAt,
-        updatedAt: project.updatedAt
-      }
-
-      return projectData
+      return convertProjectToInterface(project)
     } catch (error) {
       logger.error('Create project with AI failed:', error)
       throw error
@@ -377,24 +361,8 @@ class ProjectService {
 
       console.log('🔧 [PROJECT SERVICE] Convertendo projetos para interface...')
 
-      // Converter projetos para interface
-      const projectsData: IProject[] = projects.map(project => ({
-        _id: project._id as Types.ObjectId,
-        userId: project.userId,
-        name: project.name,
-        description: project.description,
-        type: project.type,
-        status: project.status,
-        content: project.content,
-        metadata: project.metadata,
-        stats: project.stats,
-        tags: project.tags,
-        color: project.color,
-        isPublic: project.isPublic,
-        chatId: project.chatId,
-        createdAt: project.createdAt,
-        updatedAt: project.updatedAt
-      }))
+      // USAR FUNÇÃO HELPER PARA CONVERSÃO
+      const projectsData: IProject[] = projects.map(project => convertProjectToInterface(project))
 
       console.log('✅ [PROJECT SERVICE] Conversão concluída, montando resposta final...')
 
@@ -441,7 +409,7 @@ class ProjectService {
     }
   }
 
-  // Buscar projeto por ID
+  // Buscar projeto por ID - CORRIGIDO
   async getProjectById(projectId: string, userId: string): Promise<IProject | null> {
     try {
       const project = await Project.findOne({
@@ -459,26 +427,8 @@ class ProjectService {
       // Incrementar visualizações
       await project.incrementViews()
 
-      // Converter para interface
-      const projectData: IProject = {
-        _id: project._id as Types.ObjectId,
-        userId: project.userId,
-        name: project.name,
-        description: project.description,
-        type: project.type,
-        status: project.status,
-        content: project.content,
-        metadata: project.metadata,
-        stats: project.stats,
-        tags: project.tags,
-        color: project.color,
-        isPublic: project.isPublic,
-        chatId: project.chatId,
-        createdAt: project.createdAt,
-        updatedAt: project.updatedAt
-      }
-
-      return projectData
+      // USAR FUNÇÃO HELPER PARA CONVERSÃO
+      return convertProjectToInterface(project)
     } catch (error) {
       logger.error('Get project by ID failed:', error)
       throw error
@@ -498,7 +448,7 @@ class ProjectService {
     }
   }
 
-  // Atualizar projeto
+  // Atualizar projeto - CORRIGIDO
   async updateProject(projectId: string, userId: string, updates: UpdateProjectDto): Promise<IProject | null> {
     try {
       const project = await Project.findOneAndUpdate(
@@ -514,26 +464,8 @@ class ProjectService {
           updates: Object.keys(updates) 
         })
 
-        // Converter para interface
-        const projectData: IProject = {
-          _id: project._id as Types.ObjectId,
-          userId: project.userId,
-          name: project.name,
-          description: project.description,
-          type: project.type,
-          status: project.status,
-          content: project.content,
-          metadata: project.metadata,
-          stats: project.stats,
-          tags: project.tags,
-          color: project.color,
-          isPublic: project.isPublic,
-          chatId: project.chatId,
-          createdAt: project.createdAt,
-          updatedAt: project.updatedAt
-        }
-
-        return projectData
+        // USAR FUNÇÃO HELPER PARA CONVERSÃO
+        return convertProjectToInterface(project)
       }
 
       return null
@@ -571,7 +503,7 @@ class ProjectService {
     }
   }
 
-  // Duplicar projeto
+  // Duplicar projeto - CORRIGIDO
   async duplicateProject(projectId: string, userId: string): Promise<DuplicateProjectResponse | null> {
     try {
       const originalProject = await Project.findOne({
@@ -610,57 +542,23 @@ class ProjectService {
         userId
       })
 
-      // Converter para interface
-      const projectData: DuplicateProjectResponse = {
-        _id: duplicatedProject._id as Types.ObjectId,
-        userId: duplicatedProject.userId,
-        name: duplicatedProject.name,
-        description: duplicatedProject.description,
-        type: duplicatedProject.type,
-        status: duplicatedProject.status,
-        content: duplicatedProject.content,
-        metadata: duplicatedProject.metadata,
-        stats: duplicatedProject.stats,
-        tags: duplicatedProject.tags,
-        color: duplicatedProject.color,
-        isPublic: duplicatedProject.isPublic,
-        chatId: duplicatedProject.chatId,
-        createdAt: duplicatedProject.createdAt,
-        updatedAt: duplicatedProject.updatedAt
-      }
-
-      return projectData
+      // USAR FUNÇÃO HELPER PARA CONVERSÃO
+      return convertProjectToInterface(duplicatedProject)
     } catch (error) {
       logger.error('Duplicate project failed:', error)
       throw error
     }
   }
 
-  // Buscar projetos populares (públicos)
+  // Buscar projetos populares (públicos) - CORRIGIDO
   async getPopularProjects(limit: number = 10): Promise<IProject[]> {
     try {
       const projects = await Project.find({ isPublic: true })
         .sort({ 'stats.uses': -1, 'stats.views': -1 })
         .limit(limit)
 
-      // Converter para interface
-      return projects.map(project => ({
-        _id: project._id as Types.ObjectId,
-        userId: project.userId,
-        name: project.name,
-        description: project.description,
-        type: project.type,
-        status: project.status,
-        content: project.content,
-        metadata: project.metadata,
-        stats: project.stats,
-        tags: project.tags,
-        color: project.color,
-        isPublic: project.isPublic,
-        chatId: project.chatId,
-        createdAt: project.createdAt,
-        updatedAt: project.updatedAt
-      }))
+      // USAR FUNÇÃO HELPER PARA CONVERSÃO
+      return projects.map(project => convertProjectToInterface(project))
     } catch (error) {
       logger.error('Get popular projects failed:', error)
       throw error

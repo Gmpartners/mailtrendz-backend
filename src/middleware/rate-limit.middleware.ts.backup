@@ -28,9 +28,6 @@ export const generalLimiter = rateLimit({
       method: req.method
     })
     
-    // ✅ MELHORIA: Adicionar Retry-After header
-    res.setHeader('Retry-After', Math.ceil(RATE_LIMITS.GENERAL.WINDOW_MS / 1000))
-    
     res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
       success: false,
       message: 'Muitas requisições. Tente novamente em alguns minutos.',
@@ -50,7 +47,7 @@ export const generalLimiter = rateLimit({
 export const authLimiter = rateLimit({
   windowMs: RATE_LIMITS.AUTH.WINDOW_MS,
   max: RATE_LIMITS.AUTH.MAX_REQUESTS,
-  skipSuccessfulRequests: true,
+  skipSuccessfulRequests: true, // Não contar requests bem-sucedidos
   message: {
     success: false,
     message: 'Muitas tentativas de login. Tente novamente em 15 minutos.',
@@ -70,8 +67,6 @@ export const authLimiter = rateLimit({
       userAgent: req.get('User-Agent'),
       email: req.body?.email
     })
-    
-    res.setHeader('Retry-After', Math.ceil(RATE_LIMITS.AUTH.WINDOW_MS / 1000))
     
     res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
       success: false,
@@ -106,6 +101,7 @@ export const aiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: Request) => {
+    // Rate limit por usuário autenticado ou IP
     return (req as any).user?.id || req.ip
   },
   handler: (req: Request, res: Response) => {
@@ -114,8 +110,6 @@ export const aiLimiter = rateLimit({
       ip: req.ip,
       path: req.path
     })
-    
-    res.setHeader('Retry-After', Math.ceil(RATE_LIMITS.AI.WINDOW_MS / 1000))
     
     res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
       success: false,
@@ -159,8 +153,6 @@ export const projectLimiter = rateLimit({
       path: req.path,
       method: req.method
     })
-    
-    res.setHeader('Retry-After', Math.ceil(RATE_LIMITS.PROJECTS.WINDOW_MS / 1000))
     
     res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
       success: false,
@@ -242,9 +234,6 @@ export const createUserBasedLimiter = (
         enterprise: enterpriseLimit
       }
       
-      // ✅ MELHORIA: Adicionar Retry-After header
-      res.setHeader('Retry-After', Math.ceil(windowMs / 1000))
-      
       res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
         success: false,
         message: 'Limite de requisições atingido para seu plano.',
@@ -265,19 +254,19 @@ export const createUserBasedLimiter = (
   })
 }
 
-// ✅ CORREÇÃO: Rate limiter menos restritivo para criação de projetos
+// Rate limiter específico para criação de projetos
 export const projectCreationLimiter = createUserBasedLimiter(
-  10,  // Free: 10 projetos por minuto (era 2)
-  30,  // Pro: 30 projetos por minuto (era 10) 
-  100, // Enterprise: 100 projetos por minuto (era 50)
+  2,   // Free: 2 projetos por minuto
+  10,  // Pro: 10 projetos por minuto
+  50,  // Enterprise: 50 projetos por minuto
   60000 // 1 minuto
 )
 
-// ✅ CORREÇÃO: Rate limiter menos restritivo para chat com IA
+// Rate limiter específico para chat com IA
 export const aiChatLimiter = createUserBasedLimiter(
-  15,  // Free: 15 mensagens por minuto (era 5)
-  50,  // Pro: 50 mensagens por minuto (era 20)
-  200, // Enterprise: 200 mensagens por minuto (era 100)
+  5,   // Free: 5 mensagens por minuto
+  20,  // Pro: 20 mensagens por minuto
+  100, // Enterprise: 100 mensagens por minuto
   60000 // 1 minuto
 )
 

@@ -24,7 +24,7 @@ import { ID_UTILS } from '../utils/id-utils'
 import AIService from './ai.service'
 import ProjectService from './project.service'
 
-// Conversões simples
+// 🔥 CORREÇÃO: Conversões simples e únicas
 const convertChatToInterface = (chat: IChatDocument): IChat => {
   if (!chat) {
     throw new Error('Chat document is null or undefined')
@@ -64,6 +64,7 @@ const convertMessageToInterface = (message: IMessageDocument): IMessage => {
   }
 }
 
+// 🔥 CORREÇÃO: Funções de normalização simplificadas
 const normalizeChats = (chats: IChatDocument[]): IChat[] => {
   if (!Array.isArray(chats)) {
     console.warn('⚠️ [CHAT SERVICE] normalizeChats: input não é array')
@@ -149,6 +150,7 @@ class ChatService {
     }
   }
 
+  // 🔥 CORREÇÃO CRÍTICA: getChatByProject muito simplificado
   async getChatByProject(projectId: string, userId: string): Promise<ChatResponse> {
     try {
       console.log('🔍 [CHAT SERVICE] Buscando chat por projeto:', { projectId, userId })
@@ -199,6 +201,7 @@ class ChatService {
         }
       }
 
+      // 🔥 CORREÇÃO: Resposta direta sem chamada extra
       const response = await this.buildChatResponse(chat, project, userId)
       
       console.log('📤 [CHAT SERVICE] Resposta construída:', {
@@ -224,6 +227,7 @@ class ChatService {
     }
   }
 
+  // 🔥 NOVA FUNÇÃO: Construir resposta de forma direta
   private async buildChatResponse(chat: IChatDocument, project: any, userId: string): Promise<ChatResponse> {
     try {
       // Buscar mensagens recentes (últimas 10)
@@ -326,18 +330,12 @@ class ChatService {
     }
   }
 
-  // 🔥 FUNÇÃO SIMPLIFICADA: generateAIResponse
   private async generateAIResponse(chatId: string, userMessage: string, userId: string) {
     try {
-      console.log('🤖 [CHAT SERVICE] Gerando resposta da IA:', {
-        chatId,
-        userMessage: userMessage.substring(0, 100),
-        userId
-      })
-
       const chatObjectId = ID_UTILS.toObjectId(chatId)
 
-      // 1. Buscar chat e projeto
+      const chatHistory = await this.getChatHistoryForAI(chatId)
+      
       const chat = await Chat.findById(chatObjectId).populate('projectId')
       const project = chat?.projectId as any
 
@@ -345,10 +343,6 @@ class ChatService {
         throw createNotFoundError('Projeto')
       }
 
-      // 2. Buscar histórico
-      const chatHistory = await this.getChatHistoryForAI(chatId)
-
-      // 3. Preparar contexto
       const projectContext: ProjectContext = {
         userId,
         projectName: project.name,
@@ -359,62 +353,16 @@ class ChatService {
         status: project.status || 'ativo'
       }
 
-      // 4. Chamar IA
       const startTime = Date.now()
       const aiResult = await AIService.chatWithAI(userMessage, chatHistory, projectContext)
       const executionTime = Date.now() - startTime
 
-      console.log('🤖 [CHAT SERVICE] Resposta da IA recebida:', {
-        hasResponse: !!aiResult.response,
-        shouldUpdateEmail: aiResult.shouldUpdateEmail,
-        executionTime
-      })
-
-      // 5. Se deve atualizar email, tentar atualizar
-      let projectUpdated = false
-      if (aiResult.shouldUpdateEmail) {
-        console.log('🔄 [CHAT SERVICE] Tentando atualizar projeto...')
-        
-        try {
-          // Usar função de melhoria do próprio AI Service
-          const improvedContent = await AIService.improveEmail(
-            project.content,
-            userMessage,
-            projectContext
-          )
-          
-          // Atualizar projeto
-          const updatedProject = await ProjectService.updateProject(project._id, userId, {
-            content: improvedContent,
-            metadata: {
-              ...project.metadata,
-              version: (project.metadata?.version || 1) + 1,
-              lastImprovement: {
-                feedback: userMessage,
-                timestamp: new Date(),
-                version: (project.metadata?.version || 1) + 1
-              }
-            }
-          })
-          
-          if (updatedProject) {
-            projectUpdated = true
-            await chat.incrementEmailUpdates()
-            console.log('✅ [CHAT SERVICE] Projeto atualizado com sucesso')
-          }
-        } catch (updateError) {
-          console.error('❌ [CHAT SERVICE] Erro ao atualizar projeto:', updateError)
-          // Continuar mesmo se falhar a atualização
-        }
-      }
-
-      // 6. Salvar mensagem da IA
       const aiMessage = new Message({
         chatId: chatObjectId,
         type: MESSAGE_TYPES.AI,
         content: aiResult.response,
         metadata: {
-          emailUpdated: projectUpdated,
+          emailUpdated: aiResult.shouldUpdateEmail,
           suggestions: aiResult.suggestions,
           model: aiResult.metadata?.model,
           tokens: aiResult.metadata?.tokens,
@@ -426,25 +374,22 @@ class ChatService {
       await aiMessage.save()
       await chat.addMessage(aiMessage._id as Types.ObjectId)
 
-      console.log('💾 [CHAT SERVICE] Mensagem da IA salva:', {
-        messageId: aiMessage._id.toString(),
-        projectUpdated
-      })
+      if (aiResult.shouldUpdateEmail) {
+        await this.updateProjectEmailFromChat(project._id, userMessage, projectContext)
+        await chat.incrementEmailUpdates()
+      }
 
       return {
         content: aiResult.response,
         suggestions: aiResult.suggestions || [],
-        emailUpdated: projectUpdated,
+        emailUpdated: aiResult.shouldUpdateEmail || false,
         metadata: {
-          model: aiResult.metadata?.model || 'claude-3-sonnet',
+          model: aiResult.metadata?.model || 'unknown',
           tokens: aiResult.metadata?.tokens || 0,
-          executionTime,
-          confidence: aiResult.metadata?.confidence || 0
+          executionTime
         }
       }
-
     } catch (error) {
-      console.error('❌ [CHAT SERVICE] Erro na geração de resposta IA:', error)
       logger.error('Generate AI response failed:', error)
       
       const chatObjectId = ID_UTILS.toObjectId(chatId)
@@ -464,7 +409,7 @@ class ChatService {
       
       return {
         content: errorMessage.content,
-        suggestions: ['Tente reformular sua mensagem', 'Verifique sua conexão'],
+        suggestions: [],
         emailUpdated: false,
         metadata: {
           model: 'error',
@@ -472,6 +417,54 @@ class ChatService {
           executionTime: 0
         }
       }
+    }
+  }
+
+  private async updateProjectEmailFromChat(projectId: string, instruction: string, context: ProjectContext) {
+    try {
+      console.log('🔄 [CHAT] Atualizando projeto via IA:', { projectId })
+      
+      const project = await Project.findById(projectId)
+      if (!project) {
+        console.warn('⚠️ [CHAT] Projeto não encontrado para atualização')
+        return
+      }
+
+      const improvedContent = await AIService.improveEmail(
+        project.content,
+        instruction,
+        context
+      )
+
+      const updatedProject = await ProjectService.updateProject(projectId, context.userId, {
+        content: improvedContent,
+        metadata: {
+          ...project.metadata,
+          version: (project.metadata?.version || 1) + 1,
+          lastImprovement: {
+            feedback: instruction,
+            timestamp: new Date(),
+            version: (project.metadata?.version || 1) + 1
+          }
+        }
+      })
+
+      console.log('✅ [CHAT] Projeto atualizado:', {
+        projectId,
+        newVersion: updatedProject.metadata?.version
+      })
+
+      logger.info('Project email updated from chat', { 
+        projectId, 
+        userId: context.userId,
+        version: updatedProject.metadata?.version
+      })
+      
+      return updatedProject
+    } catch (error) {
+      console.error('❌ [CHAT] Erro ao atualizar projeto:', error)
+      logger.error('Update project email from chat failed:', error)
+      return null
     }
   }
 
@@ -720,6 +713,7 @@ class ChatService {
     }
   }
 
+  // 🔥 CORREÇÃO: getChatResponse simplificado (removido)
   private async getChatResponse(chatId: string, userId: string): Promise<ChatResponse> {
     try {
       const chatObjectId = ID_UTILS.toObjectId(chatId)

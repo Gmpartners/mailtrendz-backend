@@ -91,10 +91,10 @@ class ProjectController {
       const project = await ProjectService.createProjectWithAI(userId, projectData)
 
       // Rastrear criação do projeto
-      await ProjectService.trackProjectCreation(userId, project._id.toString())
+      await ProjectService.trackProjectCreation(userId, project.id || project._id.toString())
 
       console.log('✅ [CREATE PROJECT] Projeto criado com sucesso:', {
-        projectId: project._id.toString(),
+        projectId: project.id || project._id.toString(),
         userId,
         type: project.type,
         hasContent: !!project.content,
@@ -102,26 +102,29 @@ class ProjectController {
       })
 
       logger.info('Project created successfully', { 
-        projectId: project._id, 
+        projectId: project.id || project._id, 
         userId, 
         type: project.type 
       })
+
+      // GARANTIR QUE SEMPRE RETORNE ID
+      const responseProject = {
+        id: project.id || project._id.toString(),
+        name: project.name,
+        description: project.description,
+        type: project.type,
+        content: project.content,
+        tags: project.tags,
+        color: project.color,
+        createdAt: project.createdAt,
+        chatId: project.chatId
+      }
 
       res.status(HTTP_STATUS.CREATED).json({
         success: true,
         message: 'Projeto criado com sucesso!',
         data: {
-          project: {
-            id: project._id,
-            name: project.name,
-            description: project.description,
-            type: project.type,
-            content: project.content,
-            tags: project.tags,
-            color: project.color,
-            createdAt: project.createdAt,
-            chatId: project.chatId
-          }
+          project: responseProject
         }
       })
     } catch (error: any) {
@@ -332,7 +335,7 @@ class ProjectController {
 
     logger.info('Project duplicated', { 
       originalId: id, 
-      duplicatedId: duplicatedProject._id, 
+      duplicatedId: duplicatedProject.id || duplicatedProject._id, 
       userId 
     })
 

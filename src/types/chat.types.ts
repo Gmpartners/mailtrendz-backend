@@ -2,6 +2,7 @@ import { Types } from 'mongoose'
 
 export interface IChat {
   _id: Types.ObjectId
+  id?: string // ADICIONADO PARA COMPATIBILIDADE - será sempre o _id.toString()
   userId: Types.ObjectId
   projectId: Types.ObjectId
   title: string
@@ -18,6 +19,7 @@ export interface IChat {
 
 export interface IMessage {
   _id: Types.ObjectId
+  id?: string // ADICIONADO PARA COMPATIBILIDADE - será sempre o _id.toString()
   chatId: Types.ObjectId
   type: 'user' | 'ai' | 'system'
   content: string

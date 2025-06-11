@@ -1,3 +1,4 @@
+import axios, { AxiosInstance } from 'axios'
 import { EmailContent, ProjectContext, AIResponse, ChatMessage, AIChatResponse } from '../types/ai.types'
 import { AI_MODELS, AI_CONFIG } from '../utils/constants'
 import { logger, loggerHelpers } from '../utils/logger'
@@ -11,25 +12,36 @@ interface OpenRouterConfig {
 }
 
 class AIService {
-  private client: any
+  private client: AxiosInstance
   private config: OpenRouterConfig
 
   constructor() {
     this.config = {
       apiKey: process.env.OPENROUTER_API_KEY!,
       baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
-      defaultModel: AI_MODELS?.PRIMARY || 'anthropic/claude-3-sonnet',
-      fallbackModels: AI_MODELS?.FALLBACKS || ['anthropic/claude-3-sonnet']
+      defaultModel: AI_MODELS.PRIMARY,
+      fallbackModels: [...AI_MODELS.FALLBACKS]
     }
 
     if (!this.config.apiKey || !this.config.apiKey.startsWith('sk-or-v1-')) {
       throw new Error('OpenRouter API key é obrigatória e deve ser válida')
     }
 
-    console.log('🤖 [AI SERVICE] IA configurada:', {
+    console.log('🤖 [AI SERVICE] IA Real configurada:', {
       baseURL: this.config.baseURL,
       model: this.config.defaultModel,
       hasApiKey: !!this.config.apiKey
+    })
+
+    this.client = axios.create({
+      baseURL: this.config.baseURL,
+      headers: {
+        'Authorization': `Bearer ${this.config.apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': process.env.FRONTEND_URL,
+        'X-Title': 'MailTrendz AI Email Generator'
+      },
+      timeout: AI_CONFIG.TIMEOUT
     })
   }
 
@@ -122,12 +134,8 @@ IMPORTANTE: Retorne apenas o JSON, sem explicações.`
     }
   }
 
-  // 🔥 FUNÇÃO PRINCIPAL: Chat simples e funcional
   async chatWithAI(message: string, chatHistory: ChatMessage[], projectContext: ProjectContext): Promise<AIChatResponse> {
-    console.log('💬 [AI SERVICE] Chat com IA:', {
-      messageLength: message.length,
-      historyCount: chatHistory.length
-    })
+    console.log('💬 [AI SERVICE] Chat com IA REAL')
     
     try {
       const systemPrompt = this.buildChatPrompt(projectContext)
@@ -142,13 +150,7 @@ IMPORTANTE: Retorne apenas o JSON, sem explicações.`
 
       const response = await this.callAI(messages)
       
-      // 🔥 DETECÇÃO SIMPLES: verifica se usuário quer modificar algo
-      const shouldUpdateEmail = this.detectSimpleIntent(message)
-      
-      console.log('🎯 [AI SERVICE] Detecção de intenção:', {
-        message: message.substring(0, 50),
-        shouldUpdateEmail
-      })
+      const shouldUpdateEmail = this.detectEmailUpdateIntent(message, response.content)
       
       return {
         response: response.content,
@@ -157,82 +159,45 @@ IMPORTANTE: Retorne apenas o JSON, sem explicações.`
         metadata: {
           model: response.model,
           tokens: response.usage?.total_tokens || 0,
-          confidence: shouldUpdateEmail ? 0.9 : 0.1
+          confidence: 0.9
         }
       }
     } catch (error) {
-      console.error('❌ [AI SERVICE] Erro na IA:', error)
+      console.error('❌ [AI SERVICE] Erro na IA real:', error)
       throw error
     }
   }
 
-  // 🔥 DETECÇÃO SIMPLES DE INTENÇÃO
-  private detectSimpleIntent(message: string): boolean {
-    const lowerMessage = message.toLowerCase()
+  private async callAI(messages: any[], modelOverride?: string): Promise<AIResponse> {
+    const models = modelOverride ? [modelOverride] : [this.config.defaultModel, ...this.config.fallbackModels]
     
-    // Palavras que indicam modificação
-    const modifyWords = [
-      'mude', 'altere', 'modifique', 'troque', 'substitua',
-      'adicione', 'inclua', 'coloque', 'insira',
-      'remova', 'retire', 'delete', 'tire',
-      'melhore', 'otimize', 'aprimore',
-      'corrija', 'ajuste', 'atualize'
-    ]
-    
-    // Verifica se tem palavra de modificação
-    const hasModifyWord = modifyWords.some(word => lowerMessage.includes(word))
-    
-    // Verifica se menciona elementos do email
-    const emailElements = ['título', 'assunto', 'botão', 'texto', 'conteúdo', 'cor', 'fonte']
-    const mentionsEmailElement = emailElements.some(element => lowerMessage.includes(element))
-    
-    const shouldModify = hasModifyWord && mentionsEmailElement
-    
-    console.log('🔍 [AI SERVICE] Análise simples:', {
-      hasModifyWord,
-      mentionsEmailElement,
-      shouldModify
-    })
-    
-    return shouldModify
-  }
-
-  private async callAI(messages: any[], modelOverride?: string): Promise<any> {
-    const model = modelOverride || this.config.defaultModel
-    
-    try {
-      const response = await fetch(`${this.config.baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.config.apiKey}`,
-          'HTTP-Referer': process.env.FRONTEND_URL || 'http://localhost:5173',
-          'X-Title': 'MailTrendz AI Email Generator'
-        },
-        body: JSON.stringify({
+    for (let i = 0; i < models.length; i++) {
+      const model = models[i]
+      
+      try {
+        const response = await this.client.post('/chat/completions', {
           model,
           messages,
-          temperature: 0.7,
-          max_tokens: 1000,
+          temperature: AI_CONFIG.DEFAULT_TEMPERATURE,
+          max_tokens: AI_CONFIG.MAX_TOKENS,
           stream: false
         })
-      })
 
-      if (!response.ok) {
-        throw new Error(`OpenRouter API error: ${response.status}`)
+        return {
+          content: response.data.choices[0].message.content,
+          model,
+          usage: response.data.usage
+        }
+      } catch (error: any) {
+        console.error(`❌ [AI SERVICE] Modelo ${model} falhou:`, error.message)
+        
+        if (i === models.length - 1) {
+          throw error
+        }
       }
-
-      const data = await response.json()
-      
-      return {
-        content: data.choices[0].message.content,
-        model,
-        usage: data.usage
-      }
-    } catch (error: any) {
-      console.error(`❌ [AI SERVICE] Modelo ${model} falhou:`, error.message)
-      throw error
     }
+    
+    throw new Error('Todos os modelos de IA falharam')
   }
 
   private buildEmailGenerationPrompt(context: ProjectContext): string {
@@ -265,7 +230,7 @@ Crie emails que convertem!`
   }
 
   private buildChatPrompt(context: ProjectContext): string {
-    return `Você é um assistente especialista em email marketing integrando com o sistema MailTrendz.
+    return `Você é um especialista em email marketing integrando com o sistema MailTrendz.
 
 CONTEXTO DO PROJETO:
 - Nome: ${context.projectName}
@@ -288,6 +253,23 @@ COMANDOS QUE DEVEM ALTERAR O EMAIL:
 - Qualquer pedido de modificação no email
 
 Responda sempre em português brasileiro de forma profissional.`
+  }
+
+  private detectEmailUpdateIntent(userMessage: string, aiResponse: string): boolean {
+    const updateKeywords = [
+      'melhor', 'alterar', 'mudar', 'modificar', 'ajustar', 'atualizar',
+      'assunto', 'título', 'cta', 'botão', 'conteúdo', 'texto',
+      'urgência', 'tom', 'persuasiv', 'personaliz'
+    ]
+    
+    const userLower = userMessage.toLowerCase()
+    const aiLower = aiResponse.toLowerCase()
+    
+    const userAskedForChange = updateKeywords.some(keyword => userLower.includes(keyword))
+    const aiConfirmedChange = aiLower.includes('vou') || aiLower.includes('alterei') || 
+                             aiLower.includes('modifiquei') || aiLower.includes('melhorei')
+    
+    return userAskedForChange || aiConfirmedChange
   }
 
   private extractSuggestions(aiResponse: string): string[] {
@@ -351,10 +333,7 @@ Responda sempre em português brasileiro de forma profissional.`
   async healthCheck(): Promise<{ status: 'available' | 'unavailable', responseTime?: number }> {
     const startTime = Date.now()
     try {
-      const testResponse = await fetch(`${this.config.baseURL}/models`, {
-        headers: { 'Authorization': `Bearer ${this.config.apiKey}` },
-        timeout: 5000
-      })
+      await this.client.get('/models', { timeout: 5000 })
       return { status: 'available', responseTime: Date.now() - startTime }
     } catch (error) {
       console.error('⚠️ [AI SERVICE] Health check falhou:', error)

@@ -45,42 +45,42 @@ export const MESSAGE_TYPES = {
 // API Limits per subscription
 export const API_LIMITS = {
   [SUBSCRIPTION_TYPES.FREE]: {
-    MONTHLY_PROJECTS: 20,    // Aumentado de 10 para 20
-    MONTHLY_AI_REQUESTS: 100, // Aumentado de 50 para 100
-    MONTHLY_CHAT_MESSAGES: 200, // Aumentado de 100 para 200
-    MAX_PROJECTS: 10         // Aumentado de 5 para 10
+    MONTHLY_PROJECTS: 10,
+    MONTHLY_AI_REQUESTS: 50,
+    MONTHLY_CHAT_MESSAGES: 100,
+    MAX_PROJECTS: 5
   },
   [SUBSCRIPTION_TYPES.PRO]: {
-    MONTHLY_PROJECTS: 200,   // Aumentado de 100 para 200
-    MONTHLY_AI_REQUESTS: 1000, // Aumentado de 500 para 1000
-    MONTHLY_CHAT_MESSAGES: 2000, // Aumentado de 1000 para 2000
-    MAX_PROJECTS: 100        // Aumentado de 50 para 100
+    MONTHLY_PROJECTS: 100,
+    MONTHLY_AI_REQUESTS: 500,
+    MONTHLY_CHAT_MESSAGES: 1000,
+    MAX_PROJECTS: 50
   },
   [SUBSCRIPTION_TYPES.ENTERPRISE]: {
-    MONTHLY_PROJECTS: 2000,  // Aumentado de 1000 para 2000
-    MONTHLY_AI_REQUESTS: 10000, // Aumentado de 5000 para 10000
-    MONTHLY_CHAT_MESSAGES: 20000, // Aumentado de 10000 para 20000
-    MAX_PROJECTS: 1000       // Aumentado de 500 para 1000
+    MONTHLY_PROJECTS: 1000,
+    MONTHLY_AI_REQUESTS: 5000,
+    MONTHLY_CHAT_MESSAGES: 10000,
+    MAX_PROJECTS: 500
   }
 } as const
 
-// ✅ CORREÇÃO: Rate Limiting menos restritivo
+// Rate Limiting
 export const RATE_LIMITS = {
   GENERAL: {
     WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-    MAX_REQUESTS: 2000 // ✅ Aumentado de 1000 para 2000
+    MAX_REQUESTS: 1000 // Aumentado de 100 para 1000
   },
   AUTH: {
     WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-    MAX_REQUESTS: 100 // ✅ Aumentado de 50 para 100 (mais generoso)
+    MAX_REQUESTS: 50 // Aumentado de 5 para 50 (muito mais generoso)
   },
   AI: {
     WINDOW_MS: 60 * 1000, // 1 minute
-    MAX_REQUESTS: 100 // ✅ Aumentado de 50 para 100
+    MAX_REQUESTS: 50 // Aumentado de 10 para 50
   },
   PROJECTS: {
     WINDOW_MS: 60 * 1000, // 1 minute
-    MAX_REQUESTS: 200 // ✅ Aumentado de 100 para 200
+    MAX_REQUESTS: 100 // Aumentado de 20 para 100
   }
 } as const
 
@@ -98,9 +98,9 @@ export const AI_MODELS = {
 export const AI_CONFIG = {
   DEFAULT_TEMPERATURE: 0.7,
   MAX_TOKENS: 4000,
-  TIMEOUT: 45000, // ✅ Aumentado de 30000 para 45000 (45s)
-  RETRY_ATTEMPTS: 2, // ✅ Reduzido de 3 para 2
-  RETRY_DELAY: 2000  // ✅ Aumentado de 1000 para 2000
+  TIMEOUT: 30000,
+  RETRY_ATTEMPTS: 3,
+  RETRY_DELAY: 1000
 } as const
 
 // Email Template Colors
@@ -200,21 +200,21 @@ export const PAGINATION = {
   MAX_LIMIT: 100
 } as const
 
-// ✅ NOVO: Cache TTL mais otimizado
+// Cache TTL (Time To Live) in seconds
 export const CACHE_TTL = {
-  USER_PROFILE: 600,     // ✅ Aumentado de 300 para 600 (10 minutes)
-  PROJECTS_LIST: 300,    // ✅ Aumentado de 180 para 300 (5 minutes)
-  PROJECT_DETAILS: 600,  // ✅ Aumentado de 300 para 600 (10 minutes)
-  CHAT_HISTORY: 240,     // ✅ Aumentado de 120 para 240 (4 minutes)
-  ANALYTICS: 900,        // ✅ Aumentado de 600 para 900 (15 minutes)
-  AI_MODELS: 7200        // ✅ Aumentado de 3600 para 7200 (2 hours)
+  USER_PROFILE: 300,     // 5 minutes
+  PROJECTS_LIST: 180,    // 3 minutes
+  PROJECT_DETAILS: 300,  // 5 minutes
+  CHAT_HISTORY: 120,     // 2 minutes
+  ANALYTICS: 600,        // 10 minutes
+  AI_MODELS: 3600        // 1 hour
 } as const
 
 // File Upload Limits
 export const UPLOAD_LIMITS = {
-  MAX_FILE_SIZE: 10 * 1024 * 1024, // ✅ Aumentado de 5MB para 10MB
+  MAX_FILE_SIZE: 5 * 1024 * 1024, // 5MB
   ALLOWED_TYPES: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-  MAX_FILES: 10 // ✅ Aumentado de 5 para 10
+  MAX_FILES: 5
 } as const
 
 // Security
@@ -232,28 +232,6 @@ export const EMAIL_CONFIG = {
   MAX_PREVIEW_LENGTH: 140,
   RECOMMENDED_SUBJECT_LENGTH: 50,
   RECOMMENDED_PREVIEW_LENGTH: 90
-} as const
-
-// ✅ NOVO: Rate Limiting específico por funcionalidade
-export const FEATURE_RATE_LIMITS = {
-  PROJECT_CREATION: {
-    FREE_PER_MINUTE: 10,    // 10 criações por minuto para free
-    PRO_PER_MINUTE: 30,     // 30 criações por minuto para pro
-    ENTERPRISE_PER_MINUTE: 100, // 100 criações por minuto para enterprise
-    COOLDOWN_SECONDS: 3     // 3 segundos entre criações
-  },
-  AI_CHAT: {
-    FREE_PER_MINUTE: 15,
-    PRO_PER_MINUTE: 50,
-    ENTERPRISE_PER_MINUTE: 200,
-    COOLDOWN_SECONDS: 1
-  },
-  PROJECT_IMPROVEMENT: {
-    FREE_PER_MINUTE: 5,
-    PRO_PER_MINUTE: 20,
-    ENTERPRISE_PER_MINUTE: 100,
-    COOLDOWN_SECONDS: 5
-  }
 } as const
 
 export default {
@@ -276,6 +254,5 @@ export default {
   CACHE_TTL,
   UPLOAD_LIMITS,
   SECURITY,
-  EMAIL_CONFIG,
-  FEATURE_RATE_LIMITS
+  EMAIL_CONFIG
 }

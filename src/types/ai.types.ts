@@ -16,12 +16,15 @@ export interface ProjectContext {
 }
 
 export interface AIResponse {
-  content: string
-  model: string
-  usage?: {
-    prompt_tokens: number
-    completion_tokens: number
-    total_tokens: number
+  response: string
+  shouldUpdateEmail: boolean
+  improvedContent: { html: string; subject: string } | null
+  suggestions: string[]
+  metadata?: {
+    model: string
+    tokens: number
+    confidence: number
+    executionTime: number
   }
 }
 
@@ -69,6 +72,16 @@ export interface AIChatResponse {
     tokens: number
     confidence: number
   }
+}
+
+export interface ImproveEmailRequest {
+  currentContent: {
+    html: string
+    subject: string
+    css?: string
+  }
+  instruction: string
+  context: ProjectContext
 }
 
 export interface AIUsageStats {

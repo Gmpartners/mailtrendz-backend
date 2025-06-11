@@ -2,6 +2,7 @@ import { Types } from 'mongoose'
 
 export interface IProject {
   _id: Types.ObjectId
+  id?: string // ADICIONADO PARA COMPATIBILIDADE - será sempre o _id.toString()
   userId: Types.ObjectId
   name: string
   description: string
