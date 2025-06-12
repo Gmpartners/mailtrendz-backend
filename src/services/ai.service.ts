@@ -20,15 +20,58 @@ class AIService {
   }
 
   async improveEmail(content: any, feedback: string, context: any) {
-    return EnhancedAIService.improveEmailContent(content, feedback, context)
+    try {
+      const enhancedResponse = await EnhancedAIService.smartChatWithAI(
+        `Melhore este email com base no feedback: ${feedback}`,
+        [],
+        context
+      )
+
+      if (enhancedResponse.enhancedContent) {
+        return {
+          subject: enhancedResponse.enhancedContent.subject,
+          previewText: enhancedResponse.enhancedContent.previewText,
+          html: enhancedResponse.enhancedContent.html,
+          text: enhancedResponse.enhancedContent.html?.replace(/<[^>]*>/g, '') || ''
+        }
+      }
+
+      return content
+    } catch (error) {
+      console.error('❌ [AI SERVICE] Erro ao melhorar email:', error)
+      throw error
+    }
   }
 
   async generateEmail(prompt: string, context: any) {
-    return EnhancedAIService.generateEmailFromPrompt(prompt, context)
+    try {
+      const smartRequest = {
+        prompt,
+        projectContext: context,
+        useEnhanced: true
+      }
+
+      const enhancedContent = await EnhancedAIService.generateSmartEmail(smartRequest)
+
+      return {
+        subject: enhancedContent.subject,
+        previewText: enhancedContent.previewText,
+        html: enhancedContent.html,
+        text: enhancedContent.html.replace(/<[^>]*>/g, '')
+      }
+    } catch (error) {
+      console.error('❌ [AI SERVICE] Erro ao gerar email:', error)
+      throw error
+    }
   }
 
   async smartChat(message: string, history: any[], context: any) {
-    return EnhancedAIService.smartChatWithAI(message, history, context)
+    try {
+      return await EnhancedAIService.smartChatWithAI(message, history, context)
+    } catch (error) {
+      console.error('❌ [AI SERVICE] Erro no chat inteligente:', error)
+      throw error
+    }
   }
 }
 
