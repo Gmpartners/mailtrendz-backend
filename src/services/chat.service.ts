@@ -8,6 +8,7 @@ import {
   IMessage,
   CreateChatDto,
   SendMessageDto,
+  UpdateChatDto,
   ChatFilters,
   ChatResponse,
   MessageResponse,
@@ -23,8 +24,8 @@ const convertChatToInterface = (chat: IChatDocument): IChat => {
   return {
     _id: chat._id as Types.ObjectId,
     id: chat._id.toString(),
-    userId: chat.userId,
-    projectId: chat.projectId,
+    userId: chat.userId.toString(), // ✅ CORREÇÃO: Converter ObjectId para string
+    projectId: chat.projectId?.toString(), // ✅ CORREÇÃO: Converter ObjectId para string
     title: chat.title,
     messages: chat.messages,
     isActive: chat.isActive,
@@ -38,8 +39,8 @@ const convertMessageToInterface = (message: IChatMessageDocument): IMessage => {
   return {
     _id: message._id as Types.ObjectId,
     id: message._id.toString(),
-    chatId: message.chatId,
-    type: message.type,
+    chatId: message.chatId.toString(), // ✅ CORREÇÃO: Converter ObjectId para string
+    type: message.type as 'user' | 'ai' | 'system', // ✅ CORREÇÃO: Type assertion
     content: message.content,
     createdAt: message.createdAt,
     metadata: message.metadata
@@ -101,8 +102,7 @@ class ChatService {
         metadata: {
           totalMessages: 0,
           lastActivity: new Date(),
-          emailUpdates: 0,
-          enhancedAIEnabled: true
+          emailUpdates: 0
         }
       })
 
@@ -178,8 +178,7 @@ class ChatService {
           metadata: {
             totalMessages: 0,
             lastActivity: new Date(),
-            emailUpdates: 0,
-            enhancedAIEnabled: true
+            emailUpdates: 0
           }
         })
 
@@ -634,11 +633,43 @@ O projeto atual tem o conteúdo carregado. Diga o que gostaria de modificar!`,
     }
   }
 
-  async updateChat(chatId: string, userId: string, updates: Partial<IChat>): Promise<IChat | null> {
+  // ✅ CORREÇÃO: Método updateChat corrigido para aceitar UpdateChatDto
+  async updateChat(chatId: string, userId: string, updates: UpdateChatDto): Promise<IChat | null> {
     try {
+      // Construir objeto de atualização compatível com o modelo
+      const updateObject: any = {
+        'metadata.lastActivity': new Date()
+      }
+
+      if (updates.title !== undefined) {
+        updateObject.title = updates.title
+      }
+
+      if (updates.isActive !== undefined) {
+        updateObject.isActive = updates.isActive
+      }
+
+      if (updates.metadata) {
+        if (updates.metadata.totalMessages !== undefined) {
+          updateObject['metadata.totalMessages'] = updates.metadata.totalMessages
+        }
+        if (updates.metadata.emailUpdates !== undefined) {
+          updateObject['metadata.emailUpdates'] = updates.metadata.emailUpdates
+        }
+        if (updates.metadata.lastActivity !== undefined) {
+          updateObject['metadata.lastActivity'] = updates.metadata.lastActivity
+        }
+        if (updates.metadata.enhancedMode !== undefined) {
+          updateObject['metadata.enhancedMode'] = updates.metadata.enhancedMode
+        }
+        if (updates.metadata.enhancedAIEnabled !== undefined) {
+          updateObject['metadata.enhancedAIEnabled'] = updates.metadata.enhancedAIEnabled
+        }
+      }
+
       const chat = await Chat.findOneAndUpdate(
         { _id: chatId, userId: new Types.ObjectId(userId) },
-        { ...updates, 'metadata.lastActivity': new Date() },
+        { $set: updateObject },
         { new: true, runValidators: true }
       )
 

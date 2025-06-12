@@ -2,8 +2,23 @@ import mongoose, { Schema, Document, Types } from 'mongoose'
 import { IChat } from '../types/chat.types'
 import { COLLECTIONS } from '../utils/constants'
 
-// ✅ CORREÇÃO: Remover 'id' do Omit para evitar conflito com Document
-export interface IChatDocument extends Omit<IChat, '_id' | 'id'>, Document {
+// ✅ INTERFACE CORRIGIDA COM TODOS OS MÉTODOS
+export interface IChatDocument extends Document {
+  _id: Types.ObjectId
+  userId: Types.ObjectId
+  projectId: Types.ObjectId
+  title: string
+  messages: Types.ObjectId[]
+  isActive: boolean
+  metadata: {
+    totalMessages: number
+    lastActivity: Date
+    emailUpdates: number
+  }
+  createdAt: Date
+  updatedAt: Date
+  
+  // ✅ MÉTODOS DECLARADOS NA INTERFACE
   addMessage(messageId: Types.ObjectId): Promise<void>
   updateActivity(): Promise<void>
   incrementEmailUpdates(): Promise<void>
@@ -62,12 +77,12 @@ const chatSchema = new Schema<IChatDocument>({
   collection: COLLECTIONS.CHATS
 })
 
-// Indexes para performance
+// ✅ INDEXES
 chatSchema.index({ userId: 1, createdAt: -1 })
 chatSchema.index({ userId: 1, isActive: 1 })
 chatSchema.index({ 'metadata.lastActivity': -1 })
 
-// Middleware para atualizar lastActivity
+// ✅ MIDDLEWARE
 chatSchema.pre('save', function(next) {
   if (this.isModified('messages')) {
     this.metadata.lastActivity = new Date()
@@ -75,35 +90,34 @@ chatSchema.pre('save', function(next) {
   next()
 })
 
-// Métodos de instância
-chatSchema.methods.addMessage = async function(messageId: Types.ObjectId): Promise<void> {
+// ✅ MÉTODOS IMPLEMENTADOS
+chatSchema.methods.addMessage = async function(this: IChatDocument, messageId: Types.ObjectId): Promise<void> {
   this.messages.push(messageId)
   this.metadata.totalMessages = this.messages.length
   this.metadata.lastActivity = new Date()
   await this.save()
 }
 
-chatSchema.methods.updateActivity = async function(): Promise<void> {
+chatSchema.methods.updateActivity = async function(this: IChatDocument): Promise<void> {
   this.metadata.lastActivity = new Date()
   await this.save()
 }
 
-chatSchema.methods.incrementEmailUpdates = async function(): Promise<void> {
+chatSchema.methods.incrementEmailUpdates = async function(this: IChatDocument): Promise<void> {
   this.metadata.emailUpdates += 1
   await this.save()
 }
 
-chatSchema.methods.getMessageCount = function(): number {
+chatSchema.methods.getMessageCount = function(this: IChatDocument): number {
   return this.messages.length
 }
 
-chatSchema.methods.isOwner = function(userId: string): boolean {
+chatSchema.methods.isOwner = function(this: IChatDocument, userId: string): boolean {
   return this.userId.toString() === userId
 }
 
-// Método virtual para estatísticas
-chatSchema.virtual('stats').get(function() {
-  // ✅ CORREÇÃO: Adicionar verificações de segurança
+// ✅ VIRTUAL CORRIGIDO
+chatSchema.virtual('stats').get(function(this: IChatDocument) {
   const lastActivity = this.metadata?.lastActivity || new Date()
   const createdAt = this.createdAt || new Date()
   
@@ -116,7 +130,7 @@ chatSchema.virtual('stats').get(function() {
   }
 })
 
-// Métodos estáticos
+// ✅ STATICS
 chatSchema.statics.findByUser = function(userId: string, filters: any = {}) {
   return this.find({ userId, ...filters })
     .populate('projectId', 'name type')
@@ -197,7 +211,7 @@ chatSchema.statics.getRecentActivity = async function(userId: string, days: numb
   ])
 }
 
-// Configurar toJSON
+// ✅ JSON CONFIG
 chatSchema.set('toJSON', {
   virtuals: true,
   transform: function(doc, ret) {

@@ -65,10 +65,17 @@ export interface SendMessageDto {
   type?: 'user' | 'ai' | 'system'
 }
 
+// ✅ CORREÇÃO: UpdateChatDto alinhado com o modelo do Chat
 export interface UpdateChatDto {
   title?: string
   isActive?: boolean
-  metadata?: Partial<IChat['metadata']>
+  metadata?: {
+    totalMessages?: number
+    emailUpdates?: number
+    lastActivity?: Date | string
+    enhancedMode?: boolean
+    enhancedAIEnabled?: boolean
+  }
 }
 
 // ✅ Filtros e paginação
@@ -375,5 +382,3 @@ export interface ChatSettings {
   responseLength: 'short' | 'medium' | 'long'
   confidenceThreshold: number
 }
-
-// ✅ EXPORT DEFAULT REMOVIDO - CORRIGIDO!
