@@ -211,7 +211,76 @@ class EnhancedAIService {
       return enhancedResponse
     } catch (error: any) {
       console.error('❌ [ENHANCED AI] Erro no chat inteligente:', error.message)
-      throw new Error(`Falha no chat inteligente: ${error.message}`)
+      
+      // ✅ NOVO: Fallback em caso de erro
+      return this.createFallbackResponse(message, projectContext, error)
+    }
+  }
+
+  // ✅ NOVO: Método de fallback para quando a IA falha
+  private createFallbackResponse(
+    message: string, 
+    projectContext: ProjectContext, 
+    originalError: Error
+  ): EnhancedChatResponse {
+    console.log('🔄 [ENHANCED AI] Criando resposta de fallback:', {
+      messageLength: message.length,
+      hasProject: projectContext.hasProjectContent,
+      errorType: originalError.name
+    })
+
+    // Resposta contextual baseada no projeto
+    let fallbackResponse = `Entendi sua mensagem sobre "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}".`
+
+    if (projectContext.hasProjectContent) {
+      fallbackResponse += `\n\nVejo que você está trabalhando no projeto "${projectContext.projectName}". `
+      
+      // Detectar intenção básica mesmo sem IA
+      if (message.toLowerCase().includes('cor') || message.toLowerCase().includes('color')) {
+        fallbackResponse += 'Para alterar cores, você pode ser mais específico sobre qual elemento e qual cor deseja. Exemplo: "mude o botão para azul" ou "altere o fundo para verde".'
+      } else if (message.toLowerCase().includes('botão') || message.toLowerCase().includes('cta')) {
+        fallbackResponse += 'Para modificar botões, especifique o que deseja alterar: cor, texto, tamanho ou posição.'
+      } else if (message.toLowerCase().includes('título') || message.toLowerCase().includes('assunto')) {
+        fallbackResponse += 'Para alterar o título ou assunto, me diga como gostaria que ficasse o novo texto.'
+      } else {
+        fallbackResponse += 'Tente ser mais específico sobre o que deseja modificar no email.'
+      }
+    } else {
+      fallbackResponse += '\n\nNo momento estou com dificuldades técnicas, mas posso ajudar assim que o serviço for restabelecido.'
+    }
+
+    fallbackResponse += '\n\n⚠️ Houve um problema temporário com o serviço de IA. Tente novamente em alguns momentos.'
+
+    return {
+      response: fallbackResponse,
+      shouldUpdateEmail: false,
+      analysis: {
+        intentions: [],
+        visualRequirements: {},
+        contentRequirements: {
+          tone: 'professional',
+          length: 'medium',
+          focus: ['information'],
+          urgency: 'medium',
+          personalization: 'none'
+        },
+        confidence: 0.3, // Baixa confiança para fallback
+        processingTime: 0,
+        originalPrompt: message
+      },
+      suggestions: [
+        'Tente reformular sua pergunta',
+        'Seja mais específico sobre o que deseja',
+        'Aguarde alguns momentos e tente novamente'
+      ],
+      enhancedContent: undefined,
+      metadata: {
+        model: 'fallback-service',
+        tokens: 0,
+        confidence: 0.3,
+        enhancedFeatures: ['fallback-response', 'basic-intent-detection'],
+        processingTime: 100
+      }
     }
   }
 
@@ -371,8 +440,14 @@ Responda APENAS com o JSON válido, sem explicações.`
   async healthCheck(): Promise<{ status: 'available' | 'unavailable', responseTime?: number }> {
     const startTime = Date.now()
     try {
+      // ✅ NOVO: Health check mais robusto
+      if (!this.config.apiKey) {
+        console.warn('⚠️ [ENHANCED AI] API Key não configurada')
+        return { status: 'unavailable', responseTime: 0 }
+      }
+
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 10000)
+      const timeoutId = setTimeout(() => controller.abort(), 5000) // Timeout reduzido
 
       const testResponse = await fetch(`${this.config.baseURL}/models`, {
         headers: { 
@@ -393,8 +468,13 @@ Responda APENAS com o JSON válido, sem explicações.`
         return { status: 'unavailable', responseTime }
       }
     } catch (error: any) {
-      console.error('⚠️ [ENHANCED AI] Health check falhou:', error.message)
-      return { status: 'unavailable', responseTime: Date.now() - startTime }
+      const responseTime = Date.now() - startTime
+      console.error('⚠️ [ENHANCED AI] Health check falhou:', {
+        message: error.message,
+        responseTime,
+        isTimeout: error.name === 'AbortError'
+      })
+      return { status: 'unavailable', responseTime }
     }
   }
 
@@ -407,7 +487,7 @@ Responda APENAS com o JSON válido, sem explicações.`
         console.log(`🤖 [ENHANCED AI] Tentando modelo: ${model}`)
         
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 45000)
+        const timeoutId = setTimeout(() => controller.abort(), 30000) // Timeout reduzido
 
         const requestBody = {
           model,
