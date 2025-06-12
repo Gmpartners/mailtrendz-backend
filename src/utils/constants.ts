@@ -42,75 +42,75 @@ export const MESSAGE_TYPES = {
   SYSTEM: 'system'
 } as const
 
-// ✅ ATUALIZADO: Limites mais generosos por plano
+// API Limits
 export const API_LIMITS = {
   [SUBSCRIPTION_TYPES.FREE]: {
-    MONTHLY_PROJECTS: 50,        // Aumentado de 20 para 50
-    MONTHLY_AI_REQUESTS: 200,    // Aumentado de 100 para 200
-    MONTHLY_CHAT_MESSAGES: 500,  // Aumentado de 200 para 500
-    MAX_PROJECTS: 25            // Aumentado de 10 para 25
+    MONTHLY_PROJECTS: 50,
+    MONTHLY_AI_REQUESTS: 200,
+    MONTHLY_CHAT_MESSAGES: 500,
+    MAX_PROJECTS: 25
   },
   [SUBSCRIPTION_TYPES.PRO]: {
-    MONTHLY_PROJECTS: 500,      // Aumentado de 200 para 500
-    MONTHLY_AI_REQUESTS: 2000,  // Aumentado de 1000 para 2000
-    MONTHLY_CHAT_MESSAGES: 5000, // Aumentado de 2000 para 5000
-    MAX_PROJECTS: 250           // Aumentado de 100 para 250
+    MONTHLY_PROJECTS: 500,
+    MONTHLY_AI_REQUESTS: 2000,
+    MONTHLY_CHAT_MESSAGES: 5000,
+    MAX_PROJECTS: 250
   },
   [SUBSCRIPTION_TYPES.ENTERPRISE]: {
-    MONTHLY_PROJECTS: 5000,     // Aumentado de 2000 para 5000
-    MONTHLY_AI_REQUESTS: 20000, // Aumentado de 10000 para 20000
-    MONTHLY_CHAT_MESSAGES: 50000, // Aumentado de 20000 para 50000
-    MAX_PROJECTS: 2500          // Aumentado de 1000 para 2500
+    MONTHLY_PROJECTS: 5000,
+    MONTHLY_AI_REQUESTS: 20000,
+    MONTHLY_CHAT_MESSAGES: 50000,
+    MAX_PROJECTS: 2500
   }
 } as const
 
-// ✅ ATUALIZADO: Rate Limiting mais inteligente
+// Rate Limiting
 export const RATE_LIMITS = {
   GENERAL: {
-    WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-    MAX_REQUESTS: 3000 // Aumentado de 2000 para 3000
+    WINDOW_MS: 15 * 60 * 1000,
+    MAX_REQUESTS: 3000
   },
   AUTH: {
-    WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-    MAX_REQUESTS: 150 // Aumentado de 100 para 150
+    WINDOW_MS: 15 * 60 * 1000,
+    MAX_REQUESTS: 150
   },
   AI: {
-    WINDOW_MS: 60 * 1000, // 1 minute
-    MAX_REQUESTS: 150 // Aumentado de 100 para 150
+    WINDOW_MS: 60 * 1000,
+    MAX_REQUESTS: 150
   },
   PROJECTS: {
-    WINDOW_MS: 60 * 1000, // 1 minute
-    MAX_REQUESTS: 300 // Aumentado de 200 para 300
+    WINDOW_MS: 60 * 1000,
+    MAX_REQUESTS: 300
   }
 } as const
 
-// AI Models
+// AI Models - CORRIGIDOS
 export const AI_MODELS = {
-  PRIMARY: 'anthropic/claude-3.5-sonnet',
+  PRIMARY: 'anthropic/claude-3-sonnet-20240229',
   FALLBACKS: [
-    'openai/gpt-4-turbo',
-    'anthropic/claude-3-haiku',
+    'anthropic/claude-3-haiku-20240307',
+    'openai/gpt-4-turbo-preview',
     'openai/gpt-3.5-turbo'
   ]
 } as const
 
-// AI Configuration
+// AI Configuration - OTIMIZADO
 export const AI_CONFIG = {
   DEFAULT_TEMPERATURE: 0.7,
-  MAX_TOKENS: 4000,
-  TIMEOUT: 60000, // Aumentado de 45000 para 60000 (60s)
+  MAX_TOKENS: 1500,
+  TIMEOUT: 30000,
   RETRY_ATTEMPTS: 2,
-  RETRY_DELAY: 3000 // Aumentado de 2000 para 3000
+  RETRY_DELAY: 2000
 } as const
 
 // Email Template Colors
 export const EMAIL_COLORS = {
-  [PROJECT_TYPES.WELCOME]: '#10b981',    // Verde
-  [PROJECT_TYPES.NEWSLETTER]: '#3b82f6', // Azul
-  [PROJECT_TYPES.CAMPAIGN]: '#ef4444',   // Vermelho
-  [PROJECT_TYPES.PROMOTIONAL]: '#f59e0b', // Amarelo
-  [PROJECT_TYPES.ANNOUNCEMENT]: '#8b5cf6', // Roxo
-  [PROJECT_TYPES.FOLLOW_UP]: '#06b6d4'   // Ciano
+  [PROJECT_TYPES.WELCOME]: '#10b981',
+  [PROJECT_TYPES.NEWSLETTER]: '#3b82f6',
+  [PROJECT_TYPES.CAMPAIGN]: '#ef4444',
+  [PROJECT_TYPES.PROMOTIONAL]: '#f59e0b',
+  [PROJECT_TYPES.ANNOUNCEMENT]: '#8b5cf6',
+  [PROJECT_TYPES.FOLLOW_UP]: '#06b6d4'
 } as const
 
 // Validation Rules
@@ -200,19 +200,19 @@ export const PAGINATION = {
   MAX_LIMIT: 100
 } as const
 
-// ✅ ATUALIZADO: Cache TTL otimizado
+// Cache TTL
 export const CACHE_TTL = {
-  USER_PROFILE: 900,     // 15 minutes
-  PROJECTS_LIST: 600,    // 10 minutes
-  PROJECT_DETAILS: 900,  // 15 minutes
-  CHAT_HISTORY: 300,     // 5 minutes
-  ANALYTICS: 1800,       // 30 minutes
-  AI_MODELS: 3600       // 1 hour
+  USER_PROFILE: 900,
+  PROJECTS_LIST: 600,
+  PROJECT_DETAILS: 900,
+  CHAT_HISTORY: 300,
+  ANALYTICS: 1800,
+  AI_MODELS: 3600
 } as const
 
 // File Upload Limits
 export const UPLOAD_LIMITS = {
-  MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB
+  MAX_FILE_SIZE: 10 * 1024 * 1024,
   ALLOWED_TYPES: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
   MAX_FILES: 10
 } as const
@@ -221,9 +221,9 @@ export const UPLOAD_LIMITS = {
 export const SECURITY = {
   BCRYPT_ROUNDS: 12,
   JWT_ALGORITHM: 'HS256',
-  SESSION_TIMEOUT: 24 * 60 * 60 * 1000, // 24 hours
-  REFRESH_TOKEN_TIMEOUT: 7 * 24 * 60 * 60 * 1000, // 7 days
-  PASSWORD_RESET_TIMEOUT: 60 * 60 * 1000 // 1 hour
+  SESSION_TIMEOUT: 24 * 60 * 60 * 1000,
+  REFRESH_TOKEN_TIMEOUT: 7 * 24 * 60 * 60 * 1000,
+  PASSWORD_RESET_TIMEOUT: 60 * 60 * 1000
 } as const
 
 // Email Configuration
@@ -234,18 +234,18 @@ export const EMAIL_CONFIG = {
   RECOMMENDED_PREVIEW_LENGTH: 90
 } as const
 
-// ✅ NOVO: Configuração do sistema de filas
+// Queue Configuration
 export const QUEUE_CONFIG = {
   PROJECT_CREATION: {
-    MAX_CONCURRENT: 3,      // Processar até 3 projetos simultaneamente
-    RETRY_LIMIT: 2,         // Tentar 2 vezes em caso de erro
-    RETRY_DELAY: 3000,      // 3 segundos entre tentativas
-    PROCESS_INTERVAL: 200,  // Verificar fila a cada 200ms
-    USER_COOLDOWN: 3000     // 3 segundos de cooldown entre criações
+    MAX_CONCURRENT: 3,
+    RETRY_LIMIT: 2,
+    RETRY_DELAY: 3000,
+    PROCESS_INTERVAL: 200,
+    USER_COOLDOWN: 3000
   },
   AI_GENERATION: {
-    MAX_CONCURRENT: 2,      // Máximo 2 gerações de IA simultâneas
-    TIMEOUT: 60000,         // 60 segundos de timeout
+    MAX_CONCURRENT: 2,
+    TIMEOUT: 30000,
     PRIORITY_LEVELS: {
       HIGH: 3,
       NORMAL: 2,
@@ -254,14 +254,14 @@ export const QUEUE_CONFIG = {
   }
 } as const
 
-// ✅ NOVO: Rate Limiting dinâmico por funcionalidade
+// Feature Rate Limits
 export const FEATURE_RATE_LIMITS = {
   PROJECT_CREATION: {
-    FREE_PER_MINUTE: 20,        // 20 criações por minuto para free
-    PRO_PER_MINUTE: 60,         // 60 criações por minuto para pro
-    ENTERPRISE_PER_MINUTE: 200,  // 200 criações por minuto para enterprise
-    COOLDOWN_SECONDS: 3,         // 3 segundos entre criações
-    BURST_LIMIT: 5               // Permitir até 5 criações rápidas
+    FREE_PER_MINUTE: 20,
+    PRO_PER_MINUTE: 60,
+    ENTERPRISE_PER_MINUTE: 200,
+    COOLDOWN_SECONDS: 3,
+    BURST_LIMIT: 5
   },
   AI_CHAT: {
     FREE_PER_MINUTE: 30,
@@ -277,7 +277,7 @@ export const FEATURE_RATE_LIMITS = {
   }
 } as const
 
-// ✅ NOVO: Mensagens de erro amigáveis
+// Error Messages
 export const ERROR_MESSAGES = {
   RATE_LIMIT: {
     DEFAULT: 'Você está fazendo muitas requisições. Por favor, aguarde um momento.',

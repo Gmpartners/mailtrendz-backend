@@ -18,43 +18,43 @@ class EnhancedAIController {
       useEnhanced
     })
 
-    if (!prompt || !prompt.trim()) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: 'Prompt é obrigatório',
-        error: 'MISSING_PROMPT'
-      })
-    }
-
-    if (!projectContext || !projectContext.type) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: 'Contexto do projeto é obrigatório',
-        error: 'MISSING_PROJECT_CONTEXT'
-      })
-    }
-
-    const validProjectTypes = Object.values(PROJECT_TYPES)
-    const validType = validProjectTypes.includes(projectContext.type) 
-      ? projectContext.type 
-      : PROJECT_TYPES.CAMPAIGN
-
-    const smartRequest: SmartEmailRequest = {
-      prompt: prompt.trim(),
-      projectContext: {
-        userId,
-        projectName: projectContext.projectName || 'Projeto Inteligente',
-        type: validType,
-        industry: projectContext.industry || 'geral',
-        targetAudience: projectContext.targetAudience,
-        tone: projectContext.tone || 'profissional',
-        status: projectContext.status || 'ativo'
-      },
-      useEnhanced,
-      userHistory: userHistory || undefined
-    }
-
     try {
+      if (!prompt || !prompt.trim()) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Prompt é obrigatório',
+          error: 'MISSING_PROMPT'
+        })
+      }
+
+      if (!projectContext || !projectContext.type) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Contexto do projeto é obrigatório',
+          error: 'MISSING_PROJECT_CONTEXT'
+        })
+      }
+
+      const validProjectTypes = Object.values(PROJECT_TYPES)
+      const validType = validProjectTypes.includes(projectContext.type) 
+        ? projectContext.type 
+        : PROJECT_TYPES.CAMPAIGN
+
+      const smartRequest: SmartEmailRequest = {
+        prompt: prompt.trim(),
+        projectContext: {
+          userId,
+          projectName: projectContext.projectName || 'Projeto Inteligente',
+          type: validType,
+          industry: projectContext.industry || 'geral',
+          targetAudience: projectContext.targetAudience,
+          tone: projectContext.tone || 'profissional',
+          status: projectContext.status || 'ativo'
+        },
+        useEnhanced,
+        userHistory: userHistory || undefined
+      }
+
       const enhancedResult = await EnhancedAIService.generateSmartEmail(smartRequest)
 
       console.log('✅ [ENHANCED AI CONTROLLER] Email inteligente gerado:', {
@@ -81,12 +81,36 @@ class EnhancedAIController {
       })
 
     } catch (error: any) {
-      console.error('❌ [ENHANCED AI CONTROLLER] Erro na geração inteligente:', error.message)
+      console.error('❌ [ENHANCED AI CONTROLLER] Erro na geração inteligente:', {
+        message: error.message,
+        userId,
+        promptLength: prompt?.length || 0,
+        stack: error.stack?.substring(0, 300)
+      })
       
-      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      let statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR
+      let errorMessage = 'Erro interno na geração de email'
+      let errorCode = 'SMART_GENERATION_FAILED'
+
+      if (error.message.includes('OpenRouter')) {
+        statusCode = HTTP_STATUS.SERVICE_UNAVAILABLE
+        errorMessage = 'Serviço de IA temporariamente indisponível'
+        errorCode = 'AI_SERVICE_UNAVAILABLE'
+      } else if (error.message.includes('timeout') || error.message.includes('AbortError')) {
+        statusCode = HTTP_STATUS.REQUEST_TIMEOUT || 408
+        errorMessage = 'Timeout na geração - tente novamente'
+        errorCode = 'AI_TIMEOUT'
+      } else if (error.message.includes('rate limit') || error.message.includes('429')) {
+        statusCode = HTTP_STATUS.TOO_MANY_REQUESTS
+        errorMessage = 'Limite de requisições atingido - aguarde um momento'
+        errorCode = 'RATE_LIMIT_EXCEEDED'
+      }
+      
+      res.status(statusCode).json({
         success: false,
-        message: 'Erro ao gerar email inteligente: ' + error.message,
-        error: 'SMART_GENERATION_FAILED'
+        message: errorMessage,
+        error: errorCode,
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       })
     }
   })
@@ -102,32 +126,32 @@ class EnhancedAIController {
       projectType: projectContext?.type
     })
 
-    if (!message || !message.trim()) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: 'Mensagem é obrigatória',
-        error: 'MISSING_MESSAGE'
-      })
-    }
-
-    if (!projectContext) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: 'Contexto do projeto é obrigatório',
-        error: 'MISSING_PROJECT_CONTEXT'
-      })
-    }
-
-    const contextWithUser = {
-      ...projectContext,
-      userId,
-      projectName: projectContext.projectName || 'Chat Inteligente',
-      type: projectContext.type || PROJECT_TYPES.CAMPAIGN,
-      industry: projectContext.industry || 'geral',
-      tone: projectContext.tone || 'profissional'
-    }
-
     try {
+      if (!message || !message.trim()) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Mensagem é obrigatória',
+          error: 'MISSING_MESSAGE'
+        })
+      }
+
+      if (!projectContext) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Contexto do projeto é obrigatório',
+          error: 'MISSING_PROJECT_CONTEXT'
+        })
+      }
+
+      const contextWithUser = {
+        ...projectContext,
+        userId,
+        projectName: projectContext.projectName || 'Chat Inteligente',
+        type: projectContext.type || PROJECT_TYPES.CAMPAIGN,
+        industry: projectContext.industry || 'geral',
+        tone: projectContext.tone || 'profissional'
+      }
+
       const smartResponse = await EnhancedAIService.smartChatWithAI(
         message.trim(),
         chatHistory,
@@ -150,12 +174,27 @@ class EnhancedAIController {
       })
 
     } catch (error: any) {
-      console.error('❌ [ENHANCED AI CONTROLLER] Erro no chat inteligente:', error.message)
+      console.error('❌ [ENHANCED AI CONTROLLER] Erro no chat inteligente:', {
+        message: error.message,
+        userId,
+        messageLength: message?.length || 0
+      })
       
-      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      let statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR
+      let errorMessage = 'Erro interno no chat'
+      let errorCode = 'SMART_CHAT_FAILED'
+
+      if (error.message.includes('OpenRouter')) {
+        statusCode = HTTP_STATUS.SERVICE_UNAVAILABLE
+        errorMessage = 'Serviço de IA temporariamente indisponível'
+        errorCode = 'AI_SERVICE_UNAVAILABLE'
+      }
+      
+      res.status(statusCode).json({
         success: false,
-        message: 'Erro no chat inteligente: ' + error.message,
-        error: 'SMART_CHAT_FAILED'
+        message: errorMessage,
+        error: errorCode,
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       })
     }
   })
@@ -170,15 +209,15 @@ class EnhancedAIController {
       projectType: projectContext?.type
     })
 
-    if (!prompt || !prompt.trim()) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: 'Prompt é obrigatório',
-        error: 'MISSING_PROMPT'
-      })
-    }
-
     try {
+      if (!prompt || !prompt.trim()) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Prompt é obrigatório',
+          error: 'MISSING_PROMPT'
+        })
+      }
+
       const contextWithUser = {
         userId,
         projectName: 'Análise de Prompt',
@@ -216,12 +255,17 @@ class EnhancedAIController {
       })
 
     } catch (error: any) {
-      console.error('❌ [ENHANCED AI CONTROLLER] Erro na análise:', error.message)
+      console.error('❌ [ENHANCED AI CONTROLLER] Erro na análise:', {
+        message: error.message,
+        userId,
+        promptLength: prompt?.length || 0
+      })
       
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
         success: false,
-        message: 'Erro ao analisar prompt: ' + error.message,
-        error: 'PROMPT_ANALYSIS_FAILED'
+        message: 'Erro ao analisar prompt',
+        error: 'PROMPT_ANALYSIS_FAILED',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       })
     }
   })
@@ -236,7 +280,7 @@ class EnhancedAIController {
 
       const status = {
         enhanced: {
-          available: true,
+          available: baseAIHealth.status === 'available',
           features: [
             'smart-prompt-analysis',
             'visual-requirements-detection', 
@@ -264,22 +308,22 @@ class EnhancedAIController {
           model: 'anthropic/claude-3-sonnet'
         },
         capabilities: {
-          smartGeneration: true,
-          intelligentChat: true,
+          smartGeneration: baseAIHealth.status === 'available',
+          intelligentChat: baseAIHealth.status === 'available',
           promptAnalysis: true,
           visualCustomization: true,
           contextualMemory: true
         },
         usage: {
           recommendEnhanced: baseAIHealth.status === 'available',
-          fallbackToLegacy: false,
+          fallbackToLegacy: baseAIHealth.status !== 'available',
           betaFeatures: false
         }
       }
 
       console.log('✅ [ENHANCED AI CONTROLLER] Status compilado:', {
         userId,
-        enhancedAvailable: true,
+        enhancedAvailable: status.enhanced.available,
         analyzerAvailable: true,
         baseAIStatus: baseAIHealth.status
       })
@@ -310,15 +354,15 @@ class EnhancedAIController {
       promptLength: prompt?.length || 0
     })
 
-    if (!prompt || !prompt.trim()) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        message: 'Prompt é obrigatório para comparação',
-        error: 'MISSING_PROMPT'
-      })
-    }
-
     try {
+      if (!prompt || !prompt.trim()) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Prompt é obrigatório para comparação',
+          error: 'MISSING_PROMPT'
+        })
+      }
+
       const contextWithUser = {
         userId,
         projectName: 'Comparação de Modos',
@@ -387,8 +431,9 @@ class EnhancedAIController {
       
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
         success: false,
-        message: 'Erro ao comparar modos de IA: ' + error.message,
-        error: 'COMPARISON_FAILED'
+        message: 'Erro ao comparar modos de IA',
+        error: 'COMPARISON_FAILED',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       })
     }
   })
@@ -420,24 +465,42 @@ class EnhancedAIController {
   }
 
   healthCheck = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const health = {
-      status: 'ok',
-      timestamp: new Date(),
-      service: 'enhanced-ai',
-      version: '2.0.0-enhanced',
-      features: {
-        smartGeneration: true,
-        promptAnalysis: true,
-        intelligentChat: true,
-        visualCustomization: true
-      },
-      environment: process.env.NODE_ENV || 'development'
-    }
+    try {
+      const aiHealth = await EnhancedAIService.healthCheck()
+      
+      const health = {
+        status: 'ok',
+        timestamp: new Date(),
+        service: 'enhanced-ai',
+        version: '2.0.0-enhanced',
+        features: {
+          smartGeneration: aiHealth.status === 'available',
+          promptAnalysis: true,
+          intelligentChat: aiHealth.status === 'available',
+          visualCustomization: true
+        },
+        ai: {
+          status: aiHealth.status,
+          responseTime: aiHealth.responseTime
+        },
+        environment: process.env.NODE_ENV || 'development'
+      }
 
-    res.json({
-      success: true,
-      data: health
-    })
+      const statusCode = aiHealth.status === 'available' ? HTTP_STATUS.OK : HTTP_STATUS.SERVICE_UNAVAILABLE
+
+      res.status(statusCode).json({
+        success: true,
+        data: health
+      })
+    } catch (error: any) {
+      console.error('❌ [ENHANCED AI CONTROLLER] Health check falhou:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Health check falhou',
+        error: 'HEALTH_CHECK_FAILED'
+      })
+    }
   })
 }
 

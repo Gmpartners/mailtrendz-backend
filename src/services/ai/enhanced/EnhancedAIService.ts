@@ -24,6 +24,7 @@ interface OpenRouterResponse {
   error?: {
     message: string
     type: string
+    code?: string
   }
 }
 
@@ -33,24 +34,38 @@ class EnhancedAIService {
   constructor() {
     const fallbackModels = Array.isArray(AI_MODELS?.FALLBACKS) 
       ? [...AI_MODELS.FALLBACKS] 
-      : ['anthropic/claude-3-sonnet']
+      : [
+          'anthropic/claude-3-sonnet-20240229',
+          'anthropic/claude-3-haiku-20240307',
+          'openai/gpt-4-turbo',
+          'openai/gpt-3.5-turbo'
+        ]
 
     this.config = {
       apiKey: process.env.OPENROUTER_API_KEY!,
       baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
-      defaultModel: AI_MODELS?.PRIMARY || 'anthropic/claude-3-sonnet',
+      defaultModel: 'anthropic/claude-3-sonnet-20240229',
       fallbackModels
     }
 
-    if (!this.config.apiKey || !this.config.apiKey.startsWith('sk-or-v1-')) {
-      throw new Error('OpenRouter API key é obrigatória e deve ser válida')
-    }
+    this.validateConfiguration()
 
     console.log('🧠 [ENHANCED AI] IA Inteligente configurada:', {
       baseURL: this.config.baseURL,
       model: this.config.defaultModel,
-      hasApiKey: !!this.config.apiKey
+      hasApiKey: !!this.config.apiKey,
+      fallbackCount: this.config.fallbackModels.length
     })
+  }
+
+  private validateConfiguration(): void {
+    if (!this.config.apiKey) {
+      throw new Error('OPENROUTER_API_KEY é obrigatória nas variáveis de ambiente')
+    }
+
+    if (!this.config.apiKey.startsWith('sk-or-v1-')) {
+      console.warn('⚠️ [ENHANCED AI] API Key não parece ser válida, mas tentando continuar...')
+    }
   }
 
   async generateSmartEmail(request: SmartEmailRequest): Promise<EnhancedEmailContent> {
@@ -112,9 +127,15 @@ class EnhancedAIService {
       })
       
       return enhancedContent
-    } catch (error) {
-      console.error('❌ [ENHANCED AI] Erro na geração inteligente:', error)
-      throw error
+    } catch (error: any) {
+      console.error('❌ [ENHANCED AI] Erro na geração inteligente:', {
+        message: error.message,
+        userId: request.projectContext.userId,
+        promptLength: request.prompt.length,
+        stack: error.stack?.substring(0, 200)
+      })
+      
+      throw new Error(`Falha na geração inteligente: ${error.message}`)
     }
   }
 
@@ -167,9 +188,9 @@ class EnhancedAIService {
       })
       
       return enhancedResponse
-    } catch (error) {
-      console.error('❌ [ENHANCED AI] Erro no chat inteligente:', error)
-      throw error
+    } catch (error: any) {
+      console.error('❌ [ENHANCED AI] Erro no chat inteligente:', error.message)
+      throw new Error(`Falha no chat inteligente: ${error.message}`)
     }
   }
 
@@ -205,9 +226,23 @@ class EnhancedAIService {
       })
 
       return analysis
-    } catch (error) {
-      console.error('❌ [ENHANCED AI] Erro na análise:', error)
-      throw error
+    } catch (error: any) {
+      console.error('❌ [ENHANCED AI] Erro na análise:', error.message)
+      
+      return {
+        intentions: [],
+        visualRequirements: {},
+        contentRequirements: {
+          tone: 'professional',
+          length: 'medium',
+          focus: ['general'],
+          urgency: 'medium',
+          personalization: 'low'
+        },
+        confidence: 0.5,
+        processingTime: 0,
+        originalPrompt: prompt
+      }
     }
   }
 
@@ -215,67 +250,127 @@ class EnhancedAIService {
     const startTime = Date.now()
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 5000)
+      const timeoutId = setTimeout(() => controller.abort(), 10000)
 
       const testResponse = await fetch(`${this.config.baseURL}/models`, {
-        headers: { 'Authorization': `Bearer ${this.config.apiKey}` },
+        headers: { 
+          'Authorization': `Bearer ${this.config.apiKey}`,
+          'Content-Type': 'application/json'
+        },
         signal: controller.signal
       })
 
       clearTimeout(timeoutId)
-      return { status: 'available', responseTime: Date.now() - startTime }
-    } catch (error) {
-      console.error('⚠️ [ENHANCED AI] Health check falhou:', error)
+      const responseTime = Date.now() - startTime
+      
+      if (testResponse.ok) {
+        console.log('✅ [ENHANCED AI] Health check bem-sucedido')
+        return { status: 'available', responseTime }
+      } else {
+        console.warn('⚠️ [ENHANCED AI] Health check retornou status não-OK:', testResponse.status)
+        return { status: 'unavailable', responseTime }
+      }
+    } catch (error: any) {
+      console.error('⚠️ [ENHANCED AI] Health check falhou:', error.message)
       return { status: 'unavailable', responseTime: Date.now() - startTime }
     }
   }
 
   private async callAI(messages: any[], modelOverride?: string): Promise<any> {
-    const model = modelOverride || this.config.defaultModel
+    let lastError: any
+    const modelsToTry = modelOverride ? [modelOverride] : [this.config.defaultModel, ...this.config.fallbackModels]
     
-    try {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), AI_CONFIG.TIMEOUT || 45000)
+    for (const model of modelsToTry) {
+      try {
+        console.log(`🤖 [ENHANCED AI] Tentando modelo: ${model}`)
+        
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 30000)
 
-      const response = await fetch(`${this.config.baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.config.apiKey}`,
-          'HTTP-Referer': process.env.FRONTEND_URL || 'http://localhost:5173',
-          'X-Title': 'MailTrendz Enhanced AI'
-        },
-        body: JSON.stringify({
+        const requestBody = {
           model,
-          messages,
+          messages: messages.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          })),
           temperature: 0.7,
           max_tokens: 1500,
           stream: false
-        }),
-        signal: controller.signal
-      })
+        }
 
-      clearTimeout(timeoutId)
+        console.log('📤 [ENHANCED AI] Enviando requisição:', {
+          model,
+          messagesCount: messages.length,
+          temperature: 0.7,
+          maxTokens: 1500
+        })
 
-      if (!response.ok) {
-        throw new Error(`OpenRouter API error: ${response.status}`)
-      }
+        const response = await fetch(`${this.config.baseURL}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.config.apiKey}`,
+            'HTTP-Referer': process.env.FRONTEND_URL || 'https://mailtrendz-frontend.onrender.com',
+            'X-Title': 'MailTrendz Enhanced AI'
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
+        })
 
-      const data: OpenRouterResponse = await response.json()
-      
-      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        throw new Error('Resposta inválida da API')
+        clearTimeout(timeoutId)
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          let errorData: any = {}
+          
+          try {
+            errorData = JSON.parse(errorText)
+          } catch {
+            errorData = { message: errorText }
+          }
+          
+          throw new Error(`OpenRouter API error (${response.status}): ${errorData.error?.message || errorData.message || 'Unknown error'}`)
+        }
+
+        const data: OpenRouterResponse = await response.json()
+        
+        if (data.error) {
+          throw new Error(`OpenRouter API error: ${data.error.message}`)
+        }
+        
+        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+          throw new Error('Resposta inválida da OpenRouter API - formato inesperado')
+        }
+        
+        console.log('✅ [ENHANCED AI] Resposta recebida com sucesso:', {
+          model,
+          tokensUsed: data.usage?.total_tokens || 0,
+          contentLength: data.choices[0].message.content.length
+        })
+        
+        return {
+          content: data.choices[0].message.content,
+          model,
+          usage: data.usage || { total_tokens: 0 }
+        }
+      } catch (error: any) {
+        lastError = error
+        console.error(`❌ [ENHANCED AI] Modelo ${model} falhou:`, {
+          message: error.message,
+          isTimeout: error.name === 'AbortError',
+          isNetworkError: error.message.includes('fetch')
+        })
+        
+        if (error.name === 'AbortError') {
+          console.log('🕐 [ENHANCED AI] Timeout detectado, tentando próximo modelo...')
+        }
+        
+        continue
       }
-      
-      return {
-        content: data.choices[0].message.content,
-        model,
-        usage: data.usage || { total_tokens: 0 }
-      }
-    } catch (error: any) {
-      console.error(`❌ [ENHANCED AI] Modelo ${model} falhou:`, error.message)
-      throw error
     }
+    
+    console.error('❌ [ENHANCED AI] Todos os modelos falharam')
+    throw new Error(`Falha em todos os modelos AI: ${lastError?.message || 'Erro desconhecido'}`)
   }
 
   private buildSmartEmailPrompt(context: ProjectContext, analysis: PromptAnalysis): string {
@@ -288,7 +383,7 @@ CONTEXTO DO PROJETO:
 - Tom: ${context.tone || 'Profissional'}
 
 ANÁLISE DO PROMPT:
-- Intenções detectadas: ${analysis.intentions.map(i => i.action).join(', ')}
+- Intenções detectadas: ${analysis.intentions.map(i => i.action).join(', ') || 'Geral'}
 - Confiança: ${Math.round(analysis.confidence * 100)}%
 - Requisitos visuais: ${Object.keys(analysis.visualRequirements).length > 0 ? 'Sim' : 'Não'}
 
@@ -302,15 +397,15 @@ DIRETRIZES INTELIGENTES:
 7. Preview text estratégico
 8. CTA contextual e persuasivo
 
-FORMATO OBRIGATÓRIO:
+FORMATO OBRIGATÓRIO (JSON válido):
 {
   "subject": "Assunto inteligente e otimizado",
   "previewText": "Preview complementar estratégico",
-  "html": "HTML responsivo e inteligente",
+  "html": "HTML responsivo e inteligente completo",
   "text": "Versão texto plano otimizada"
 }
 
-Crie um email que converte com inteligência artificial!`
+Responda APENAS com o JSON válido, sem explicações adicionais.`
   }
 
   private buildSmartChatPrompt(context: ProjectContext, analysis: PromptAnalysis): string {
@@ -324,7 +419,7 @@ CONTEXTO DO PROJETO:
 
 ANÁLISE INTELIGENTE:
 - Confiança: ${Math.round(analysis.confidence * 100)}%
-- Intenções: ${analysis.intentions.map(i => i.action).join(', ')}
+- Intenções: ${analysis.intentions.map(i => i.action).join(', ') || 'Nenhuma detectada'}
 - Foco: ${analysis.contentRequirements.focus.join(', ')}
 
 CAPACIDADES AVANÇADAS:
@@ -577,17 +672,49 @@ Responda sempre em português brasileiro de forma inteligente e contextual.`
 
   private parseEmailResponse(content: string): EmailContent {
     try {
-      const cleanContent = content.replace(/```json\n?|\n?```/g, '').trim()
+      console.log('🔍 [ENHANCED AI] Parsing resposta:', content.substring(0, 200) + '...')
+      
+      let cleanContent = content.trim()
+      
+      cleanContent = cleanContent.replace(/```json\n?|\n?```/g, '')
+      cleanContent = cleanContent.replace(/^```|```$/g, '')
+      
+      const jsonMatch = cleanContent.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        cleanContent = jsonMatch[0]
+      }
+      
       const parsed = JSON.parse(cleanContent)
       
-      return {
+      const result = {
         subject: parsed.subject || 'Email Inteligente Gerado',
         previewText: parsed.previewText || '',
         html: parsed.html || '<p>Conteúdo inteligente gerado por IA</p>',
-        text: parsed.text || 'Conteúdo inteligente gerado por IA'
+        text: parsed.text || parsed.html?.replace(/<[^>]*>/g, '') || 'Conteúdo inteligente gerado por IA'
       }
-    } catch (error) {
-      throw new Error('Falha ao processar resposta da IA inteligente')
+      
+      console.log('✅ [ENHANCED AI] Parse bem-sucedido:', {
+        hasSubject: !!result.subject,
+        hasHtml: !!result.html,
+        htmlLength: result.html.length
+      })
+      
+      return result
+    } catch (error: any) {
+      console.error('❌ [ENHANCED AI] Erro no parse:', {
+        error: error.message,
+        contentPreview: content.substring(0, 100)
+      })
+      
+      return {
+        subject: 'Email Gerado por IA',
+        previewText: 'Conteúdo criado automaticamente',
+        html: `<div style="padding: 20px; font-family: Arial, sans-serif;">
+          <h2>Email Gerado por IA</h2>
+          <p>${content.replace(/[<>]/g, '').substring(0, 500)}</p>
+        </div>`,
+        text: content.replace(/[<>]/g, '').substring(0, 500)
+      }
     }
   }
 
