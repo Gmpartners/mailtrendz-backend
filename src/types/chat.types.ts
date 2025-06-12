@@ -2,9 +2,9 @@ import { Types } from 'mongoose'
 
 export interface IChat {
   _id: Types.ObjectId
-  id?: string // ADICIONADO PARA COMPATIBILIDADE - será sempre o _id.toString()
-  userId: string | Types.ObjectId // ✅ CORRIGIDO: aceita ambos os tipos
-  projectId: string | Types.ObjectId // ✅ CORRIGIDO: aceita ambos os tipos
+  id?: string
+  userId: string | Types.ObjectId
+  projectId: string | Types.ObjectId
   title: string
   messages: Types.ObjectId[]
   isActive: boolean
@@ -12,7 +12,6 @@ export interface IChat {
     totalMessages: number
     lastActivity: Date
     emailUpdates: number
-    // ✅ ADICIONADO: Propriedades da IA melhorada
     enhancedAIEnabled?: boolean
     aiMode?: 'standard' | 'enhanced' | 'adaptive'
     enhancedInteractions?: number
@@ -24,10 +23,11 @@ export interface IChat {
 
 export interface IMessage {
   _id: Types.ObjectId
-  id?: string // ADICIONADO PARA COMPATIBILIDADE - será sempre o _id.toString()
-  chatId: string | Types.ObjectId // ✅ CORRIGIDO: aceita ambos os tipos
+  id?: string
+  chatId: string | Types.ObjectId
   type: 'user' | 'ai' | 'system'
   content: string
+  createdAt: Date
   metadata?: {
     emailUpdated?: boolean
     suggestions?: string[]
@@ -35,7 +35,6 @@ export interface IMessage {
     tokens?: number
     confidence?: number
     executionTime?: number
-    // ✅ ADICIONADO: Metadata da IA melhorada
     aiMode?: 'standard' | 'enhanced' | 'adaptive' | 'fallback' | 'error'
     enhancedFeatures?: string[]
     analysis?: {
@@ -45,8 +44,9 @@ export interface IMessage {
     }
     error?: boolean
   }
-  createdAt: Date
 }
+
+export interface IChatMessage extends IMessage {}
 
 export interface CreateChatDto {
   projectId: string
@@ -78,7 +78,6 @@ export interface ChatResponse {
     emailUpdates: number
     lastActivity: Date
   }
-  // ✅ ADICIONADO: Capacidades da IA melhorada
   aiCapabilities?: {
     enhancedMode: boolean
     currentMode: 'standard' | 'enhanced' | 'adaptive'
@@ -104,25 +103,19 @@ export interface ChatHistoryResponse {
 }
 
 export interface MessageResponse {
-  message: IMessage
-  aiResponse?: {
-    content: string
-    suggestions?: string[]
-    emailUpdated: boolean
-    metadata: {
-      model: string
-      tokens: number
-      executionTime: number
-      confidence?: number
-      // ✅ ADICIONADO: Metadata da IA melhorada
-      aiMode?: string
-      enhancedFeatures?: string[]
-      hasAnalysis?: boolean
-      hasEnhancedContent?: boolean
-    }
-    // ✅ ADICIONADO: Dados da IA melhorada
-    analysis?: any
-    enhancedContent?: any
+  userMessage: IMessage
+  aiMessage: IMessage
+  projectUpdated?: boolean
+}
+
+export interface MessagesResponse {
+  messages: IMessage[]
+  pagination: {
+    currentPage: number
+    totalPages: number
+    totalItems: number
+    hasNext: boolean
+    hasPrev: boolean
   }
 }
 

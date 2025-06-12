@@ -120,6 +120,7 @@ export interface EmailMetadata {
   estimatedRenderTime: number
   supportedClients: string[]
   enhancedFeatures: string[]
+  processingTime: number
 }
 
 export interface UserHistory {

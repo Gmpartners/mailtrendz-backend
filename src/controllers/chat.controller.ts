@@ -7,17 +7,12 @@ import { logger } from '../utils/logger'
 import { asyncHandler, createNotFoundError } from '../middleware/error.middleware'
 
 class ChatController {
-  // Criar novo chat
   createChat = asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id
     const createChatDto: CreateChatDto = req.body
 
-    console.log('🎯 [CHAT CONTROLLER] Criando chat:', { userId, projectId: createChatDto.projectId })
-
     try {
       const chatResponse = await ChatService.createChat(userId, createChatDto)
-
-      console.log('✅ [CHAT CONTROLLER] Chat criado:', { chatId: chatResponse.chat?.id })
 
       res.status(HTTP_STATUS.CREATED).json({
         success: true,
@@ -30,15 +25,11 @@ class ChatController {
     }
   })
 
-  // 🔥 CORREÇÃO CRÍTICA: getChatByProject simplificado
   getChatByProject = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { projectId } = req.params
     const userId = req.user!.id
 
-    console.log('🎯 [CHAT CONTROLLER] getChatByProject:', { projectId, userId })
-
     try {
-      // 🔥 CORREÇÃO: Validações básicas apenas
       if (!projectId?.trim()) {
         return res.status(400).json({
           success: false,
@@ -47,24 +38,8 @@ class ChatController {
         })
       }
 
-      if (!userId?.trim()) {
-        return res.status(401).json({
-          success: false,
-          message: 'Usuário não autenticado',
-          error: 'INVALID_USER_ID'
-        })
-      }
-
-      // 🔥 CORREÇÃO: Chamada direta sem timeout artificial
       const chatResponse = await ChatService.getChatByProject(projectId.trim(), userId.trim())
 
-      console.log('📥 [CHAT CONTROLLER] Resposta recebida:', {
-        hasChat: !!chatResponse?.chat,
-        chatId: chatResponse?.chat?.id,
-        messagesCount: chatResponse?.messages?.length || 0
-      })
-
-      // 🔥 CORREÇÃO: Validação simples
       if (!chatResponse?.chat) {
         return res.status(500).json({
           success: false,
@@ -73,13 +48,11 @@ class ChatController {
         })
       }
 
-      // 🔥 CORREÇÃO: Resposta direta sem normalização extra
       const response = {
         success: true,
         data: {
           chat: {
             ...chatResponse.chat,
-            // Garantir ID válido
             id: chatResponse.chat.id || chatResponse.chat._id?.toString() || '',
             title: chatResponse.chat.title || 'Chat sem título',
             isActive: chatResponse.chat.isActive !== undefined ? chatResponse.chat.isActive : true,
@@ -102,22 +75,9 @@ class ChatController {
         }
       }
 
-      console.log('📤 [CHAT CONTROLLER] Resposta enviada:', {
-        chatId: response.data.chat.id,
-        hasValidId: !!(response.data.chat.id && response.data.chat.id !== ''),
-        messagesCount: response.data.messages.length
-      })
-
       res.json(response)
 
     } catch (error: any) {
-      console.error('❌ [CHAT CONTROLLER] Erro em getChatByProject:', {
-        error: error.message,
-        projectId,
-        userId
-      })
-
-      // 🔥 CORREÇÃO: Error handling simplificado
       let statusCode = 500
       let errorCode = 'INTERNAL_ERROR'
       let userMessage = 'Erro interno do servidor'
@@ -130,10 +90,6 @@ class ChatController {
         statusCode = 400
         errorCode = 'INVALID_ID_FORMAT'
         userMessage = 'Formato de ID inválido'
-      } else if (error.message?.includes('não autenticado')) {
-        statusCode = 401
-        errorCode = 'UNAUTHORIZED'
-        userMessage = 'Usuário não autorizado'
       }
 
       res.status(statusCode).json({
@@ -144,17 +100,12 @@ class ChatController {
     }
   })
 
-  // Buscar chat por ID
   getChatById = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params
     const userId = req.user!.id
 
-    console.log('🎯 [CHAT CONTROLLER] getChatById:', { id, userId })
-
     try {
       const chatResponse = await ChatService.getChatById(id, userId)
-
-      console.log('✅ [CHAT CONTROLLER] Chat encontrado:', { chatId: chatResponse.chat?.id })
 
       res.json({
         success: true,
@@ -166,20 +117,12 @@ class ChatController {
     }
   })
 
-  // 🔥 CORREÇÃO: sendMessage simplificado
   sendMessage = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { chatId } = req.params
     const userId = req.user!.id
     const messageDto: SendMessageDto = req.body
 
-    console.log('🎯 [CHAT CONTROLLER] sendMessage:', {
-      chatId,
-      userId,
-      contentLength: messageDto?.content?.length || 0
-    })
-
     try {
-      // 🔥 CORREÇÃO: Validações básicas
       if (!chatId?.trim()) {
         return res.status(400).json({
           success: false,
@@ -206,12 +149,6 @@ class ChatController {
 
       const messageResponse = await ChatService.sendMessage(chatId, userId, messageDto)
 
-      console.log('✅ [CHAT CONTROLLER] Mensagem enviada:', {
-        chatId,
-        hasUserMessage: !!messageResponse.message,
-        hasAiResponse: !!messageResponse.aiResponse
-      })
-
       res.status(HTTP_STATUS.CREATED).json({
         success: true,
         message: 'Mensagem enviada com sucesso!',
@@ -223,13 +160,10 @@ class ChatController {
     }
   })
 
-  // Buscar histórico de mensagens
   getChatHistory = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { chatId } = req.params
     const userId = req.user!.id
     const { page = 1, limit = 50 } = req.query
-
-    console.log('🎯 [CHAT CONTROLLER] getChatHistory:', { chatId, page, limit })
 
     try {
       const historyResponse = await ChatService.getChatHistory(
@@ -238,10 +172,6 @@ class ChatController {
         parseInt(page as string),
         parseInt(limit as string)
       )
-
-      console.log('✅ [CHAT CONTROLLER] Histórico carregado:', {
-        messagesCount: historyResponse.messages?.length || 0
-      })
 
       res.json({
         success: true,
@@ -253,13 +183,10 @@ class ChatController {
     }
   })
 
-  // Atualizar chat
   updateChat = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params
     const userId = req.user!.id
     const updates: UpdateChatDto = req.body
-
-    console.log('🎯 [CHAT CONTROLLER] updateChat:', { chatId: id, updates: Object.keys(updates) })
 
     try {
       const chat = await ChatService.updateChat(id, userId, updates)
@@ -267,8 +194,6 @@ class ChatController {
       if (!chat) {
         throw createNotFoundError('Chat')
       }
-
-      console.log('✅ [CHAT CONTROLLER] Chat atualizado:', { chatId: chat.id })
 
       res.json({
         success: true,
@@ -281,12 +206,9 @@ class ChatController {
     }
   })
 
-  // Deletar chat
   deleteChat = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params
     const userId = req.user!.id
-
-    console.log('🎯 [CHAT CONTROLLER] deleteChat:', { id, userId })
 
     try {
       const deleted = await ChatService.deleteChat(id, userId)
@@ -294,8 +216,6 @@ class ChatController {
       if (!deleted) {
         throw createNotFoundError('Chat')
       }
-
-      console.log('✅ [CHAT CONTROLLER] Chat deletado:', { chatId: id })
 
       res.json({
         success: true,
@@ -307,7 +227,6 @@ class ChatController {
     }
   })
 
-  // Buscar chats do usuário
   getUserChats = asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id
     const {
@@ -321,8 +240,6 @@ class ChatController {
       sortBy = 'updatedAt',
       sortOrder = 'desc'
     } = req.query
-
-    console.log('🎯 [CHAT CONTROLLER] getUserChats:', { userId, projectId, page, limit })
 
     try {
       const filters: ChatFilters = {
@@ -344,8 +261,6 @@ class ChatController {
 
       const chats = await ChatService.getUserChats(userId, filters)
 
-      console.log('✅ [CHAT CONTROLLER] Chats carregados:', { count: chats.length })
-
       res.json({
         success: true,
         data: { chats }
@@ -356,16 +271,11 @@ class ChatController {
     }
   })
 
-  // Buscar chats ativos
   getActiveChats = asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id
 
-    console.log('🎯 [CHAT CONTROLLER] getActiveChats:', { userId })
-
     try {
       const chats = await ChatService.getActiveChats(userId)
-
-      console.log('✅ [CHAT CONTROLLER] Chats ativos:', { count: chats.length })
 
       res.json({
         success: true,
@@ -377,12 +287,9 @@ class ChatController {
     }
   })
 
-  // Buscar analytics do chat
   getChatAnalytics = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params
     const userId = req.user!.id
-
-    console.log('🎯 [CHAT CONTROLLER] getChatAnalytics:', { id, userId })
 
     try {
       const analytics = await ChatService.getChatAnalytics(id, userId)
@@ -390,8 +297,6 @@ class ChatController {
       if (!analytics) {
         throw createNotFoundError('Chat')
       }
-
-      console.log('✅ [CHAT CONTROLLER] Analytics carregados:', { chatId: analytics.chatId })
 
       res.json({
         success: true,
@@ -403,13 +308,10 @@ class ChatController {
     }
   })
 
-  // Buscar mensagens recentes do chat
   getRecentMessages = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { chatId } = req.params
     const userId = req.user!.id
     const { limit = 10 } = req.query
-
-    console.log('🎯 [CHAT CONTROLLER] getRecentMessages:', { chatId, limit })
 
     try {
       const historyResponse = await ChatService.getChatHistory(
@@ -418,10 +320,6 @@ class ChatController {
         1,
         parseInt(limit as string)
       )
-
-      console.log('✅ [CHAT CONTROLLER] Mensagens recentes:', {
-        count: historyResponse.messages?.length || 0
-      })
 
       res.json({
         success: true,
@@ -436,12 +334,9 @@ class ChatController {
     }
   })
 
-  // Marcar chat como ativo/inativo
   toggleChatStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params
     const userId = req.user!.id
-
-    console.log('🎯 [CHAT CONTROLLER] toggleChatStatus:', { id, userId })
 
     try {
       const currentChat = await ChatService.getChatById(id, userId)
@@ -450,8 +345,6 @@ class ChatController {
       const chat = await ChatService.updateChat(id, userId, { 
         isActive: newStatus 
       })
-
-      console.log('✅ [CHAT CONTROLLER] Status alterado:', { chatId: chat?.id, newStatus })
 
       res.json({
         success: true,
@@ -464,11 +357,8 @@ class ChatController {
     }
   })
 
-  // Buscar estatísticas gerais de chat do usuário
   getUserChatStats = asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id
-
-    console.log('🎯 [CHAT CONTROLLER] getUserChatStats:', { userId })
 
     try {
       const filters: ChatFilters = {
@@ -494,11 +384,6 @@ class ChatController {
         }).length
       }
 
-      console.log('✅ [CHAT CONTROLLER] Estatísticas calculadas:', {
-        totalChats: stats.totalChats,
-        activeChats: stats.activeChats
-      })
-
       res.json({
         success: true,
         data: { stats }
@@ -509,7 +394,6 @@ class ChatController {
     }
   })
 
-  // Health check
   healthCheck = asyncHandler(async (req: AuthRequest, res: Response) => {
     const health = {
       status: 'ok',

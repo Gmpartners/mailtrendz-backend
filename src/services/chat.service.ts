@@ -5,12 +5,15 @@ import { Project } from '../models/Project.model'
 import { User } from '../models/User.model'
 import {
   IChat,
-  IChatMessage,
+  IMessage,
   CreateChatDto,
   SendMessageDto,
   ChatFilters,
   ChatResponse,
-  MessagesResponse
+  MessageResponse,
+  MessagesResponse,
+  ChatHistoryResponse,
+  ChatAnalytics
 } from '../types/chat.types'
 import { PAGINATION } from '../utils/constants'
 import { logger } from '../utils/logger'
@@ -23,6 +26,7 @@ const convertChatToInterface = (chat: IChatDocument): IChat => {
     userId: chat.userId,
     projectId: chat.projectId,
     title: chat.title,
+    messages: chat.messages,
     isActive: chat.isActive,
     metadata: chat.metadata,
     createdAt: chat.createdAt,
@@ -30,94 +34,20 @@ const convertChatToInterface = (chat: IChatDocument): IChat => {
   }
 }
 
-const convertMessageToInterface = (message: IChatMessageDocument): IChatMessage => {
+const convertMessageToInterface = (message: IChatMessageDocument): IMessage => {
   return {
     _id: message._id as Types.ObjectId,
     id: message._id.toString(),
     chatId: message.chatId,
     type: message.type,
     content: message.content,
-    timestamp: message.timestamp,
+    createdAt: message.createdAt,
     metadata: message.metadata
   }
 }
 
 class ChatService {
-  async getChatsForUser(userId: string, filters: ChatFilters): Promise<ChatResponse> {
-    try {
-      const query: any = { userId: new Types.ObjectId(userId) }
-      
-      if (filters.projectId) {
-        query.projectId = new Types.ObjectId(filters.projectId)
-      }
-      
-      if (filters.search) {
-        query.$or = [
-          { title: { $regex: filters.search, $options: 'i' } },
-          { 'metadata.lastMessage': { $regex: filters.search, $options: 'i' } }
-        ]
-      }
-
-      const page = filters.pagination?.page || 1
-      const limit = filters.pagination?.limit || PAGINATION.DEFAULT_LIMIT
-      const skip = (page - 1) * limit
-
-      const [chats, totalItems] = await Promise.all([
-        Chat.find(query)
-          .sort({ 'metadata.lastActivity': -1 })
-          .skip(skip)
-          .limit(limit)
-          .populate('projectId', 'name type'),
-        Chat.countDocuments(query)
-      ])
-
-      const totalPages = Math.ceil(totalItems / limit)
-
-      return {
-        chats: chats.map(convertChatToInterface),
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalItems,
-          hasNext: page < totalPages,
-          hasPrev: page > 1
-        }
-      }
-    } catch (error) {
-      logger.error('Get chats for user failed:', error)
-      throw error
-    }
-  }
-
-  async getChatById(chatId: string, userId: string): Promise<IChat | null> {
-    try {
-      const chat = await Chat.findOne({
-        _id: chatId,
-        userId: new Types.ObjectId(userId)
-      }).populate('projectId', 'name type')
-
-      return chat ? convertChatToInterface(chat) : null
-    } catch (error) {
-      logger.error('Get chat by ID failed:', error)
-      throw error
-    }
-  }
-
-  async getChatByProject(projectId: string, userId: string): Promise<IChat | null> {
-    try {
-      const chat = await Chat.findOne({
-        projectId: new Types.ObjectId(projectId),
-        userId: new Types.ObjectId(userId)
-      }).populate('projectId', 'name type')
-
-      return chat ? convertChatToInterface(chat) : null
-    } catch (error) {
-      logger.error('Get chat by project failed:', error)
-      throw error
-    }
-  }
-
-  async createChat(userId: string, createChatDto: CreateChatDto): Promise<IChat> {
+  async createChat(userId: string, createChatDto: CreateChatDto): Promise<ChatResponse> {
     try {
       const chat = new Chat({
         userId: new Types.ObjectId(userId),
@@ -127,26 +57,93 @@ class ChatService {
         metadata: {
           totalMessages: 0,
           lastActivity: new Date(),
-          enhancedMode: true
+          emailUpdates: 0,
+          enhancedAIEnabled: true
         }
       })
 
       await chat.save()
 
-      logger.info('Chat created', {
-        chatId: chat._id.toString(),
-        userId,
-        projectId: createChatDto.projectId
-      })
+      const project = createChatDto.projectId ? 
+        await Project.findById(createChatDto.projectId) : null
 
-      return convertChatToInterface(chat)
+      return {
+        chat: convertChatToInterface(chat),
+        messages: [],
+        project: project ? {
+          id: project._id.toString(),
+          name: project.name,
+          type: project.type
+        } : {
+          id: '',
+          name: 'Chat Geral',
+          type: 'general'
+        },
+        stats: {
+          totalMessages: 0,
+          userMessages: 0,
+          aiMessages: 0,
+          emailUpdates: 0,
+          lastActivity: new Date()
+        }
+      }
     } catch (error) {
       logger.error('Create chat failed:', error)
       throw error
     }
   }
 
-  async getMessagesForChat(chatId: string, userId: string, filters: any): Promise<MessagesResponse> {
+  async getChatByProject(projectId: string, userId: string): Promise<ChatResponse> {
+    try {
+      const chat = await Chat.findOne({
+        projectId: new Types.ObjectId(projectId),
+        userId: new Types.ObjectId(userId)
+      })
+
+      const project = await Project.findById(projectId)
+
+      if (!chat) {
+        const newChatDto: CreateChatDto = {
+          projectId,
+          title: project?.name || 'Novo Chat'
+        }
+        return await this.createChat(userId, newChatDto)
+      }
+
+      const messages = await ChatMessage.find({ chatId: chat._id })
+        .sort({ createdAt: 1 })
+        .limit(50)
+
+      const userMessages = messages.filter(m => m.type === 'user').length
+      const aiMessages = messages.filter(m => m.type === 'ai').length
+
+      return {
+        chat: convertChatToInterface(chat),
+        messages: messages.map(convertMessageToInterface),
+        project: project ? {
+          id: project._id.toString(),
+          name: project.name,
+          type: project.type
+        } : {
+          id: projectId,
+          name: 'Projeto',
+          type: 'email'
+        },
+        stats: {
+          totalMessages: messages.length,
+          userMessages,
+          aiMessages,
+          emailUpdates: chat.metadata.emailUpdates,
+          lastActivity: chat.metadata.lastActivity
+        }
+      }
+    } catch (error) {
+      logger.error('Get chat by project failed:', error)
+      throw error
+    }
+  }
+
+  async getChatById(chatId: string, userId: string): Promise<ChatResponse> {
     try {
       const chat = await Chat.findOne({
         _id: chatId,
@@ -157,19 +154,65 @@ class ChatService {
         throw new Error('Chat não encontrado')
       }
 
-      const page = filters.page || 1
-      const limit = filters.limit || 50
+      const messages = await ChatMessage.find({ chatId: chat._id })
+        .sort({ createdAt: 1 })
+
+      const project = chat.projectId ? 
+        await Project.findById(chat.projectId) : null
+
+      const userMessages = messages.filter(m => m.type === 'user').length
+      const aiMessages = messages.filter(m => m.type === 'ai').length
+
+      return {
+        chat: convertChatToInterface(chat),
+        messages: messages.map(convertMessageToInterface),
+        project: project ? {
+          id: project._id.toString(),
+          name: project.name,
+          type: project.type
+        } : {
+          id: '',
+          name: 'Chat Geral',
+          type: 'general'
+        },
+        stats: {
+          totalMessages: messages.length,
+          userMessages,
+          aiMessages,
+          emailUpdates: chat.metadata.emailUpdates,
+          lastActivity: chat.metadata.lastActivity
+        }
+      }
+    } catch (error) {
+      logger.error('Get chat by ID failed:', error)
+      throw error
+    }
+  }
+
+  async getChatHistory(chatId: string, userId: string, page: number = 1, limit: number = 50): Promise<ChatHistoryResponse> {
+    try {
+      const chat = await Chat.findOne({
+        _id: chatId,
+        userId: new Types.ObjectId(userId)
+      })
+
+      if (!chat) {
+        throw new Error('Chat não encontrado')
+      }
+
       const skip = (page - 1) * limit
 
       const [messages, totalItems] = await Promise.all([
         ChatMessage.find({ chatId: new Types.ObjectId(chatId) })
-          .sort({ timestamp: 1 })
+          .sort({ createdAt: 1 })
           .skip(skip)
           .limit(limit),
         ChatMessage.countDocuments({ chatId: new Types.ObjectId(chatId) })
       ])
 
       const totalPages = Math.ceil(totalItems / limit)
+      const userMessages = messages.filter(m => m.type === 'user').length
+      const aiMessages = messages.filter(m => m.type === 'ai').length
 
       return {
         messages: messages.map(convertMessageToInterface),
@@ -179,26 +222,127 @@ class ChatService {
           totalItems,
           hasNext: page < totalPages,
           hasPrev: page > 1
+        },
+        stats: {
+          totalMessages: messages.length,
+          userMessages,
+          aiMessages,
+          averageResponseTime: 0
         }
       }
     } catch (error) {
-      logger.error('Get messages for chat failed:', error)
+      logger.error('Get chat history failed:', error)
       throw error
     }
   }
 
-  async sendMessage(chatId: string, userId: string, messageDto: SendMessageDto): Promise<{
-    userMessage: IChatMessage
-    aiMessage: IChatMessage
-    projectUpdated?: boolean
-  }> {
+  async getUserChats(userId: string, filters: ChatFilters): Promise<IChat[]> {
     try {
-      console.log('💬 [CHAT SERVICE] Processando mensagem com Enhanced AI:', {
-        chatId,
-        userId,
-        messageLength: messageDto.content.length
-      })
+      const query: any = { userId: new Types.ObjectId(userId) }
+      
+      if (filters.projectId) {
+        query.projectId = new Types.ObjectId(filters.projectId)
+      }
 
+      if (filters.isActive !== undefined) {
+        query.isActive = filters.isActive
+      }
+      
+      if (filters.search) {
+        query.$or = [
+          { title: { $regex: filters.search, $options: 'i' } }
+        ]
+      }
+
+      if (filters.dateFrom || filters.dateTo) {
+        query.createdAt = {}
+        if (filters.dateFrom) query.createdAt.$gte = filters.dateFrom
+        if (filters.dateTo) query.createdAt.$lte = filters.dateTo
+      }
+
+      const page = filters.pagination?.page || 1
+      const limit = filters.pagination?.limit || PAGINATION.DEFAULT_LIMIT
+      const skip = (page - 1) * limit
+
+      const sortField = filters.sort?.field || 'updatedAt'
+      const sortOrder = filters.sort?.order === 'asc' ? 1 : -1
+      const sortObj: any = {}
+      sortObj[sortField] = sortOrder
+
+      const chats = await Chat.find(query)
+        .sort(sortObj)
+        .skip(skip)
+        .limit(limit)
+
+      return chats.map(convertChatToInterface)
+    } catch (error) {
+      logger.error('Get user chats failed:', error)
+      throw error
+    }
+  }
+
+  async getActiveChats(userId: string): Promise<IChat[]> {
+    try {
+      const chats = await Chat.find({
+        userId: new Types.ObjectId(userId),
+        isActive: true
+      })
+      .sort({ 'metadata.lastActivity': -1 })
+      .limit(10)
+
+      return chats.map(convertChatToInterface)
+    } catch (error) {
+      logger.error('Get active chats failed:', error)
+      throw error
+    }
+  }
+
+  async getChatAnalytics(chatId: string, userId: string): Promise<ChatAnalytics> {
+    try {
+      const chat = await Chat.findOne({
+        _id: chatId,
+        userId: new Types.ObjectId(userId)
+      }).populate('projectId')
+
+      if (!chat) {
+        throw new Error('Chat não encontrado')
+      }
+
+      const messages = await ChatMessage.find({ chatId: new Types.ObjectId(chatId) })
+
+      const userMessages = messages.filter(m => m.type === 'user').length
+      const aiMessages = messages.filter(m => m.type === 'ai').length
+      const emailUpdates = messages.filter(m => m.metadata?.emailUpdated).length
+
+      const project = chat.projectId as any
+
+      return {
+        chatId: chat._id.toString(),
+        projectName: project?.name || 'Chat Geral',
+        stats: {
+          totalMessages: messages.length,
+          userMessages,
+          aiMessages,
+          emailUpdates,
+          averageResponseTime: 0,
+          sessionDuration: 0
+        },
+        timeline: [],
+        wordCloud: [],
+        sentiment: {
+          positive: 0,
+          neutral: 100,
+          negative: 0
+        }
+      }
+    } catch (error) {
+      logger.error('Get chat analytics failed:', error)
+      throw error
+    }
+  }
+
+  async sendMessage(chatId: string, userId: string, messageDto: SendMessageDto): Promise<MessageResponse> {
+    try {
       const chat = await Chat.findOne({
         _id: chatId,
         userId: new Types.ObjectId(userId)
@@ -212,7 +356,6 @@ class ChatService {
         chatId: new Types.ObjectId(chatId),
         type: 'user',
         content: messageDto.content,
-        timestamp: new Date(),
         metadata: {
           enhancedProcessing: true
         }
@@ -221,13 +364,13 @@ class ChatService {
       await userMessage.save()
 
       const recentMessages = await ChatMessage.find({ chatId: new Types.ObjectId(chatId) })
-        .sort({ timestamp: -1 })
+        .sort({ createdAt: -1 })
         .limit(10)
 
       const chatHistory = recentMessages.reverse().map(msg => ({
         role: msg.type === 'user' ? 'user' : 'assistant',
         content: msg.content,
-        timestamp: msg.timestamp
+        timestamp: msg.createdAt
       }))
 
       let projectContext: any = {
@@ -259,14 +402,13 @@ class ChatService {
         chatId: new Types.ObjectId(chatId),
         type: 'ai',
         content: enhancedResponse.response,
-        timestamp: new Date(),
         metadata: {
-          shouldUpdateEmail: enhancedResponse.shouldUpdateEmail,
+          emailUpdated: enhancedResponse.shouldUpdateEmail,
           suggestions: enhancedResponse.suggestions,
           model: enhancedResponse.metadata.model,
           confidence: enhancedResponse.metadata.confidence,
           enhancedFeatures: enhancedResponse.metadata.enhancedFeatures,
-          processingTime: enhancedResponse.metadata.processingTime
+          executionTime: enhancedResponse.metadata.processingTime
         }
       })
 
@@ -275,8 +417,7 @@ class ChatService {
       await Chat.findByIdAndUpdate(chatId, {
         $inc: { 'metadata.totalMessages': 2 },
         $set: { 
-          'metadata.lastActivity': new Date(),
-          'metadata.lastMessage': messageDto.content.substring(0, 100)
+          'metadata.lastActivity': new Date()
         }
       })
 
@@ -293,21 +434,10 @@ class ChatService {
             $inc: { 'metadata.version': 1 }
           })
           projectUpdated = true
-
-          console.log('✅ [CHAT SERVICE] Projeto atualizado automaticamente via Enhanced AI')
         } catch (updateError) {
-          console.error('❌ [CHAT SERVICE] Erro ao atualizar projeto:', updateError)
+          logger.error('Project update failed:', updateError)
         }
       }
-
-      logger.info('Message processed with Enhanced AI', {
-        chatId,
-        userId,
-        shouldUpdateEmail: enhancedResponse.shouldUpdateEmail,
-        projectUpdated,
-        confidence: enhancedResponse.metadata.confidence,
-        suggestions: enhancedResponse.suggestions.length
-      })
 
       return {
         userMessage: convertMessageToInterface(userMessage),
@@ -315,7 +445,7 @@ class ChatService {
         projectUpdated
       }
     } catch (error) {
-      logger.error('Send message with Enhanced AI failed:', error)
+      logger.error('Send message failed:', error)
       throw error
     }
   }
@@ -329,7 +459,6 @@ class ChatService {
       )
 
       if (chat) {
-        logger.info('Chat updated', { chatId, userId, updates: Object.keys(updates) })
         return convertChatToInterface(chat)
       }
 
@@ -358,37 +487,9 @@ class ChatService {
         await Project.findByIdAndUpdate(chat.projectId, { $unset: { chatId: 1 } })
       }
 
-      logger.info('Chat deleted', { chatId, userId })
       return true
     } catch (error) {
       logger.error('Delete chat failed:', error)
-      throw error
-    }
-  }
-
-  async getChatStats(userId: string): Promise<any> {
-    try {
-      const stats = await Chat.aggregate([
-        { $match: { userId: new Types.ObjectId(userId) } },
-        {
-          $group: {
-            _id: null,
-            totalChats: { $sum: 1 },
-            totalMessages: { $sum: '$metadata.totalMessages' },
-            activeChats: {
-              $sum: { $cond: [{ $eq: ['$isActive', true] }, 1, 0] }
-            }
-          }
-        }
-      ])
-
-      return stats[0] || {
-        totalChats: 0,
-        totalMessages: 0,
-        activeChats: 0
-      }
-    } catch (error) {
-      logger.error('Get chat stats failed:', error)
       throw error
     }
   }
