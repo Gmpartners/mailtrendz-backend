@@ -49,10 +49,54 @@ const convertMessageToInterface = (message: IChatMessageDocument): IMessage => {
 class ChatService {
   async createChat(userId: string, createChatDto: CreateChatDto): Promise<ChatResponse> {
     try {
+      // ✅ CORREÇÃO: Verificar se já existe chat para o projeto
+      if (createChatDto.projectId) {
+        const existingChat = await Chat.findOne({
+          userId: new Types.ObjectId(userId),
+          projectId: new Types.ObjectId(createChatDto.projectId)
+        })
+
+        if (existingChat) {
+          logger.info('Chat already exists for project, returning existing', { 
+            chatId: existingChat._id, 
+            projectId: createChatDto.projectId 
+          })
+
+          // Buscar mensagens do chat existente
+          const messages = await ChatMessage.find({ chatId: existingChat._id })
+            .sort({ createdAt: 1 })
+            .limit(50)
+
+          const project = await Project.findById(createChatDto.projectId)
+
+          return {
+            chat: convertChatToInterface(existingChat),
+            messages: messages.map(convertMessageToInterface),
+            project: project ? {
+              id: project._id.toString(),
+              name: project.name,
+              type: project.type
+            } : {
+              id: createChatDto.projectId,
+              name: 'Projeto',
+              type: 'email'
+            },
+            stats: {
+              totalMessages: messages.length,
+              userMessages: messages.filter(m => m.type === 'user').length,
+              aiMessages: messages.filter(m => m.type === 'ai').length,
+              emailUpdates: existingChat.metadata.emailUpdates,
+              lastActivity: existingChat.metadata.lastActivity
+            }
+          }
+        }
+      }
+
+      // Criar novo chat
       const chat = new Chat({
         userId: new Types.ObjectId(userId),
         projectId: createChatDto.projectId ? new Types.ObjectId(createChatDto.projectId) : undefined,
-        title: createChatDto.title || 'Novo Chat Inteligente',
+        title: createChatDto.title || 'Chat Inteligente',
         isActive: true,
         metadata: {
           totalMessages: 0,
@@ -64,8 +108,21 @@ class ChatService {
 
       await chat.save()
 
+      // ✅ CORREÇÃO: Vincular chat ao projeto
+      if (createChatDto.projectId) {
+        await Project.findByIdAndUpdate(createChatDto.projectId, {
+          chatId: chat._id
+        })
+      }
+
       const project = createChatDto.projectId ? 
         await Project.findById(createChatDto.projectId) : null
+
+      logger.info('New chat created successfully', { 
+        chatId: chat._id, 
+        projectId: createChatDto.projectId,
+        userId 
+      })
 
       return {
         chat: convertChatToInterface(chat),
@@ -95,39 +152,98 @@ class ChatService {
 
   async getChatByProject(projectId: string, userId: string): Promise<ChatResponse> {
     try {
-      const chat = await Chat.findOne({
+      console.log('🔍 [CHAT SERVICE] Buscando chat por projeto:', { projectId, userId })
+
+      // ✅ CORREÇÃO: Busca mais robusta
+      let chat = await Chat.findOne({
         projectId: new Types.ObjectId(projectId),
         userId: new Types.ObjectId(userId)
       })
 
       const project = await Project.findById(projectId)
 
-      if (!chat) {
-        const newChatDto: CreateChatDto = {
-          projectId,
-          title: project?.name || 'Novo Chat'
-        }
-        return await this.createChat(userId, newChatDto)
+      if (!project) {
+        throw new Error('Projeto não encontrado')
       }
 
+      // Se não existe chat, criar automaticamente
+      if (!chat) {
+        console.log('📝 [CHAT SERVICE] Chat não existe, criando automaticamente...')
+        
+        chat = new Chat({
+          userId: new Types.ObjectId(userId),
+          projectId: new Types.ObjectId(projectId),
+          title: `Chat - ${project.name}`,
+          isActive: true,
+          metadata: {
+            totalMessages: 0,
+            lastActivity: new Date(),
+            emailUpdates: 0,
+            enhancedAIEnabled: true
+          }
+        })
+
+        await chat.save()
+
+        // Vincular ao projeto
+        await Project.findByIdAndUpdate(projectId, {
+          chatId: chat._id
+        })
+
+        // ✅ NOVO: Criar mensagem de boas-vindas automaticamente
+        const welcomeMessage = new ChatMessage({
+          chatId: chat._id,
+          type: 'ai',
+          content: `Olá! 👋 Este é o chat inteligente do seu projeto "${project.name}". 
+
+Posso ajudar você a:
+• ✏️ Editar o conteúdo do email
+• 🎨 Alterar cores e design
+• 📝 Melhorar textos e títulos
+• 🚀 Otimizar para conversão
+
+**Como usar:**
+- Seja específico: "mude o botão para azul" 
+- Peça melhorias: "deixe o título mais urgente"
+- Solicite mudanças: "adicione um desconto de 20%"
+
+O projeto atual tem o conteúdo carregado. Diga o que gostaria de modificar!`,
+          metadata: {
+            isWelcome: true,
+            enhancedFeatures: ['contexto-projeto', 'modificacao-automatica']
+          }
+        })
+
+        await welcomeMessage.save()
+
+        // Atualizar contador de mensagens
+        chat.metadata.totalMessages = 1
+        await chat.save()
+
+        console.log('✅ [CHAT SERVICE] Chat criado com mensagem de boas-vindas')
+      }
+
+      // Buscar mensagens do chat
       const messages = await ChatMessage.find({ chatId: chat._id })
         .sort({ createdAt: 1 })
-        .limit(50)
+        .limit(100) // ✅ CORREÇÃO: Aumentar limite de mensagens
 
       const userMessages = messages.filter(m => m.type === 'user').length
       const aiMessages = messages.filter(m => m.type === 'ai').length
 
+      console.log('✅ [CHAT SERVICE] Chat encontrado com contexto completo:', {
+        chatId: chat._id.toString(),
+        messagesCount: messages.length,
+        projectName: project.name
+      })
+
       return {
         chat: convertChatToInterface(chat),
         messages: messages.map(convertMessageToInterface),
-        project: project ? {
+        project: {
           id: project._id.toString(),
           name: project.name,
           type: project.type
-        } : {
-          id: projectId,
-          name: 'Projeto',
-          type: 'email'
         },
         stats: {
           totalMessages: messages.length,
@@ -343,6 +459,8 @@ class ChatService {
 
   async sendMessage(chatId: string, userId: string, messageDto: SendMessageDto): Promise<MessageResponse> {
     try {
+      console.log('💬 [CHAT SERVICE] Processando mensagem com contexto completo...')
+
       const chat = await Chat.findOne({
         _id: chatId,
         userId: new Types.ObjectId(userId)
@@ -352,6 +470,7 @@ class ChatService {
         throw new Error('Chat não encontrado')
       }
 
+      // Criar mensagem do usuário
       const userMessage = new ChatMessage({
         chatId: new Types.ObjectId(chatId),
         type: 'user',
@@ -363,9 +482,10 @@ class ChatService {
 
       await userMessage.save()
 
+      // ✅ CORREÇÃO CRÍTICA: Buscar histórico completo para contexto
       const recentMessages = await ChatMessage.find({ chatId: new Types.ObjectId(chatId) })
         .sort({ createdAt: -1 })
-        .limit(10)
+        .limit(20) // Histórico mais extenso
 
       const chatHistory = recentMessages.reverse().map(msg => ({
         role: msg.type === 'user' ? 'user' : 'assistant',
@@ -373,47 +493,123 @@ class ChatService {
         timestamp: msg.createdAt
       }))
 
+      // ✅ CORREÇÃO CRÍTICA: Contexto completo do projeto
       let projectContext: any = {
         userId,
         projectName: 'Chat Geral',
         type: 'campaign',
         industry: 'geral',
-        tone: 'profissional'
+        tone: 'profissional',
+        hasProjectContent: false,
+        currentEmailContent: null
       }
+
+      let shouldUpdateEmail = false
+      let projectToUpdate = null
 
       if (chat.projectId) {
         const project = chat.projectId as any
+        projectToUpdate = project
+
+        // ✅ NOVO: Incluir conteúdo atual do email no contexto
         projectContext = {
           userId,
           projectName: project.name,
           type: project.type,
           industry: project.metadata?.industry || 'geral',
-          tone: project.metadata?.tone || 'profissional'
+          tone: project.metadata?.tone || 'profissional',
+          targetAudience: project.metadata?.targetAudience,
+          status: project.status,
+          hasProjectContent: true,
+          currentEmailContent: {
+            subject: project.content?.subject,
+            html: project.content?.html,
+            text: project.content?.text,
+            previewText: project.content?.previewText
+          },
+          originalPrompt: project.metadata?.originalPrompt
         }
+
+        // ✅ NOVO: Detectar intenção de modificação
+        const modificationKeywords = [
+          'mude', 'altere', 'modifique', 'troque', 'substitua',
+          'edite', 'corrija', 'ajuste', 'melhore', 'otimize',
+          'adicione', 'remova', 'inclua', 'retire', 'delete',
+          'cor', 'botão', 'título', 'texto', 'assunto',
+          'desconto', 'preço', 'valor', 'data', 'prazo'
+        ]
+
+        shouldUpdateEmail = modificationKeywords.some(keyword => 
+          messageDto.content.toLowerCase().includes(keyword)
+        )
+
+        console.log('🔍 [CHAT SERVICE] Análise de intenção:', {
+          shouldUpdateEmail,
+          hasContent: !!project.content?.html,
+          messageLength: messageDto.content.length
+        })
       }
 
+      // ✅ NOVO: Usar Enhanced AI com contexto completo
       const enhancedResponse = await EnhancedAIService.smartChatWithAI(
         messageDto.content,
         chatHistory,
         projectContext
       )
 
+      // Criar mensagem da IA
       const aiMessage = new ChatMessage({
         chatId: new Types.ObjectId(chatId),
         type: 'ai',
         content: enhancedResponse.response,
         metadata: {
-          emailUpdated: enhancedResponse.shouldUpdateEmail,
+          emailUpdated: enhancedResponse.shouldUpdateEmail || shouldUpdateEmail,
           suggestions: enhancedResponse.suggestions,
           model: enhancedResponse.metadata.model,
           confidence: enhancedResponse.metadata.confidence,
           enhancedFeatures: enhancedResponse.metadata.enhancedFeatures,
-          executionTime: enhancedResponse.metadata.processingTime
+          executionTime: enhancedResponse.metadata.processingTime,
+          projectContextUsed: projectContext.hasProjectContent
         }
       })
 
       await aiMessage.save()
 
+      // ✅ CORREÇÃO CRÍTICA: Atualizar projeto se necessário
+      let projectUpdated = false
+      if ((enhancedResponse.shouldUpdateEmail || shouldUpdateEmail) && 
+          projectToUpdate && 
+          enhancedResponse.enhancedContent) {
+        
+        try {
+          console.log('📧 [CHAT SERVICE] Atualizando projeto com novo conteúdo...')
+
+          await Project.findByIdAndUpdate(projectToUpdate._id, {
+            $set: {
+              'content.subject': enhancedResponse.enhancedContent.subject || projectToUpdate.content?.subject,
+              'content.previewText': enhancedResponse.enhancedContent.previewText || projectToUpdate.content?.previewText,
+              'content.html': enhancedResponse.enhancedContent.html || projectToUpdate.content?.html,
+              'content.text': enhancedResponse.enhancedContent.text || 
+                             enhancedResponse.enhancedContent.html?.replace(/<[^>]*>/g, '') ||
+                             projectToUpdate.content?.text
+            },
+            $inc: { 'metadata.version': 1 }
+          })
+
+          projectUpdated = true
+          
+          // Incrementar contador de atualizações do chat
+          await Chat.findByIdAndUpdate(chatId, {
+            $inc: { 'metadata.emailUpdates': 1 }
+          })
+
+          console.log('✅ [CHAT SERVICE] Projeto atualizado com sucesso')
+        } catch (updateError) {
+          console.error('❌ [CHAT SERVICE] Erro ao atualizar projeto:', updateError)
+        }
+      }
+
+      // Atualizar metadata do chat
       await Chat.findByIdAndUpdate(chatId, {
         $inc: { 'metadata.totalMessages': 2 },
         $set: { 
@@ -421,23 +617,11 @@ class ChatService {
         }
       })
 
-      let projectUpdated = false
-      if (enhancedResponse.shouldUpdateEmail && chat.projectId && enhancedResponse.enhancedContent) {
-        try {
-          await Project.findByIdAndUpdate(chat.projectId, {
-            content: {
-              subject: enhancedResponse.enhancedContent.subject,
-              previewText: enhancedResponse.enhancedContent.previewText,
-              html: enhancedResponse.enhancedContent.html,
-              text: enhancedResponse.enhancedContent.html.replace(/<[^>]*>/g, '')
-            },
-            $inc: { 'metadata.version': 1 }
-          })
-          projectUpdated = true
-        } catch (updateError) {
-          logger.error('Project update failed:', updateError)
-        }
-      }
+      console.log('✅ [CHAT SERVICE] Mensagem processada com sucesso:', {
+        projectUpdated,
+        shouldUpdateEmail: enhancedResponse.shouldUpdateEmail || shouldUpdateEmail,
+        confidence: enhancedResponse.metadata?.confidence
+      })
 
       return {
         userMessage: convertMessageToInterface(userMessage),
@@ -480,13 +664,20 @@ class ChatService {
         return false
       }
 
-      await ChatMessage.deleteMany({ chatId: new Types.ObjectId(chatId) })
-      await Chat.findByIdAndDelete(chatId)
-
+      // ✅ CORREÇÃO: Desvincular do projeto
       if (chat.projectId) {
-        await Project.findByIdAndUpdate(chat.projectId, { $unset: { chatId: 1 } })
+        await Project.findByIdAndUpdate(chat.projectId, { 
+          $unset: { chatId: 1 } 
+        })
       }
 
+      // Deletar mensagens
+      await ChatMessage.deleteMany({ chatId: new Types.ObjectId(chatId) })
+      
+      // Deletar chat
+      await Chat.findByIdAndDelete(chatId)
+
+      logger.info('Chat and messages deleted successfully', { chatId, userId })
       return true
     } catch (error) {
       logger.error('Delete chat failed:', error)

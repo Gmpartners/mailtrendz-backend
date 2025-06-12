@@ -50,7 +50,7 @@ class EnhancedAIService {
 
     this.validateConfiguration()
 
-    console.log('🧠 [ENHANCED AI] IA Inteligente configurada:', {
+    console.log('🧠 [ENHANCED AI] Serviço configurado:', {
       baseURL: this.config.baseURL,
       model: this.config.defaultModel,
       hasApiKey: !!this.config.apiKey,
@@ -64,7 +64,7 @@ class EnhancedAIService {
     }
 
     if (!this.config.apiKey.startsWith('sk-or-v1-')) {
-      console.warn('⚠️ [ENHANCED AI] API Key não parece ser válida, mas tentando continuar...')
+      console.warn('⚠️ [ENHANCED AI] API Key pode estar em formato incorreto')
     }
   }
 
@@ -131,8 +131,7 @@ class EnhancedAIService {
       console.error('❌ [ENHANCED AI] Erro na geração inteligente:', {
         message: error.message,
         userId: request.projectContext.userId,
-        promptLength: request.prompt.length,
-        stack: error.stack?.substring(0, 200)
+        promptLength: request.prompt.length
       })
       
       throw new Error(`Falha na geração inteligente: ${error.message}`)
@@ -145,16 +144,21 @@ class EnhancedAIService {
     projectContext: ProjectContext,
     userHistory?: UserHistory
   ): Promise<EnhancedChatResponse> {
-    console.log('💬 [ENHANCED AI] Chat inteligente:', {
+    console.log('💬 [ENHANCED AI] Chat inteligente iniciado:', {
       messageLength: message.length,
-      historyCount: chatHistory.length
+      historyCount: chatHistory.length,
+      hasProjectContent: projectContext.hasProjectContent
     })
     
     try {
       const analysis = await this.analyzePrompt(message, projectContext, userHistory)
       const systemPrompt = this.buildSmartChatPrompt(projectContext, analysis)
+      
+      // ✅ CORREÇÃO: Incluir contexto do email atual no prompt
+      const contextualSystemPrompt = this.enrichSystemPromptWithProject(systemPrompt, projectContext)
+      
       const messages = [
-        { role: 'system', content: systemPrompt },
+        { role: 'system', content: contextualSystemPrompt },
         ...chatHistory.slice(-10).map(msg => ({
           role: msg.role || (msg.type === 'user' ? 'user' : 'assistant'),
           content: msg.content
@@ -163,19 +167,35 @@ class EnhancedAIService {
       ]
 
       const response = await this.callAI(messages)
-      const shouldUpdateEmail = this.detectSmartIntent(message, analysis)
+      const shouldUpdateEmail = this.detectSmartIntent(message, analysis, projectContext)
+      
+      let enhancedContent = undefined
+      
+      // ✅ NOVO: Gerar conteúdo atualizado se detectar intenção de modificação
+      if (shouldUpdateEmail && projectContext.hasProjectContent) {
+        enhancedContent = await this.generateUpdatedEmailContent(
+          message, 
+          projectContext, 
+          analysis
+        )
+      }
       
       const enhancedResponse: EnhancedChatResponse = {
         response: response.content,
         shouldUpdateEmail,
         analysis,
-        suggestions: this.generateSmartSuggestions(message, analysis),
-        enhancedContent: shouldUpdateEmail ? await this.generateContentSuggestion(message, projectContext) : undefined,
+        suggestions: this.generateSmartSuggestions(message, analysis, projectContext),
+        enhancedContent,
         metadata: {
           model: response.model,
           tokens: response.usage?.total_tokens || 0,
           confidence: analysis.confidence,
-          enhancedFeatures: ['smart-intent-detection', 'contextual-suggestions', 'intelligent-content-generation'],
+          enhancedFeatures: [
+            'smart-intent-detection', 
+            'contextual-suggestions', 
+            'project-context-awareness',
+            shouldUpdateEmail ? 'content-modification' : 'conversational-response'
+          ],
           processingTime: Date.now() - Date.now()
         }
       }
@@ -184,7 +204,8 @@ class EnhancedAIService {
         shouldUpdateEmail,
         confidence: Math.round(analysis.confidence * 100) + '%',
         hasEnhancedContent: !!enhancedResponse.enhancedContent,
-        suggestions: enhancedResponse.suggestions.length
+        suggestions: enhancedResponse.suggestions.length,
+        projectContextUsed: projectContext.hasProjectContent
       })
       
       return enhancedResponse
@@ -194,6 +215,114 @@ class EnhancedAIService {
     }
   }
 
+  // ✅ NOVO: Enriquecer prompt do sistema com contexto do projeto
+  private enrichSystemPromptWithProject(basePrompt: string, projectContext: ProjectContext): string {
+    if (!projectContext.hasProjectContent || !projectContext.currentEmailContent) {
+      return basePrompt
+    }
+
+    const emailContext = `
+
+CONTEXTO DO EMAIL ATUAL:
+- Assunto: "${projectContext.currentEmailContent.subject || 'Não definido'}"
+- Preview: "${projectContext.currentEmailContent.previewText || 'Não definido'}"
+- Conteúdo HTML: ${projectContext.currentEmailContent.html ? 'Disponível' : 'Não disponível'}
+- Prompt Original: "${projectContext.originalPrompt || 'Não disponível'}"
+
+INSTRUÇÕES PARA MODIFICAÇÕES:
+1. Quando o usuário pedir para alterar algo, analise o conteúdo atual
+2. Faça modificações específicas baseadas no pedido
+3. Mantenha a estrutura geral do email
+4. Use o tom e estilo consistentes com o projeto
+5. Para mudanças de cores, use CSS inline
+6. Para mudanças de texto, altere diretamente o HTML
+7. Para mudanças estruturais, reorganize os elementos
+
+EXEMPLO DE MODIFICAÇÃO:
+Se o usuário disser "mude o botão para azul", você deve:
+1. Encontrar o botão no HTML atual
+2. Alterar a cor de fundo para azul
+3. Retornar o HTML modificado completo
+`
+
+    return basePrompt + emailContext
+  }
+
+  // ✅ NOVO: Gerar conteúdo atualizado baseado na mensagem
+  private async generateUpdatedEmailContent(
+    message: string, 
+    projectContext: ProjectContext, 
+    analysis: PromptAnalysis
+  ): Promise<any> {
+    try {
+      console.log('🔧 [ENHANCED AI] Gerando conteúdo atualizado baseado na mensagem...')
+
+      const modificationPrompt = this.buildModificationPrompt(message, projectContext, analysis)
+      
+      const response = await this.callAI([
+        { role: 'system', content: modificationPrompt },
+        { role: 'user', content: message }
+      ])
+
+      const updatedContent = this.parseEmailResponse(response.content)
+      
+      return {
+        subject: updatedContent.subject || projectContext.currentEmailContent?.subject,
+        previewText: updatedContent.previewText || projectContext.currentEmailContent?.previewText,
+        html: updatedContent.html || projectContext.currentEmailContent?.html,
+        text: updatedContent.text || updatedContent.html?.replace(/<[^>]*>/g, '') || projectContext.currentEmailContent?.text,
+        metadata: {
+          modifiedBy: message,
+          modificationTimestamp: new Date(),
+          analysisUsed: analysis,
+          originalContent: projectContext.currentEmailContent
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ [ENHANCED AI] Erro ao gerar conteúdo atualizado:', error.message)
+      return undefined
+    }
+  }
+
+  // ✅ NOVO: Prompt especializado para modificações
+  private buildModificationPrompt(message: string, projectContext: ProjectContext, analysis: PromptAnalysis): string {
+    return `Você é um especialista em modificação de emails que deve alterar o conteúdo atual baseado na solicitação do usuário.
+
+CONTEXTO DO PROJETO:
+- Nome: ${projectContext.projectName}
+- Tipo: ${projectContext.type}
+- Indústria: ${projectContext.industry}
+- Tom: ${projectContext.tone}
+
+EMAIL ATUAL:
+- Assunto: "${projectContext.currentEmailContent?.subject}"
+- HTML: ${projectContext.currentEmailContent?.html}
+
+SOLICITAÇÃO DE MODIFICAÇÃO: "${message}"
+
+ANÁLISE DA INTENÇÃO:
+${analysis.intentions.map(i => `- ${i.action} em ${i.target}`).join('\n')}
+
+INSTRUÇÕES:
+1. Analise o pedido específico do usuário
+2. Faça APENAS as modificações solicitadas
+3. Mantenha todo o resto do email igual
+4. Use HTML válido e responsivo
+5. Para cores, use valores hexadecimais ou nomes válidos
+6. Para textos, mantenha o tom do projeto
+7. Retorne o email completo modificado
+
+FORMATO OBRIGATÓRIO (JSON válido):
+{
+  "subject": "Assunto (modificado se solicitado)",
+  "previewText": "Preview (modificado se solicitado)",
+  "html": "HTML completo com as modificações aplicadas",
+  "text": "Versão texto das modificações"
+}
+
+Responda APENAS com o JSON válido, sem explicações.`
+  }
+
   async analyzePrompt(
     prompt: string,
     projectContext?: ProjectContext,
@@ -201,14 +330,15 @@ class EnhancedAIService {
   ): Promise<PromptAnalysis> {
     console.log('🔍 [ENHANCED AI] Analisando prompt:', {
       promptLength: prompt.length,
-      hasContext: !!projectContext
+      hasContext: !!projectContext,
+      hasProject: !!projectContext?.hasProjectContent
     })
 
     try {
-      const intentions = this.extractIntentions(prompt)
+      const intentions = this.extractIntentions(prompt, projectContext)
       const visualRequirements = this.extractVisualRequirements(prompt)
       const contentRequirements = this.extractContentRequirements(prompt, projectContext)
-      const confidence = this.calculateConfidence(prompt, intentions, visualRequirements)
+      const confidence = this.calculateConfidence(prompt, intentions, visualRequirements, projectContext)
 
       const analysis: PromptAnalysis = {
         intentions,
@@ -222,7 +352,8 @@ class EnhancedAIService {
       console.log('✅ [ENHANCED AI] Análise concluída:', {
         confidence: Math.round(confidence * 100) + '%',
         intentions: intentions.length,
-        hasVisualReqs: Object.keys(visualRequirements).length > 0
+        hasVisualReqs: Object.keys(visualRequirements).length > 0,
+        hasProjectContext: !!projectContext?.hasProjectContent
       })
 
       return analysis
@@ -285,7 +416,7 @@ class EnhancedAIService {
         console.log(`🤖 [ENHANCED AI] Tentando modelo: ${model}`)
         
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 30000)
+        const timeoutId = setTimeout(() => controller.abort(), 45000) // ✅ Aumentado timeout
 
         const requestBody = {
           model,
@@ -294,16 +425,9 @@ class EnhancedAIService {
             content: msg.content
           })),
           temperature: 0.7,
-          max_tokens: 1500,
+          max_tokens: 2000, // ✅ Aumentado para conteúdo maior
           stream: false
         }
-
-        console.log('📤 [ENHANCED AI] Enviando requisição:', {
-          model,
-          messagesCount: messages.length,
-          temperature: 0.7,
-          maxTokens: 1500
-        })
 
         const response = await fetch(`${this.config.baseURL}/chat/completions`, {
           method: 'POST',
@@ -357,13 +481,8 @@ class EnhancedAIService {
         lastError = error
         console.error(`❌ [ENHANCED AI] Modelo ${model} falhou:`, {
           message: error.message,
-          isTimeout: error.name === 'AbortError',
-          isNetworkError: error.message.includes('fetch')
+          isTimeout: error.name === 'AbortError'
         })
-        
-        if (error.name === 'AbortError') {
-          console.log('🕐 [ENHANCED AI] Timeout detectado, tentando próximo modelo...')
-        }
         
         continue
       }
@@ -377,31 +496,36 @@ class EnhancedAIService {
     return `Você é um especialista em email marketing com IA avançada, criando emails personalizados e de alta conversão.
 
 CONTEXTO DO PROJETO:
+- Nome: ${context.projectName}
 - Tipo: ${context.type}
 - Indústria: ${context.industry}
 - Público-alvo: ${context.targetAudience || 'Geral'}
 - Tom: ${context.tone || 'Profissional'}
+- Status: ${context.status}
 
 ANÁLISE DO PROMPT:
-- Intenções detectadas: ${analysis.intentions.map(i => i.action).join(', ') || 'Geral'}
+- Intenções detectadas: ${analysis.intentions.map(i => i.action).join(', ') || 'Criação de email'}
 - Confiança: ${Math.round(analysis.confidence * 100)}%
-- Requisitos visuais: ${Object.keys(analysis.visualRequirements).length > 0 ? 'Sim' : 'Não'}
+- Requisitos visuais: ${Object.keys(analysis.visualRequirements).length > 0 ? 'Detectados' : 'Padrão'}
+- Tom solicitado: ${analysis.contentRequirements.tone}
+- Foco: ${analysis.contentRequirements.focus.join(', ')}
 
 DIRETRIZES INTELIGENTES:
 1. Use a análise de intenção para personalizar o conteúdo
 2. Aplique elementos visuais detectados nos requisitos
 3. Otimize para o tom e audiência específicos
-4. Gere HTML responsivo e acessível
-5. Inclua micro-interações quando apropriado
+4. Gere HTML responsivo e acessível com estrutura completa
+5. Inclua meta tags e estilos inline
 6. Assunto persuasivo (30-50 caracteres)
-7. Preview text estratégico
+7. Preview text estratégico (100-150 caracteres)
 8. CTA contextual e persuasivo
+9. Estrutura de email profissional com header, conteúdo e footer
 
 FORMATO OBRIGATÓRIO (JSON válido):
 {
   "subject": "Assunto inteligente e otimizado",
   "previewText": "Preview complementar estratégico",
-  "html": "HTML responsivo e inteligente completo",
+  "html": "HTML responsivo e inteligente completo com DOCTYPE, head e body",
   "text": "Versão texto plano otimizada"
 }
 
@@ -416,52 +540,77 @@ CONTEXTO DO PROJETO:
 - Tipo: ${context.type}
 - Indústria: ${context.industry}
 - Tom: ${context.tone}
+- Status: ${context.status}
+- Tem Conteúdo: ${context.hasProjectContent ? 'Sim' : 'Não'}
 
 ANÁLISE INTELIGENTE:
 - Confiança: ${Math.round(analysis.confidence * 100)}%
-- Intenções: ${analysis.intentions.map(i => i.action).join(', ') || 'Nenhuma detectada'}
+- Intenções: ${analysis.intentions.map(i => i.action).join(', ') || 'Conversa geral'}
 - Foco: ${analysis.contentRequirements.focus.join(', ')}
+- Urgência: ${analysis.contentRequirements.urgency}
 
 CAPACIDADES AVANÇADAS:
-1. Detectar intenções complexas de modificação
-2. Sugerir melhorias específicas baseadas em dados
+1. Detectar intenções de modificação do email atual
+2. Sugerir melhorias específicas baseadas no conteúdo
 3. Personalizar respostas por contexto e histórico
-4. Gerar conteúdo inteligente quando solicitado
+4. Modificar conteúdo automaticamente quando solicitado
 5. Oferecer insights de performance e otimização
+6. Manter contexto do projeto durante toda a conversa
 
 INSTRUÇÕES:
 - Seja conversacional mas preciso
 - Use análise de intenção para respostas contextuais
-- Quando detectar pedido de modificação, confirme especificamente
-- Ofereça sugestões proativas baseadas no contexto
+- Quando detectar pedido de modificação, seja específico sobre o que será alterado
+- Ofereça sugestões proativas baseadas no contexto do projeto
 - Mantenha consistência com o tom do projeto
+- Se há conteúdo atual, use-o como referência
 
 Responda sempre em português brasileiro de forma inteligente e contextual.`
   }
 
-  private extractIntentions(prompt: string): any[] {
+  // ✅ MELHORADO: Extração de intenções com contexto de projeto
+  private extractIntentions(prompt: string, projectContext?: ProjectContext): any[] {
     const intentions = []
     const promptLower = prompt.toLowerCase()
 
     const intentionPatterns = [
-      { keywords: ['criar', 'gerar', 'fazer'], action: 'create', target: 'content' },
-      { keywords: ['mudar', 'alterar', 'modificar'], action: 'modify', target: 'existing' },
-      { keywords: ['melhorar', 'otimizar', 'aperfeiçoar'], action: 'improve', target: 'quality' },
-      { keywords: ['cor', 'color', 'cores'], action: 'customize', target: 'colors' },
-      { keywords: ['layout', 'design', 'visual'], action: 'redesign', target: 'layout' },
-      { keywords: ['urgente', 'rápido', 'imediato'], action: 'prioritize', target: 'urgency' }
+      // Intenções de criação
+      { keywords: ['criar', 'gerar', 'fazer', 'novo'], action: 'create', target: 'content' },
+      
+      // Intenções de modificação (específicas para projetos existentes)
+      { keywords: ['mudar', 'alterar', 'modificar', 'trocar', 'substitua'], action: 'modify', target: 'existing' },
+      { keywords: ['editar', 'corrigir', 'ajustar', 'atualizar'], action: 'edit', target: 'content' },
+      
+      // Intenções de melhoria
+      { keywords: ['melhorar', 'otimizar', 'aperfeiçoar', 'refinar'], action: 'improve', target: 'quality' },
+      
+      // Intenções visuais
+      { keywords: ['cor', 'color', 'cores', 'colorir'], action: 'customize', target: 'colors' },
+      { keywords: ['layout', 'design', 'visual', 'aparência'], action: 'redesign', target: 'layout' },
+      { keywords: ['fonte', 'texto', 'título', 'assunto'], action: 'modify', target: 'text' },
+      { keywords: ['botão', 'link', 'cta', 'chamada'], action: 'modify', target: 'cta' },
+      
+      // Intenções de conteúdo
+      { keywords: ['desconto', 'promoção', 'oferta', 'preço'], action: 'add', target: 'promotion' },
+      { keywords: ['urgente', 'rápido', 'imediato', 'agora'], action: 'prioritize', target: 'urgency' },
+      { keywords: ['adicionar', 'incluir', 'inserir'], action: 'add', target: 'content' },
+      { keywords: ['remover', 'retirar', 'deletar', 'excluir'], action: 'remove', target: 'content' }
     ]
 
     intentionPatterns.forEach(pattern => {
       const hasKeyword = pattern.keywords.some(keyword => promptLower.includes(keyword))
       if (hasKeyword) {
+        // ✅ NOVO: Aumentar confiança se há contexto de projeto
+        const confidence = projectContext?.hasProjectContent ? 0.9 : 0.7
+        
         intentions.push({
           action: pattern.action,
           target: pattern.target,
           specification: this.extractSpecification(prompt, pattern.keywords),
           priority: this.calculatePriority(prompt, pattern.keywords),
-          scope: 'specific',
-          confidence: 0.8
+          scope: projectContext?.hasProjectContent ? 'project-specific' : 'general',
+          confidence,
+          projectAware: !!projectContext?.hasProjectContent
         })
       }
     })
@@ -476,25 +625,51 @@ Responda sempre em português brasileiro de forma inteligente e contextual.`
     if (promptLower.includes('cor') || promptLower.includes('color')) {
       requirements.colorScheme = {
         primary: this.extractColor(prompt) || '#3b82f6',
-        detected: true
+        detected: true,
+        source: 'user_prompt'
       }
     }
 
     if (promptLower.includes('layout') || promptLower.includes('design')) {
       requirements.layout = {
         type: promptLower.includes('coluna') ? 'multi-column' : 'single-column',
-        style: 'modern'
+        style: promptLower.includes('moderno') ? 'modern' : 'classic',
+        requested: true
       }
     }
 
-    if (promptLower.includes('fonte') || promptLower.includes('font')) {
+    if (promptLower.includes('fonte') || promptLower.includes('font') || promptLower.includes('texto')) {
       requirements.typography = {
         style: promptLower.includes('moderno') ? 'modern' : 'classic',
-        emphasis: promptLower.includes('negrito') ? 'bold' : 'normal'
+        emphasis: promptLower.includes('negrito') || promptLower.includes('bold') ? 'bold' : 'normal',
+        size: promptLower.includes('grande') ? 'large' : promptLower.includes('pequeno') ? 'small' : 'medium'
+      }
+    }
+
+    // ✅ NOVO: Detectar requisitos de botão/CTA
+    if (promptLower.includes('botão') || promptLower.includes('cta') || promptLower.includes('chamada')) {
+      requirements.cta = {
+        style: promptLower.includes('redondo') ? 'rounded' : 'square',
+        size: promptLower.includes('grande') ? 'large' : 'medium',
+        color: this.extractColor(prompt) || '#28a745',
+        action: this.extractCTAAction(prompt)
       }
     }
 
     return requirements
+  }
+
+  // ✅ NOVO: Extrair ação do CTA
+  private extractCTAAction(prompt: string): string {
+    const promptLower = prompt.toLowerCase()
+    
+    if (promptLower.includes('comprar') || promptLower.includes('compra')) return 'Comprar Agora'
+    if (promptLower.includes('baixar') || promptLower.includes('download')) return 'Baixar'
+    if (promptLower.includes('cadastrar') || promptLower.includes('inscrever')) return 'Cadastrar'
+    if (promptLower.includes('saber mais') || promptLower.includes('saiba mais')) return 'Saber Mais'
+    if (promptLower.includes('aproveitar') || promptLower.includes('oferta')) return 'Aproveitar Oferta'
+    
+    return 'Clique Aqui'
   }
 
   private extractContentRequirements(prompt: string, context?: ProjectContext): any {
@@ -503,20 +678,21 @@ Responda sempre em português brasileiro de forma inteligente e contextual.`
     const tone = context?.tone || 
       (promptLower.includes('formal') ? 'formal' :
        promptLower.includes('casual') ? 'casual' :
-       promptLower.includes('urgente') ? 'urgent' : 'professional')
+       promptLower.includes('urgente') ? 'urgent' : 
+       promptLower.includes('amigável') ? 'friendly' : 'professional')
 
-    const length = promptLower.includes('longo') ? 'long' :
-                  promptLower.includes('curto') ? 'short' : 'medium'
+    const length = promptLower.includes('longo') || promptLower.includes('detalhado') ? 'long' :
+                  promptLower.includes('curto') || promptLower.includes('resumido') ? 'short' : 'medium'
 
     const urgency = promptLower.includes('urgente') || promptLower.includes('imediato') ? 'high' :
-                   promptLower.includes('relaxado') ? 'low' : 'medium'
+                   promptLower.includes('relaxado') || promptLower.includes('tranquilo') ? 'low' : 'medium'
 
     const focus = []
-    if (promptLower.includes('venda')) focus.push('conversion')
-    if (promptLower.includes('informação')) focus.push('information')
-    if (promptLower.includes('promocao')) focus.push('conversion')
-    if (promptLower.includes('engajamento')) focus.push('engagement')
-    if (promptLower.includes('marca')) focus.push('branding')
+    if (promptLower.includes('venda') || promptLower.includes('conversão')) focus.push('conversion')
+    if (promptLower.includes('informação') || promptLower.includes('educar')) focus.push('information')
+    if (promptLower.includes('promocao') || promptLower.includes('desconto')) focus.push('promotion')
+    if (promptLower.includes('engajamento') || promptLower.includes('interação')) focus.push('engagement')
+    if (promptLower.includes('marca') || promptLower.includes('branding')) focus.push('branding')
     if (focus.length === 0) focus.push('information')
 
     return {
@@ -524,51 +700,116 @@ Responda sempre em português brasileiro de forma inteligente e contextual.`
       length,
       focus,
       urgency,
-      personalization: promptLower.includes('personaliz') ? 'advanced' : 'none'
+      personalization: promptLower.includes('personaliz') ? 'advanced' : 'basic',
+      industry: context?.industry || 'general',
+      targetAudience: context?.targetAudience || 'general'
     }
   }
 
-  private calculateConfidence(prompt: string, intentions: any[], visualReqs: any): number {
+  // ✅ MELHORADO: Cálculo de confiança com contexto de projeto
+  private calculateConfidence(prompt: string, intentions: any[], visualReqs: any, projectContext?: ProjectContext): number {
     let confidence = 0.3
 
-    if (prompt.length > 20) confidence += 0.2
-    if (intentions.length > 0) confidence += 0.3
-    if (Object.keys(visualReqs).length > 0) confidence += 0.2
-    if (prompt.includes('?')) confidence += 0.1
+    // Fatores básicos
+    if (prompt.length > 20) confidence += 0.1
+    if (prompt.length > 50) confidence += 0.1
+    if (intentions.length > 0) confidence += 0.2
+    if (Object.keys(visualReqs).length > 0) confidence += 0.1
+    if (prompt.includes('?')) confidence += 0.05
+
+    // ✅ NOVO: Fatores de contexto de projeto
+    if (projectContext?.hasProjectContent) {
+      confidence += 0.2 // Boost significativo com contexto
+      
+      // Boost adicional se intenções são específicas para modificação
+      const hasModificationIntent = intentions.some(i => 
+        ['modify', 'edit', 'improve', 'customize'].includes(i.action)
+      )
+      if (hasModificationIntent) confidence += 0.15
+    }
+
+    // Fatores de especificidade
+    const specificWords = ['cor', 'botão', 'título', 'assunto', 'desconto', 'preço']
+    const specificCount = specificWords.filter(word => 
+      prompt.toLowerCase().includes(word)
+    ).length
+    confidence += specificCount * 0.05
 
     return Math.min(confidence, 1.0)
   }
 
-  private detectSmartIntent(message: string, analysis: PromptAnalysis): boolean {
-    const modificationIntents = ['modify', 'improve', 'customize', 'redesign']
-    return analysis.intentions.some(intent => modificationIntents.includes(intent.action))
+  // ✅ MELHORADO: Detecção de intenção inteligente
+  private detectSmartIntent(message: string, analysis: PromptAnalysis, projectContext?: ProjectContext): boolean {
+    // Se não há projeto, não pode modificar
+    if (!projectContext?.hasProjectContent) return false
+    
+    const modificationIntents = ['modify', 'edit', 'improve', 'customize', 'add', 'remove']
+    const hasModificationIntent = analysis.intentions.some(intent => 
+      modificationIntents.includes(intent.action)
+    )
+    
+    // Palavras-chave específicas que indicam modificação
+    const modificationKeywords = [
+      'mude', 'altere', 'modifique', 'troque', 'substitua',
+      'edite', 'corrija', 'ajuste', 'melhore', 'otimize',
+      'adicione', 'remova', 'inclua', 'retire',
+      'cor', 'botão', 'título', 'assunto', 'texto'
+    ]
+    
+    const hasModificationKeywords = modificationKeywords.some(keyword =>
+      message.toLowerCase().includes(keyword)
+    )
+    
+    return hasModificationIntent || hasModificationKeywords
   }
 
-  private generateSmartSuggestions(message: string, analysis: PromptAnalysis): string[] {
+  // ✅ MELHORADO: Sugestões baseadas em contexto de projeto
+  private generateSmartSuggestions(message: string, analysis: PromptAnalysis, projectContext?: ProjectContext): string[] {
     const suggestions = []
     
+    // Sugestões baseadas na confiança
     if (analysis.confidence < 0.6) {
-      suggestions.push('Ser mais específico sobre o que deseja')
+      suggestions.push('Seja mais específico sobre o que deseja modificar')
     }
     
-    if (analysis.intentions.length === 0) {
-      suggestions.push('Adicionar ação clara (criar, modificar, melhorar)')
+    // Sugestões baseadas no contexto do projeto
+    if (projectContext?.hasProjectContent) {
+      if (analysis.intentions.length === 0) {
+        suggestions.push('Diga o que gostaria de alterar no email atual')
+      } else {
+        suggestions.push('Posso aplicar essas mudanças automaticamente')
+      }
+      
+      // Sugestões específicas do projeto
+      if (projectContext.type === 'promotional' && !message.toLowerCase().includes('desconto')) {
+        suggestions.push('Adicionar um desconto para aumentar conversão')
+      }
+      
+      if (projectContext.type === 'newsletter' && !message.toLowerCase().includes('cta')) {
+        suggestions.push('Incluir uma chamada para ação clara')
+      }
+    } else {
+      if (analysis.intentions.length === 0) {
+        suggestions.push('Descreva o tipo de email que deseja criar')
+      }
     }
     
+    // Sugestões baseadas nos requisitos visuais
     if (Object.keys(analysis.visualRequirements).length === 0) {
-      suggestions.push('Incluir detalhes visuais (cores, layout)')
+      suggestions.push('Especificar cores ou elementos visuais')
     }
     
-    suggestions.push('Ver análise detalhada do prompt')
-    suggestions.push('Gerar nova versão do email')
-    suggestions.push('Exportar email atual')
+    // Sugestões padrão
+    suggestions.push('Ver prévia do resultado')
+    suggestions.push('Exportar email quando estiver pronto')
     
-    return suggestions.slice(0, 4)
+    return suggestions.slice(0, 4) // Máximo 4 sugestões
   }
 
   private enhanceHTML(html: string, analysis: PromptAnalysis): string {
     let enhanced = html
 
+    // Aplicar cor primária se detectada
     if (analysis.visualRequirements.colorScheme) {
       const color = analysis.visualRequirements.colorScheme.primary
       enhanced = enhanced.replace(
@@ -577,9 +818,16 @@ Responda sempre em português brasileiro de forma inteligente e contextual.`
       )
     }
 
+    // Melhorar estrutura de tabelas
+    enhanced = enhanced.replace(
+      /<table(?![^>]*border)/g,
+      '<table border="0" cellpadding="0" cellspacing="0"'
+    )
+
+    // Adicionar classes responsivas
     enhanced = enhanced.replace(
       /<table/g,
-      '<table style="border-collapse: collapse; width: 100%; max-width: 600px; margin: 0 auto;"'
+      '<table class="email-table"'
     )
 
     return enhanced
@@ -590,11 +838,11 @@ Responda sempre em português brasileiro de forma inteligente e contextual.`
     
     return `
 /* MailTrendz Enhanced CSS */
-.email-container { 
+.email-table { 
+  width: 100%; 
   max-width: 600px; 
   margin: 0 auto; 
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #ffffff;
 }
 
 .cta-button {
@@ -614,16 +862,13 @@ Responda sempre em português brasileiro de forma inteligente e contextual.`
 }
 
 @media only screen and (max-width: 600px) {
+  .email-table { width: 100% !important; }
   .responsive-hide { display: none !important; }
   .responsive-stack { 
     display: block !important; 
     width: 100% !important; 
   }
-  .email-container { margin: 0 10px; }
 }
-
-.smart-spacing { margin: 20px 0; }
-.highlight-text { color: ${primaryColor}; font-weight: 600; }
 `
   }
 
@@ -642,22 +887,27 @@ Responda sempre em português brasileiro de forma inteligente e contextual.`
       components.push({ type: 'image', detected: true })
     }
     
+    if (html.includes('table')) {
+      components.push({ type: 'table', detected: true })
+    }
+    
     return components
   }
 
   private calculateQualityScore(email: EmailContent, analysis: PromptAnalysis): number {
     let score = 0.5
 
-    if (email.subject.length >= 20 && email.subject.length <= 50) score += 0.2
+    if (email.subject && email.subject.length >= 20 && email.subject.length <= 50) score += 0.15
     if (email.previewText && email.previewText.length > 0) score += 0.1
-    if (analysis.confidence > 0.7) score += 0.2
-    if (email.html.includes('cta') || email.html.includes('button')) score += 0.1
+    if (analysis.confidence > 0.7) score += 0.15
+    if (email.html && (email.html.includes('cta') || email.html.includes('button'))) score += 0.1
+    if (email.html && email.html.length > 500) score += 0.1
 
     return Math.min(score, 1.0)
   }
 
   private getEnhancedFeatures(analysis: PromptAnalysis): string[] {
-    const features = ['smart-generation', 'intent-analysis']
+    const features = ['smart-generation', 'intent-analysis', 'context-awareness']
     
     if (Object.keys(analysis.visualRequirements).length > 0) {
       features.push('visual-optimization')
@@ -667,6 +917,10 @@ Responda sempre em português brasileiro de forma inteligente e contextual.`
       features.push('high-confidence-output')
     }
     
+    if (analysis.intentions.length > 0) {
+      features.push('smart-intent-detection')
+    }
+    
     features.push('responsive-design', 'accessibility-optimized')
     
     return features
@@ -674,13 +928,15 @@ Responda sempre em português brasileiro de forma inteligente e contextual.`
 
   private parseEmailResponse(content: string): EmailContent {
     try {
-      console.log('🔍 [ENHANCED AI] Parsing resposta:', content.substring(0, 200) + '...')
+      console.log('🔍 [ENHANCED AI] Parsing resposta AI...')
       
       let cleanContent = content.trim()
       
+      // Remover markdown
       cleanContent = cleanContent.replace(/```json\n?|\n?```/g, '')
       cleanContent = cleanContent.replace(/^```|```$/g, '')
       
+      // Extrair JSON
       const jsonMatch = cleanContent.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
         cleanContent = jsonMatch[0]
@@ -691,33 +947,73 @@ Responda sempre em português brasileiro de forma inteligente e contextual.`
       const result = {
         subject: parsed.subject || 'Email Inteligente Gerado',
         previewText: parsed.previewText || '',
-        html: parsed.html || '<p>Conteúdo inteligente gerado por IA</p>',
-        text: parsed.text || parsed.html?.replace(/<[^>]*>/g, '') || 'Conteúdo inteligente gerado por IA'
+        html: this.validateHTML(parsed.html) || '<p>Conteúdo gerado por IA</p>',
+        text: parsed.text || parsed.html?.replace(/<[^>]*>/g, '') || 'Conteúdo gerado por IA'
       }
       
-      console.log('✅ [ENHANCED AI] Parse bem-sucedido:', {
-        hasSubject: !!result.subject,
-        hasHtml: !!result.html,
-        htmlLength: result.html.length
-      })
-      
+      console.log('✅ [ENHANCED AI] Parse bem-sucedido')
       return result
     } catch (error: any) {
-      console.error('❌ [ENHANCED AI] Erro no parse:', {
-        error: error.message,
-        contentPreview: content.substring(0, 100)
-      })
+      console.error('❌ [ENHANCED AI] Erro no parse:', error.message)
       
+      // Fallback robusto
       return {
         subject: 'Email Gerado por IA',
         previewText: 'Conteúdo criado automaticamente',
-        html: `<div style="padding: 20px; font-family: Arial, sans-serif;">
-          <h2>Email Gerado por IA</h2>
-          <p>${content.replace(/[<>]/g, '').substring(0, 500)}</p>
-        </div>`,
+        html: this.createFallbackHTML(content),
         text: content.replace(/[<>]/g, '').substring(0, 500)
       }
     }
+  }
+
+  // ✅ NOVO: Validação robusta de HTML
+  private validateHTML(html: string): string {
+    if (!html || typeof html !== 'string') {
+      return this.createFallbackHTML('Conteúdo não disponível')
+    }
+
+    // Se não tem estrutura básica, adicionar
+    if (!html.includes('<!DOCTYPE') && !html.includes('<html')) {
+      return this.createFallbackHTML(html)
+    }
+
+    return html
+  }
+
+  // ✅ NOVO: HTML de fallback estruturado
+  private createFallbackHTML(content: string): string {
+    const cleanContent = content.replace(/<script[^>]*>.*?<\/script>/gis, '')
+                              .replace(/<style[^>]*>.*?<\/style>/gis, '')
+                              .substring(0, 1000)
+
+    return `<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Gerado por IA</title>
+    <style>
+        body { margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4; }
+        .email-container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .email-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px 20px; text-align: center; }
+        .email-content { padding: 30px 20px; line-height: 1.6; color: #333333; }
+        .email-footer { background-color: #f8f9fa; padding: 20px; text-align: center; color: #666666; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="email-header">
+            <h1 style="color: #ffffff; margin: 0;">Email Gerado por IA</h1>
+        </div>
+        <div class="email-content">
+            ${cleanContent.includes('<') ? cleanContent : `<p>${cleanContent}</p>`}
+        </div>
+        <div class="email-footer">
+            <p>© 2025 MailTrendz. Email gerado por IA.</p>
+        </div>
+    </div>
+</body>
+</html>`
   }
 
   private extractSpecification(prompt: string, keywords: string[]): string {
@@ -758,20 +1054,6 @@ Responda sempre em português brasileiro de forma inteligente e contextual.`
 
     const hexMatch = prompt.match(/#[0-9a-fA-F]{6}/)
     return hexMatch ? hexMatch[0] : null
-  }
-
-  private async generateContentSuggestion(message: string, context: ProjectContext): Promise<any> {
-    return {
-      subject: 'Sugestão inteligente baseada na conversa',
-      previewText: 'Conteúdo otimizado por IA',
-      html: '<p>Sugestão inteligente será implementada aqui</p>',
-      visualElements: {
-        colorScheme: { primary: '#3b82f6' },
-        layout: { type: 'smart-responsive' },
-        typography: { style: 'modern' },
-        components: {}
-      }
-    }
   }
 }
 

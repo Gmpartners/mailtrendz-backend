@@ -1,87 +1,132 @@
 import { Types } from 'mongoose'
 
+// ✅ Interfaces principais de chat
 export interface IChat {
   _id: Types.ObjectId
-  id?: string
-  userId: string | Types.ObjectId
-  projectId: string | Types.ObjectId
+  id: string
+  userId: string
+  projectId?: string
   title: string
   messages: Types.ObjectId[]
   isActive: boolean
   metadata: {
     totalMessages: number
-    lastActivity: Date
     emailUpdates: number
+    lastActivity: Date | string
+    enhancedMode?: boolean
     enhancedAIEnabled?: boolean
-    aiMode?: 'standard' | 'enhanced' | 'adaptive'
-    enhancedInteractions?: number
-    lastEnhancedInteraction?: Date
   }
-  createdAt: Date
-  updatedAt: Date
+  createdAt: Date | string
+  updatedAt: Date | string
 }
 
 export interface IMessage {
   _id: Types.ObjectId
-  id?: string
-  chatId: string | Types.ObjectId
+  id: string
+  chatId: string
   type: 'user' | 'ai' | 'system'
   content: string
-  createdAt: Date
+  timestamp?: string
+  createdAt: Date | string
   metadata?: {
     emailUpdated?: boolean
     suggestions?: string[]
+    modelUsed?: string
     model?: string
-    tokens?: number
-    confidence?: number
+    processingTime?: number
     executionTime?: number
-    aiMode?: 'standard' | 'enhanced' | 'adaptive' | 'fallback' | 'error'
     enhancedFeatures?: string[]
-    analysis?: {
-      confidence: number
-      intentionsCount: number
-      hasVisualReqs: boolean
+    confidence?: number
+    isWelcome?: boolean
+    projectContextUsed?: boolean
+    analysisData?: any
+    originalPrompt?: string
+    modifications?: any[]
+    performance?: {
+      processingTime?: number
+      modelUsed?: string
+      tokensConsumed?: number
+      cacheHit?: boolean
+      retryCount?: number
+      qualityScore?: number
     }
-    error?: boolean
+    tokens?: number
   }
 }
 
-export interface IChatMessage extends IMessage {}
-
+// ✅ DTOs para criação e manipulação
 export interface CreateChatDto {
-  projectId: string
   title?: string
+  projectId?: string
 }
 
 export interface SendMessageDto {
   content: string
-  type?: 'user' | 'system'
+  type?: 'user' | 'ai' | 'system'
 }
 
 export interface UpdateChatDto {
   title?: string
   isActive?: boolean
+  metadata?: Partial<IChat['metadata']>
 }
 
+// ✅ Filtros e paginação
+export interface ChatFilters {
+  userId: string
+  projectId?: string
+  isActive?: boolean
+  search?: string
+  dateFrom?: Date
+  dateTo?: Date
+  pagination?: {
+    page: number
+    limit: number
+  }
+  sort?: {
+    field: string
+    order: 'asc' | 'desc'
+  }
+}
+
+// ✅ Respostas da API
 export interface ChatResponse {
   chat: IChat
-  messages: IMessage[]
-  project: {
+  messages?: IMessage[]
+  project?: {
     id: string
     name: string
     type: string
   }
-  stats: {
+  stats?: {
     totalMessages: number
     userMessages: number
     aiMessages: number
     emailUpdates: number
-    lastActivity: Date
+    lastActivity: Date | string
   }
-  aiCapabilities?: {
-    enhancedMode: boolean
-    currentMode: 'standard' | 'enhanced' | 'adaptive'
-    features: string[]
+}
+
+export interface MessageResponse {
+  userMessage: IMessage
+  aiMessage: IMessage
+  projectUpdated?: boolean
+}
+
+export interface MessagesResponse {
+  messages: IMessage[]
+  pagination: {
+    currentPage: number
+    totalPages: number
+    totalItems: number
+    hasNext: boolean
+    hasPrev: boolean
+  }
+  stats?: {
+    totalMessages: number
+    userMessages: number
+    aiMessages: number
+    averageResponseTime?: number
   }
 }
 
@@ -102,40 +147,7 @@ export interface ChatHistoryResponse {
   }
 }
 
-export interface MessageResponse {
-  userMessage: IMessage
-  aiMessage: IMessage
-  projectUpdated?: boolean
-}
-
-export interface MessagesResponse {
-  messages: IMessage[]
-  pagination: {
-    currentPage: number
-    totalPages: number
-    totalItems: number
-    hasNext: boolean
-    hasPrev: boolean
-  }
-}
-
-export interface ChatFilters {
-  userId: string
-  projectId?: string
-  isActive?: boolean
-  search?: string
-  dateFrom?: Date
-  dateTo?: Date
-  pagination: {
-    page: number
-    limit: number
-  }
-  sort: {
-    field: string
-    order: 'asc' | 'desc'
-  }
-}
-
+// ✅ Analytics
 export interface ChatAnalytics {
   chatId: string
   projectName: string
@@ -147,15 +159,8 @@ export interface ChatAnalytics {
     averageResponseTime: number
     sessionDuration: number
   }
-  timeline: {
-    date: Date
-    messages: number
-    emailUpdates: number
-  }[]
-  wordCloud: {
-    word: string
-    frequency: number
-  }[]
+  timeline: any[]
+  wordCloud: any[]
   sentiment: {
     positive: number
     neutral: number
@@ -163,10 +168,237 @@ export interface ChatAnalytics {
   }
 }
 
-export interface BulkMessageDto {
-  messages: {
-    content: string
-    type: 'user' | 'ai' | 'system'
-    metadata?: any
-  }[]
+// ✅ Tipos específicos de Enhanced AI
+export interface EnhancedChatRequest {
+  message: string
+  chatHistory: IMessage[]
+  projectContext: ProjectContext
+  userHistory?: UserHistory
+}
+
+export interface EnhancedChatResponse {
+  response: string
+  shouldUpdateEmail: boolean
+  analysis: PromptAnalysis
+  suggestions: string[]
+  enhancedContent?: any
+  metadata: {
+    model: string
+    tokens: number
+    confidence: number
+    enhancedFeatures: string[]
+    processingTime: number
+  }
+}
+
+// ✅ Contexto de projeto melhorado
+export interface ProjectContext {
+  userId?: string
+  projectName: string
+  type: string
+  industry: string
+  tone: string
+  targetAudience?: string
+  status?: string
+  hasProjectContent?: boolean
+  currentEmailContent?: {
+    subject?: string
+    html?: string
+    text?: string
+    previewText?: string
+  }
+  originalPrompt?: string
+}
+
+// ✅ Análise de prompt
+export interface PromptAnalysis {
+  intentions: Array<{
+    action: string
+    target: string
+    specification?: string
+    priority?: number
+    scope?: string
+    confidence?: number
+    projectAware?: boolean
+  }>
+  visualRequirements: {
+    colorScheme?: {
+      primary: string
+      detected: boolean
+      source?: string
+    }
+    layout?: {
+      type: string
+      style: string
+      requested?: boolean
+    }
+    typography?: {
+      style: string
+      emphasis: string
+      size?: string
+    }
+    cta?: {
+      style: string
+      size: string
+      color: string
+      action: string
+    }
+  }
+  contentRequirements: {
+    tone: string
+    length: string
+    focus: string[]
+    urgency: string
+    personalization: string
+    industry?: string
+    targetAudience?: string
+  }
+  confidence: number
+  processingTime: number
+  originalPrompt: string
+}
+
+// ✅ Histórico do usuário
+export interface UserHistory {
+  previousProjects?: Array<{
+    id: string
+    name: string
+    type: string
+    success?: boolean
+  }>
+  preferredStyles?: string[]
+  commonRequests?: string[]
+  successPatterns?: any[]
+}
+
+// ✅ Smart Email Request
+export interface SmartEmailRequest {
+  prompt: string
+  projectContext: ProjectContext
+  userHistory?: UserHistory
+  useEnhanced: boolean
+}
+
+// ✅ Enhanced Email Content
+export interface EnhancedEmailContent {
+  subject: string
+  previewText: string
+  html: string
+  css?: string
+  components?: any[]
+  analysis?: PromptAnalysis
+  metadata: {
+    version: string
+    generated: Date
+    model: string
+    tokens: number
+    qualityScore: number
+    compatibilityScore: number
+    accessibilityScore: number
+    estimatedRenderTime: number
+    supportedClients: string[]
+    enhancedFeatures: string[]
+    processingTime: number
+  }
+}
+
+// ✅ Estatísticas e métricas
+export interface ChatMetrics {
+  totalChats: number
+  activeChats: number
+  totalMessages: number
+  averageMessagesPerChat: number
+  emailUpdatesCount: number
+  enhancedMessagesCount: number
+  averageResponseTime: number
+  modelUsageStats: {
+    [model: string]: {
+      count: number
+      averageTokens: number
+      averageExecutionTime: number
+    }
+  }
+}
+
+export interface MessageMetrics {
+  messageId: string
+  type: 'user' | 'ai' | 'system'
+  wordCount: number
+  characterCount: number
+  processingTime?: number
+  tokensUsed?: number
+  confidence?: number
+  enhancedFeatures: string[]
+  projectContextUsed: boolean
+  modificationsApplied: number
+}
+
+// ✅ Enums
+export enum MessageType {
+  USER = 'user',
+  AI = 'ai',
+  SYSTEM = 'system'
+}
+
+export enum ChatStatus {
+  ACTIVE = 'active',
+  INACTIVE = 'inactive',
+  ARCHIVED = 'archived'
+}
+
+export enum IntentionAction {
+  CREATE = 'create',
+  MODIFY = 'modify',
+  EDIT = 'edit',
+  IMPROVE = 'improve',
+  CUSTOMIZE = 'customize',
+  ADD = 'add',
+  REMOVE = 'remove',
+  REDESIGN = 'redesign'
+}
+
+// ✅ Eventos de chat
+export interface ChatEvent {
+  type: 'message_sent' | 'message_received' | 'email_updated' | 'chat_created'
+  chatId: string
+  userId: string
+  timestamp: Date
+  data?: any
+}
+
+// ✅ Configurações de chat
+export interface ChatSettings {
+  enhancedAIEnabled: boolean
+  autoUpdateEmail: boolean
+  suggestionLevel: 'basic' | 'advanced'
+  responseLength: 'short' | 'medium' | 'long'
+  confidenceThreshold: number
+}
+
+export default {
+  IChat,
+  IMessage,
+  CreateChatDto,
+  SendMessageDto,
+  UpdateChatDto,
+  ChatFilters,
+  ChatResponse,
+  MessageResponse,
+  MessagesResponse,
+  ChatHistoryResponse,
+  ChatAnalytics,
+  EnhancedChatRequest,
+  EnhancedChatResponse,
+  ProjectContext,
+  PromptAnalysis,
+  UserHistory,
+  SmartEmailRequest,
+  EnhancedEmailContent,
+  ChatMetrics,
+  MessageMetrics,
+  MessageType,
+  ChatStatus,
+  IntentionAction,
+  ChatEvent,
+  ChatSettings
 }
