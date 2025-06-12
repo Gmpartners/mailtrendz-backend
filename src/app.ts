@@ -24,6 +24,7 @@ import authRoutes from './routes/auth.routes'
 import projectRoutes from './routes/project.routes'
 import chatRoutes from './routes/chat.routes'
 import userRoutes from './routes/user.routes'
+import aiRoutes from './routes/ai.routes'
 import enhancedAIRoutes from './routes/enhanced-ai.routes'
 
 class App {
@@ -89,7 +90,7 @@ class App {
     this.app.get('/', (req, res) => {
       res.json({
         success: true,
-        message: 'MailTrendz API v2.0 - Enhanced AI Only!',
+        message: 'MailTrendz API v2.0 - Enhanced AI + Compatibility!',
         version: '2.0.0-enhanced',
         timestamp: new Date(),
         environment: process.env.NODE_ENV || 'development',
@@ -97,7 +98,7 @@ class App {
           enhancedAI: true,
           smartAnalysis: true,
           intelligentChat: true,
-          legacyAI: false
+          compatibilityAI: true
         }
       })
     })
@@ -128,7 +129,8 @@ class App {
           services: {
             database: dbHealth,
             api: { status: 'ok' },
-            enhancedAI: enhancedAIHealth
+            enhancedAI: enhancedAIHealth,
+            compatibilityAI: { status: 'ok', available: true }
           },
           memory: {
             used: Math.round(memoryUsage.heapUsed / 1024 / 1024 * 100) / 100,
@@ -180,7 +182,8 @@ class App {
     this.app.use(`${API_PREFIX}/auth`, authRoutes)
     this.app.use(`${API_PREFIX}/projects`, projectRoutes)
     this.app.use(`${API_PREFIX}/chats`, chatRoutes)
-    this.app.use(`${API_PREFIX}/ai`, enhancedAIRoutes)
+    this.app.use(`${API_PREFIX}/ai`, aiRoutes)
+    this.app.use(`${API_PREFIX}/enhanced-ai`, enhancedAIRoutes)
     this.app.use(`${API_PREFIX}/users`, userRoutes)
 
     this.app.get(`${API_PREFIX}`, (req, res) => {
@@ -193,20 +196,26 @@ class App {
           projects: `${API_PREFIX}/projects`,
           chats: `${API_PREFIX}/chats`,
           ai: `${API_PREFIX}/ai`,
+          enhancedAI: `${API_PREFIX}/enhanced-ai`,
           users: `${API_PREFIX}/users`,
           health: `${API_PREFIX}/health`
         },
+        compatibilityFeatures: {
+          standardGeneration: `${API_PREFIX}/ai/generate`,
+          emailImprovement: `${API_PREFIX}/ai/improve`,
+          aiHealthCheck: `${API_PREFIX}/ai/health`
+        },
         enhancedFeatures: {
-          smartEmailGeneration: `${API_PREFIX}/ai/generate`,
-          intelligentChat: `${API_PREFIX}/ai/chat`,
-          promptAnalysis: `${API_PREFIX}/ai/analyze`,
-          aiComparison: `${API_PREFIX}/ai/compare`,
-          enhancedStatus: `${API_PREFIX}/ai/status`
+          smartEmailGeneration: `${API_PREFIX}/enhanced-ai/generate`,
+          intelligentChat: `${API_PREFIX}/enhanced-ai/chat`,
+          promptAnalysis: `${API_PREFIX}/enhanced-ai/analyze`,
+          aiComparison: `${API_PREFIX}/enhanced-ai/compare`,
+          enhancedStatus: `${API_PREFIX}/enhanced-ai/status`
         },
         changes: {
-          removed: ['Legacy AI endpoints', 'Basic AI functionality'],
-          added: ['Enhanced AI only', 'Improved performance', 'Better analysis'],
-          optimized: true
+          added: ['Enhanced AI', 'Compatibility layer', 'Better error handling'],
+          improved: ['Performance', 'Response time', 'Error messages'],
+          maintained: ['Backward compatibility', 'Existing endpoints']
         },
         timestamp: new Date()
       })
@@ -222,7 +231,7 @@ class App {
     try {
       await Database.connect()
       
-      console.log('🧠 [APP] Sistema otimizado para Enhanced AI apenas!')
+      console.log('🧠 [APP] Sistema com Enhanced AI + Compatibilidade!')
       
       this.app.listen(this.port, () => {
         logger.info(`🚀 MailTrendz Enhanced API running on port ${this.port}`, {
@@ -235,15 +244,17 @@ class App {
           base: `http://localhost:${this.port}`,
           api: `http://localhost:${this.port}${API_PREFIX}`,
           ai: `http://localhost:${this.port}${API_PREFIX}/ai`,
+          enhancedAI: `http://localhost:${this.port}${API_PREFIX}/enhanced-ai`,
           health: `http://localhost:${this.port}/health`
         })
 
-        console.log('✨ [APP] IA Enhanced Otimizada:')
-        console.log(`   📧 Geração Inteligente: POST ${API_PREFIX}/ai/generate`)
-        console.log(`   💬 Chat Inteligente: POST ${API_PREFIX}/ai/chat`)
-        console.log(`   🔍 Análise de Prompts: POST ${API_PREFIX}/ai/analyze`)
-        console.log(`   📊 Status: GET ${API_PREFIX}/ai/status`)
-        console.log(`   ⚡ Sistema otimizado - versão básica removida!`)
+        console.log('✨ [APP] IA com Compatibilidade Total:')
+        console.log(`   📧 Geração Padrão: POST ${API_PREFIX}/ai/generate`)
+        console.log(`   🔧 Melhoria: POST ${API_PREFIX}/ai/improve`) 
+        console.log(`   ⚡ Health Check: GET ${API_PREFIX}/ai/health`)
+        console.log(`   🚀 Enhanced: POST ${API_PREFIX}/enhanced-ai/generate`)
+        console.log(`   💬 Chat Inteligente: POST ${API_PREFIX}/enhanced-ai/chat`)
+        console.log(`   🔍 Análise: POST ${API_PREFIX}/enhanced-ai/analyze`)
       })
       
       process.on('SIGTERM', this.gracefulShutdown.bind(this))
