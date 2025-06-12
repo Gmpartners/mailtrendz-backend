@@ -13,6 +13,15 @@ export interface ProjectContext {
   targetAudience?: string
   tone?: string
   status?: string
+  // ✅ NOVAS PROPRIEDADES ADICIONADAS
+  hasProjectContent?: boolean
+  currentEmailContent?: {
+    subject?: string
+    html?: string
+    text?: string
+    previewText?: string
+  }
+  originalPrompt?: string
 }
 
 export interface AIResponse {

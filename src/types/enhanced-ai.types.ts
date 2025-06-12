@@ -8,6 +8,7 @@ export interface EnhancedEmailContent {
   subject: string
   previewText: string
   html: string
+  text: string  // ✅ PROPRIEDADE ADICIONADA
   css: string
   components: EmailComponent[]
   analysis: PromptAnalysis

@@ -15,14 +15,14 @@ export interface IChatMessageDocument extends Omit<IMessage, '_id' | 'id'>, Docu
 
 const chatMessageSchema = new Schema<IChatMessageDocument>({
   chatId: {
-    type: Schema.Types.ObjectId,
+    type: Schema.Types.ObjectId,  // ✅ CORREÇÃO: Tipo correto
     ref: 'Chat',
     required: [true, 'Chat ID é obrigatório'],
     index: true
   },
   
   type: {
-    type: String,
+    type: String,  // ✅ CORREÇÃO: String em vez de ObjectId
     enum: Object.values(MESSAGE_TYPES),
     required: [true, 'Tipo da mensagem é obrigatório'],
     default: MESSAGE_TYPES.USER
@@ -32,7 +32,7 @@ const chatMessageSchema = new Schema<IChatMessageDocument>({
     type: String,
     required: [true, 'Conteúdo é obrigatório'],
     trim: true,
-    maxlength: [10000, 'Mensagem deve ter no máximo 10000 caracteres'] // ✅ Aumentado limite
+    maxlength: [10000, 'Mensagem deve ter no máximo 10000 caracteres']
   },
   
   metadata: {
@@ -72,7 +72,6 @@ const chatMessageSchema = new Schema<IChatMessageDocument>({
       min: 0
     },
     
-    // ✅ NOVO: Campos para Enhanced AI
     enhancedFeatures: [{
       type: String,
       trim: true
@@ -103,7 +102,6 @@ const chatMessageSchema = new Schema<IChatMessageDocument>({
       trim: true
     },
     
-    // ✅ NOVO: Histórico de modificações
     modifications: [{
       timestamp: {
         type: Date,
@@ -118,7 +116,6 @@ const chatMessageSchema = new Schema<IChatMessageDocument>({
       afterValue: String
     }],
     
-    // ✅ NOVO: Dados de performance
     performance: {
       processingTime: Number,
       modelUsed: String,
@@ -133,7 +130,7 @@ const chatMessageSchema = new Schema<IChatMessageDocument>({
   collection: COLLECTIONS.MESSAGES || 'chatmessages'
 })
 
-// ✅ NOVO: Indexes para performance melhorada
+// ✅ Indexes para performance melhorada
 chatMessageSchema.index({ chatId: 1, createdAt: 1 })
 chatMessageSchema.index({ chatId: 1, type: 1 })
 chatMessageSchema.index({ type: 1, createdAt: -1 })
@@ -142,7 +139,6 @@ chatMessageSchema.index({ 'metadata.model': 1 })
 chatMessageSchema.index({ 'metadata.projectContextUsed': 1 })
 chatMessageSchema.index({ createdAt: -1 })
 
-// ✅ NOVO: Index de texto para busca
 chatMessageSchema.index({ 
   content: 'text',
   'metadata.originalPrompt': 'text'
@@ -155,35 +151,31 @@ chatMessageSchema.index({
 
 // Middleware para validação antes de salvar
 chatMessageSchema.pre('save', function(next) {
-  // Garantir que metadata existe
   if (!this.metadata) {
     this.metadata = {}
   }
   
-  // Validar confidence se fornecido
   if (this.metadata.confidence !== null && 
       (this.metadata.confidence < 0 || this.metadata.confidence > 1)) {
     this.metadata.confidence = null
   }
   
-  // Limpar sugestões vazias
   if (this.metadata.suggestions) {
     this.metadata.suggestions = this.metadata.suggestions
       .filter(s => s && s.trim().length > 0)
-      .slice(0, 10) // Máximo 10 sugestões
+      .slice(0, 10)
   }
   
-  // Limpar enhanced features vazios
   if (this.metadata.enhancedFeatures) {
     this.metadata.enhancedFeatures = this.metadata.enhancedFeatures
       .filter(f => f && f.trim().length > 0)
-      .slice(0, 20) // Máximo 20 features
+      .slice(0, 20)
   }
   
   next()
 })
 
-// ✅ NOVOS: Métodos de instância melhorados
+// ✅ Métodos de instância melhorados
 chatMessageSchema.methods.isUserMessage = function(): boolean {
   return this.type === MESSAGE_TYPES.USER
 }
@@ -220,7 +212,7 @@ chatMessageSchema.methods.getConfidenceLevel = function(): string {
   return 'very-low'
 }
 
-// ✅ NOVO: Método virtual para estatísticas completas
+// ✅ Método virtual para estatísticas completas
 chatMessageSchema.virtual('stats').get(function() {
   return {
     type: this.type,
@@ -242,7 +234,7 @@ chatMessageSchema.virtual('stats').get(function() {
   }
 })
 
-// ✅ NOVOS: Métodos estáticos melhorados
+// ✅ Métodos estáticos melhorados
 chatMessageSchema.statics.findByChat = function(chatId: string, filters: any = {}) {
   return this.find({ chatId, ...filters }).sort({ createdAt: 1 })
 }
@@ -331,96 +323,6 @@ chatMessageSchema.statics.getPerformanceMetrics = async function(chatId: string)
     enhancedMessagesCount: 0,
     avgQualityScore: 0,
     totalTokensConsumed: 0
-  }
-}
-
-chatMessageSchema.statics.getConversationFlow = async function(chatId: string) {
-  const messages = await this.find({ chatId })
-    .sort({ createdAt: 1 })
-    .select('type createdAt metadata.emailUpdated metadata.projectContextUsed metadata.confidence')
-  
-  const flow = messages.map((msg, index) => ({
-    position: index + 1,
-    type: msg.type,
-    timestamp: msg.createdAt,
-    emailUpdated: msg.metadata?.emailUpdated || false,
-    projectContextUsed: msg.metadata?.projectContextUsed || false,
-    confidence: msg.metadata?.confidence,
-    timeSincePrevious: index > 0 ? 
-      msg.createdAt.getTime() - messages[index - 1].createdAt.getTime() : 0
-  }))
-  
-  return flow
-}
-
-chatMessageSchema.statics.searchMessages = function(
-  chatId: string, 
-  query: string, 
-  limit: number = 20
-) {
-  return this.find({
-    chatId,
-    $text: { $search: query }
-  })
-  .sort({ score: { $meta: 'textScore' } })
-  .limit(limit)
-}
-
-chatMessageSchema.statics.getMessagesByTimeRange = function(
-  chatId: string,
-  startDate: Date,
-  endDate: Date
-) {
-  return this.find({
-    chatId,
-    createdAt: {
-      $gte: startDate,
-      $lte: endDate
-    }
-  }).sort({ createdAt: 1 })
-}
-
-chatMessageSchema.statics.getModificationHistory = async function(chatId: string) {
-  const messages = await this.find({
-    chatId,
-    'metadata.modifications.0': { $exists: true }
-  }).sort({ createdAt: 1 })
-  
-  const modifications = []
-  
-  messages.forEach(msg => {
-    if (msg.metadata?.modifications) {
-      msg.metadata.modifications.forEach(mod => {
-        modifications.push({
-          messageId: msg._id,
-          timestamp: mod.timestamp,
-          type: mod.type,
-          description: mod.description,
-          beforeValue: mod.beforeValue,
-          afterValue: mod.afterValue
-        })
-      })
-    }
-  })
-  
-  return modifications.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-}
-
-// ✅ NOVO: Método para limpar mensagens antigas
-chatMessageSchema.statics.cleanupOldMessages = async function(
-  retentionDays: number = 90
-) {
-  const cutoffDate = new Date()
-  cutoffDate.setDate(cutoffDate.getDate() - retentionDays)
-  
-  const result = await this.deleteMany({
-    createdAt: { $lt: cutoffDate },
-    'metadata.emailUpdated': { $ne: true } // Preservar mensagens que atualizaram emails
-  })
-  
-  return {
-    deletedCount: result.deletedCount,
-    cutoffDate
   }
 }
 

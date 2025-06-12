@@ -284,6 +284,7 @@ export interface EnhancedEmailContent {
   subject: string
   previewText: string
   html: string
+  text: string  // ✅ PROPRIEDADE ADICIONADA
   css?: string
   components?: any[]
   analysis?: PromptAnalysis
@@ -375,30 +376,4 @@ export interface ChatSettings {
   confidenceThreshold: number
 }
 
-export default {
-  IChat,
-  IMessage,
-  CreateChatDto,
-  SendMessageDto,
-  UpdateChatDto,
-  ChatFilters,
-  ChatResponse,
-  MessageResponse,
-  MessagesResponse,
-  ChatHistoryResponse,
-  ChatAnalytics,
-  EnhancedChatRequest,
-  EnhancedChatResponse,
-  ProjectContext,
-  PromptAnalysis,
-  UserHistory,
-  SmartEmailRequest,
-  EnhancedEmailContent,
-  ChatMetrics,
-  MessageMetrics,
-  MessageType,
-  ChatStatus,
-  IntentionAction,
-  ChatEvent,
-  ChatSettings
-}
+// ✅ EXPORT DEFAULT REMOVIDO - CORRIGIDO!
