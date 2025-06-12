@@ -88,7 +88,7 @@ class EnhancedAIController {
         stack: error.stack?.substring(0, 300)
       })
       
-      let statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR
+      let statusCode: number = HTTP_STATUS.INTERNAL_SERVER_ERROR
       let errorMessage = 'Erro interno na geração de email'
       let errorCode = 'SMART_GENERATION_FAILED'
 
@@ -97,7 +97,7 @@ class EnhancedAIController {
         errorMessage = 'Serviço de IA temporariamente indisponível'
         errorCode = 'AI_SERVICE_UNAVAILABLE'
       } else if (error.message.includes('timeout') || error.message.includes('AbortError')) {
-        statusCode = HTTP_STATUS.REQUEST_TIMEOUT || 408
+        statusCode = HTTP_STATUS.REQUEST_TIMEOUT
         errorMessage = 'Timeout na geração - tente novamente'
         errorCode = 'AI_TIMEOUT'
       } else if (error.message.includes('rate limit') || error.message.includes('429')) {
@@ -180,7 +180,7 @@ class EnhancedAIController {
         messageLength: message?.length || 0
       })
       
-      let statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR
+      let statusCode: number = HTTP_STATUS.INTERNAL_SERVER_ERROR
       let errorMessage = 'Erro interno no chat'
       let errorCode = 'SMART_CHAT_FAILED'
 
@@ -486,7 +486,7 @@ class EnhancedAIController {
         environment: process.env.NODE_ENV || 'development'
       }
 
-      const statusCode = aiHealth.status === 'available' ? HTTP_STATUS.OK : HTTP_STATUS.SERVICE_UNAVAILABLE
+      const statusCode: number = aiHealth.status === 'available' ? HTTP_STATUS.OK : HTTP_STATUS.SERVICE_UNAVAILABLE
 
       res.status(statusCode).json({
         success: true,

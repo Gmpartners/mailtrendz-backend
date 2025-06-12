@@ -135,7 +135,7 @@ export const VALIDATION = {
   }
 } as const
 
-// HTTP Status Codes
+// HTTP Status Codes - CORRIGIDO
 export const HTTP_STATUS = {
   OK: 200,
   CREATED: 201,
@@ -145,6 +145,7 @@ export const HTTP_STATUS = {
   FORBIDDEN: 403,
   NOT_FOUND: 404,
   CONFLICT: 409,
+  REQUEST_TIMEOUT: 408,
   UNPROCESSABLE_ENTITY: 422,
   TOO_MANY_REQUESTS: 429,
   INTERNAL_SERVER_ERROR: 500,

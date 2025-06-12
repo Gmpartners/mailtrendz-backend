@@ -235,9 +235,9 @@ class EnhancedAIService {
         contentRequirements: {
           tone: 'professional',
           length: 'medium',
-          focus: ['general'],
+          focus: ['information'],
           urgency: 'medium',
-          personalization: 'low'
+          personalization: 'none'
         },
         confidence: 0.5,
         processingTime: 0,
@@ -512,17 +512,19 @@ Responda sempre em português brasileiro de forma inteligente e contextual.`
                    promptLower.includes('relaxado') ? 'low' : 'medium'
 
     const focus = []
-    if (promptLower.includes('venda')) focus.push('sales')
+    if (promptLower.includes('venda')) focus.push('conversion')
     if (promptLower.includes('informação')) focus.push('information')
-    if (promptLower.includes('promocao')) focus.push('promotion')
-    if (focus.length === 0) focus.push('general')
+    if (promptLower.includes('promocao')) focus.push('conversion')
+    if (promptLower.includes('engajamento')) focus.push('engagement')
+    if (promptLower.includes('marca')) focus.push('branding')
+    if (focus.length === 0) focus.push('information')
 
     return {
       tone,
       length,
       focus,
       urgency,
-      personalization: promptLower.includes('personaliz') ? 'high' : 'low'
+      personalization: promptLower.includes('personaliz') ? 'advanced' : 'none'
     }
   }
 
