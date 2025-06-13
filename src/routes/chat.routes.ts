@@ -1,8 +1,8 @@
 import { Router } from 'express'
 import { body, param, query } from 'express-validator'
 import chatController from '../controllers/chat.controller'
-import { authMiddleware } from '../middleware/auth.middleware'
-import { rateLimitMiddleware } from '../middleware/rateLimit.middleware'
+import authMiddleware from '../middleware/auth.middleware'
+import { rateLimitChat } from '../middleware/rate-limit.middleware'
 
 const router = Router()
 
@@ -14,8 +14,8 @@ const router = Router()
 // ================================
 // MIDDLEWARE APLICADO A TODAS AS ROTAS
 // ================================
-router.use(authMiddleware)
-router.use(rateLimitMiddleware('CHAT'))
+router.use(authMiddleware.authenticateToken)
+router.use(rateLimitChat)
 
 // ================================
 // GERENCIAMENTO DE CHATS

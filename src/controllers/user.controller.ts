@@ -320,7 +320,7 @@ class UserController {
   systemHealthCheck = asyncHandler(async (req: AuthRequest, res: Response) => {
     const [dbHealth, aiHealth] = await Promise.all([
       Database.healthCheck(),
-      AIService.healthCheck()
+      AIService.getStatus()
     ])
 
     const memoryUsage = process.memoryUsage()

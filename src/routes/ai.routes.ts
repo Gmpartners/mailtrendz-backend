@@ -1,8 +1,8 @@
 import { Router } from 'express'
 import { body, param } from 'express-validator'
 import aiController from '../controllers/ai.controller'
-import { authMiddleware } from '../middleware/auth.middleware'
-import { rateLimitMiddleware } from '../middleware/rateLimit.middleware'
+import authMiddleware from '../middleware/auth.middleware'
+import { rateLimitAI } from '../middleware/rate-limit.middleware'
 
 const router = Router()
 
@@ -14,8 +14,8 @@ const router = Router()
 // ================================
 // MIDDLEWARE APLICADO A TODAS AS ROTAS
 // ================================
-router.use(authMiddleware)
-router.use(rateLimitMiddleware('AI'))
+router.use(authMiddleware.authenticateToken)
+router.use(rateLimitAI)
 
 // ================================
 // GERAÇÃO DE EMAIL

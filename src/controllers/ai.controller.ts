@@ -333,11 +333,12 @@ class AIController {
       res.status(HTTP_STATUS.OK).json({
         success: true,
         message: 'HTML validado com sucesso',
-        data: validationResult,
+        data: (validationResult as any).data || validationResult,
         metadata: {
           timestamp: new Date(),
           service: 'python-ai-service',
-          htmlSize: html.length
+          htmlSize: html.length,
+          ...(validationResult as any).metadata
         }
       })
 
@@ -389,11 +390,11 @@ class AIController {
       res.status(HTTP_STATUS.OK).json({
         success: true,
         message: 'CSS otimizado com sucesso',
-        data: optimizationResult.data,
+        data: (optimizationResult as any).data || optimizationResult,
         metadata: {
-          ...optimizationResult.metadata,
           timestamp: new Date(),
-          service: 'python-ai-service'
+          service: 'python-ai-service',
+          ...((optimizationResult as any).metadata || {})
         }
       })
 

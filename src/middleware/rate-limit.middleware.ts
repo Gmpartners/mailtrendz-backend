@@ -299,6 +299,24 @@ export const developmentLimiter = rateLimit({
   }
 })
 
+// Aliases para manter compatibilidade com imports antigos
+export const rateLimitAI = aiLimiter
+export const rateLimitChat = aiChatLimiter
+export const rateLimitMiddleware = (type: string) => {
+  switch (type.toUpperCase()) {
+    case 'AI':
+      return aiLimiter
+    case 'CHAT':
+      return aiChatLimiter
+    case 'PROJECT':
+      return projectLimiter
+    case 'AUTH':
+      return authLimiter
+    default:
+      return generalLimiter
+  }
+}
+
 export default {
   generalLimiter,
   authLimiter,
@@ -307,5 +325,8 @@ export default {
   projectCreationLimiter,
   aiChatLimiter,
   developmentLimiter,
-  createUserBasedLimiter
+  createUserBasedLimiter,
+  rateLimitAI,
+  rateLimitChat,
+  rateLimitMiddleware
 }

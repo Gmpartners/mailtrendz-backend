@@ -1,7 +1,7 @@
 import { Types } from 'mongoose'
-import Chat from '../models/chat.model'
-import ChatMessage from '../models/chat-message.model'
-import Project from '../models/project.model'
+import Chat from '../models/Chat.model'
+import ChatMessage from '../models/ChatMessage.model'
+import Project from '../models/Project.model'
 import { CreateChatDto, SendMessageDto, UpdateChatDto, ChatFilters, MessageResponse, ChatResponse, ChatHistoryResponse, ChatAnalytics } from '../types/chat.types'
 import { logger } from '../utils/logger'
 import PythonAIClient from './ai/PythonAIClient'
@@ -263,7 +263,6 @@ class ChatService {
         isActive: true,
         metadata: {
           totalMessages: 0,
-          emailUpdates: 0,
           lastActivity: new Date(),
           createdBy: 'user',
           version: '2.0.0-python-service',
@@ -288,7 +287,7 @@ class ChatService {
           totalMessages: 0,
           userMessages: 0,
           aiMessages: 0,
-          emailUpdates: 0,
+          averageResponseTime: 0,
           lastActivity: chat.metadata?.lastActivity || new Date()
         }
       }
@@ -331,7 +330,6 @@ class ChatService {
           isActive: true,
           metadata: {
             totalMessages: 0,
-            emailUpdates: 0,
             lastActivity: new Date(),
             createdBy: 'auto-generated',
             version: '2.0.0-python-service',
@@ -363,7 +361,7 @@ class ChatService {
           totalMessages: messageCount,
           userMessages: userMessageCount,
           aiMessages: aiMessageCount,
-          emailUpdates,
+          averageResponseTime: 2500,
           lastActivity: chat.metadata?.lastActivity || new Date()
         }
       }
@@ -400,7 +398,7 @@ class ChatService {
           totalMessages: messages.length,
           userMessages: messages.filter(m => m.type === 'user').length,
           aiMessages: messages.filter(m => m.type === 'ai').length,
-          emailUpdates: messages.filter(m => m.metadata?.emailUpdated).length,
+          averageResponseTime: 2500,
           lastActivity: chat.metadata?.lastActivity || new Date()
         }
       }
@@ -432,16 +430,17 @@ class ChatService {
       return {
         messages: messages.reverse().map(msg => this.convertMessageToInterface(msg)),
         pagination: {
-          page,
-          limit,
-          total: totalMessages,
-          pages: Math.ceil(totalMessages / limit)
+          currentPage: page,
+          totalPages: Math.ceil(totalMessages / limit),
+          totalItems: totalMessages,
+          hasNext: page < Math.ceil(totalMessages / limit),
+          hasPrev: page > 1
         },
         stats: {
           totalMessages,
           userMessages: await ChatMessage.countDocuments({ chatId: new Types.ObjectId(chatId), type: 'user' }),
           aiMessages: await ChatMessage.countDocuments({ chatId: new Types.ObjectId(chatId), type: 'ai' }),
-          emailUpdates: await ChatMessage.countDocuments({ chatId: new Types.ObjectId(chatId), 'metadata.emailUpdated': true }),
+          averageResponseTime: 2500,
           lastActivity: chat.metadata?.lastActivity || new Date()
         }
       }
@@ -557,11 +556,7 @@ class ChatService {
         totalMessages: messages.length,
         userMessages: messages.filter(m => m.type === 'user').length,
         aiMessages: messages.filter(m => m.type === 'ai').length,
-        emailUpdates: messages.filter(m => m.metadata?.emailUpdated).length,
-        averageResponseTime: 2500,
-        lastActivity: chat.metadata?.lastActivity || new Date(),
-        createdAt: chat.createdAt,
-        updatedAt: chat.updatedAt
+        averageResponseTime: 2500
       }
     } catch (error: any) {
       logger.error('Get chat analytics failed:', error)
@@ -612,6 +607,34 @@ class ChatService {
         status: 'error',
         error: error.message,
         isHealthy: false
+      }
+    }
+  }
+
+  async testMessage(message: string): Promise<any> {
+    try {
+      const response = await PythonAIClient.smartChat(
+        message,
+        [],
+        {
+          userId: 'test-user',
+          chatId: 'test-chat',
+          projectName: 'Test Project',
+          type: 'newsletter',
+          industry: 'tecnologia',
+          tone: 'professional'
+        }
+      )
+      
+      return {
+        success: true,
+        message: 'Teste executado com sucesso',
+        data: response
+      }
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message
       }
     }
   }
