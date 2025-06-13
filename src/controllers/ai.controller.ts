@@ -97,66 +97,117 @@ class AIController {
 
   async getHealthStatus(req: Request, res: Response): Promise<void> {
     try {
-      logger.info('🔍 Verificando status do Python AI Service')
+      logger.info('🔍 Health check AI Service - Endpoint público')
 
-      const healthResponse = await fetch(`${this.pythonServiceUrl}/health`, {
-        method: 'GET'
+      // Timeout para evitar travamentos
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Health check timeout')), 10000)
       })
 
-      const healthData = healthResponse.ok ? await healthResponse.json() as PythonAIResponse : null
+      // Verificação básica do serviço Node.js
+      const nodeStatus = {
+        status: 'healthy',
+        uptime: Math.round(process.uptime()),
+        memory: {
+          used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+          total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024)
+        },
+        timestamp: new Date().toISOString()
+      }
 
+      // Tentativa de verificar Python AI Service (opcional)
+      let pythonStatus = {
+        url: this.pythonServiceUrl,
+        responsive: false,
+        status: 'unknown',
+        error: null as string | null
+      }
+
+      try {
+        const healthCheckPromise = fetch(`${this.pythonServiceUrl}/health`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(8000)
+        })
+
+        const response = await Promise.race([healthCheckPromise, timeoutPromise]) as Response
+
+        if (response.ok) {
+          const healthData = await response.json()
+          pythonStatus = {
+            ...pythonStatus,
+            responsive: true,
+            status: 'healthy',
+            responseTime: healthData?.processing_time || null
+          }
+        } else {
+          pythonStatus.status = `http-${response.status}`
+        }
+      } catch (pythonError: any) {
+        pythonStatus.error = pythonError.message
+        pythonStatus.status = 'unreachable'
+        // Log mas não falha o health check
+        logger.warn('Python AI Service unreachable during health check:', pythonError.message)
+      }
+
+      // Health check sempre retorna 200, mesmo se Python Service estiver down
       res.status(HTTP_STATUS.OK).json({
         success: true,
-        message: 'Status do serviço de IA',
+        message: 'AI Service Health Check',
         data: {
-          status: healthResponse.ok ? 'healthy' : 'unhealthy',
-          pythonService: {
-            url: this.pythonServiceUrl,
-            responsive: healthResponse.ok,
-            responseTime: healthData?.processing_time || healthData?.metadata?.processing_time || null
-          },
-          healthData,
+          service: 'mailtrendz-ai-service',
+          node: nodeStatus,
+          pythonAI: pythonStatus,
           capabilities: [
             'email-generation',
-            'email-improvement',
+            'email-improvement', 
             'smart-chat',
             'css-optimization',
             'html-validation',
             'mongodb-integration'
-          ]
+          ],
+          environment: process.env.NODE_ENV || 'development',
+          version: '2.0.0-enhanced'
         },
         metadata: {
-          timestamp: new Date(),
-          checkedBy: (req as any).user?.userId
+          timestamp: new Date().toISOString(),
+          requestId: req.headers['x-request-id'] || 'unknown',
+          public: true // Indica que é endpoint público
         }
       })
 
     } catch (error: any) {
       logger.error('Health check error:', error.message)
       
-      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+      // Mesmo em caso de erro, retorna 200 com status de erro
+      res.status(HTTP_STATUS.OK).json({
         success: false,
-        message: 'Python AI Service indisponível',
+        message: 'Health check com problemas',
         data: {
-          status: 'unhealthy',
-          pythonService: {
-            url: this.pythonServiceUrl,
-            responsive: false,
+          service: 'mailtrendz-ai-service',
+          node: {
+            status: 'degraded',
             error: error.message
+          },
+          pythonAI: {
+            status: 'unknown',
+            error: 'Health check failed'
           }
-        }
+        },
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Service degraded'
       })
     }
   }
 
   async testConnection(req: Request, res: Response): Promise<void> {
     try {
-      logger.info('🔗 Testando conectividade com Python AI Service')
+      logger.info('🔗 Testando conectividade com Python AI Service - Endpoint público')
 
       const startTime = Date.now()
       
       const response = await fetch(`${this.pythonServiceUrl}/`, {
-        method: 'GET'
+        method: 'GET',
+        signal: AbortSignal.timeout(10000)
       })
 
       const responseTime = Date.now() - startTime
@@ -164,7 +215,11 @@ class AIController {
 
       let serviceData = null
       if (isConnected) {
-        serviceData = await response.json()
+        try {
+          serviceData = await response.json()
+        } catch {
+          serviceData = { message: 'Response not JSON' }
+        }
       }
 
       res.status(HTTP_STATUS.OK).json({
@@ -175,20 +230,26 @@ class AIController {
           responseTime,
           status: response.status,
           serviceInfo: serviceData,
-          testTimestamp: new Date()
+          pythonServiceUrl: this.pythonServiceUrl,
+          testTimestamp: new Date().toISOString()
+        },
+        metadata: {
+          public: true,
+          requestId: req.headers['x-request-id'] || 'unknown'
         }
       })
 
     } catch (error: any) {
       logger.error('Connection test error:', error.message)
       
-      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      res.status(HTTP_STATUS.OK).json({
         success: false,
         message: 'Erro no teste de conectividade',
         error: error.message,
         data: {
           connected: false,
-          testTimestamp: new Date()
+          pythonServiceUrl: this.pythonServiceUrl,
+          testTimestamp: new Date().toISOString()
         }
       })
     }
