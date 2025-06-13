@@ -18,7 +18,7 @@ import {
   createForbiddenError,
   createConflictError 
 } from '../middleware/error.middleware'
-import AIService from './ai.service'
+import AIService from '../services/ai.service'
 
 class ProjectService {
   // Verificar limites do usuário

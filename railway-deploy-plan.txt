@@ -1,0 +1,19 @@
+# ===========================
+# RAILWAY DEPLOYMENT - MAILTRENDZ v2.1
+# ===========================
+
+# 🎯 ESTRATÉGIA:
+# 1. Python AI Service (Railway)
+# 2. Node.js Backend (Railway) 
+# 3. Conectar ambos serviços
+# 4. Configurar domínios
+
+# 📊 VANTAGENS RAILWAY:
+# - Deploy automático
+# - Logs integrados  
+# - Scaling automático
+# - Domínios customizados
+# - Monitoramento built-in
+
+# ⚠️ IMPORTANTE:
+# Vamos usar suas env vars existentes do Vercel

@@ -1,258 +1,47 @@
 import { Router } from 'express'
-import { body, param } from 'express-validator'
-import aiController from '../controllers/ai.controller'
-import authMiddleware from '../middleware/auth.middleware'
-import { rateLimitAI } from '../middleware/rate-limit.middleware'
+import { body } from 'express-validator'
+import AIController from '../controllers/ai.controller'
+import { authenticateToken } from '../middleware/auth.middleware'
 
 const router = Router()
 
-/**
- * ✅ ROTAS AI ATUALIZADAS - PYTHON AI SERVICE
- * Todas as rotas agora usam o microserviço Python
- */
+// Middleware de autenticação
+router.use(authenticateToken)
 
-// ================================
-// MIDDLEWARE APLICADO A TODAS AS ROTAS
-// ================================
-router.use(authMiddleware.authenticateToken)
-router.use(rateLimitAI)
+// Validações
+const generateEmailValidation = [
+  body('prompt').trim().isLength({ min: 5, max: 2000 }).withMessage('Prompt deve ter entre 5 e 2000 caracteres'),
+  body('industry').optional().isIn(['saude', 'tecnologia', 'educacao', 'ecommerce', 'financas', 'geral']).withMessage('Indústria inválida'),
+  body('tone').optional().isIn(['professional', 'friendly', 'urgent', 'luxury', 'casual']).withMessage('Tom inválido'),
+  body('urgency').optional().isIn(['low', 'medium', 'high']).withMessage('Urgência inválida')
+]
 
-// ================================
-// GERAÇÃO DE EMAIL
-// ================================
+const improveEmailValidation = [
+  body('project_id').isMongoId().withMessage('Project ID inválido'),
+  body('instructions').trim().isLength({ min: 3, max: 1000 }).withMessage('Instruções devem ter entre 3 e 1000 caracteres'),
+  body('preserve_structure').optional().isBoolean().withMessage('preserve_structure deve ser boolean')
+]
 
-/**
- * @route POST /api/v1/ai/generate
- * @desc Gerar email usando Python AI Service
- * @access Private
- */
-router.post('/generate',
-  [
-    body('prompt')
-      .isString()
-      .isLength({ min: 5, max: 2000 })
-      .withMessage('Prompt deve ter entre 5 e 2000 caracteres')
-      .trim(),
-    body('context')
-      .optional()
-      .isObject()
-      .withMessage('Contexto deve ser um objeto válido'),
-    body('context.industry')
-      .optional()
-      .isIn(['saude', 'tecnologia', 'educacao', 'ecommerce', 'financas', 'geral'])
-      .withMessage('Indústria inválida'),
-    body('context.tone')
-      .optional()
-      .isIn(['professional', 'friendly', 'urgent', 'casual', 'formal'])
-      .withMessage('Tom inválido'),
-    body('context.type')
-      .optional()
-      .isIn(['welcome', 'newsletter', 'campaign', 'promotional', 'announcement'])
-      .withMessage('Tipo de email inválido')
-  ],
-  aiController.generateEmail
-)
+const validateHTMLValidation = [
+  body('html').trim().isLength({ min: 10 }).withMessage('HTML é obrigatório')
+]
 
-// ================================
-// MELHORIA DE EMAIL
-// ================================
+const optimizeCSSValidation = [
+  body('html').trim().isLength({ min: 10 }).withMessage('HTML é obrigatório'),
+  body('target_clients').optional().isArray().withMessage('target_clients deve ser array'),
+  body('enable_dark_mode').optional().isBoolean().withMessage('enable_dark_mode deve ser boolean'),
+  body('mobile_first').optional().isBoolean().withMessage('mobile_first deve ser boolean')
+]
 
-/**
- * @route POST /api/v1/ai/improve
- * @desc Melhorar email existente usando Python AI Service
- * @access Private
- */
-router.post('/improve',
-  [
-    body('currentContent')
-      .isObject()
-      .withMessage('Conteúdo atual é obrigatório'),
-    body('currentContent.html')
-      .isString()
-      .isLength({ min: 10 })
-      .withMessage('HTML do email é obrigatório'),
-    body('feedback')
-      .isString()
-      .isLength({ min: 3, max: 1000 })
-      .withMessage('Feedback deve ter entre 3 e 1000 caracteres')
-      .trim(),
-    body('context')
-      .optional()
-      .isObject()
-      .withMessage('Contexto deve ser um objeto válido')
-  ],
-  aiController.improveEmail
-)
+// Rotas principais
+router.post('/generate', generateEmailValidation, AIController.generateEmail)
+router.post('/improve', improveEmailValidation, AIController.improveEmail)
+router.post('/validate', validateHTMLValidation, AIController.validateEmailHTML)
+router.post('/optimize-css', optimizeCSSValidation, AIController.optimizeCSS)
 
-// ================================
-// CHAT COM IA
-// ================================
-
-/**
- * @route POST /api/v1/ai/chat
- * @desc Conversar com IA usando Python AI Service
- * @access Private
- */
-router.post('/chat',
-  [
-    body('message')
-      .isString()
-      .isLength({ min: 1, max: 1000 })
-      .withMessage('Mensagem deve ter entre 1 e 1000 caracteres')
-      .trim(),
-    body('chatHistory')
-      .optional()
-      .isArray()
-      .withMessage('Histórico do chat deve ser um array'),
-    body('projectContext')
-      .optional()
-      .isObject()
-      .withMessage('Contexto do projeto deve ser um objeto')
-  ],
-  aiController.chatWithAI
-)
-
-// ================================
-// STATUS E MONITORAMENTO
-// ================================
-
-/**
- * @route GET /api/v1/ai/status
- * @desc Verificar status do Python AI Service
- * @access Private
- */
-router.get('/status', aiController.getAIServiceStatus)
-
-/**
- * @route GET /api/v1/ai/metrics
- * @desc Obter métricas do Python AI Service
- * @access Private
- */
-router.get('/metrics', aiController.getAIMetrics)
-
-/**
- * @route GET /api/v1/ai/test
- * @desc Testar conectividade com Python AI Service
- * @access Private
- */
-router.get('/test', aiController.testConnection)
-
-// ================================
-// VALIDAÇÃO E OTIMIZAÇÃO
-// ================================
-
-/**
- * @route POST /api/v1/ai/validate
- * @desc Validar HTML de email usando Python AI Service
- * @access Private
- */
-router.post('/validate',
-  [
-    body('html')
-      .isString()
-      .isLength({ min: 10 })
-      .withMessage('HTML é obrigatório e deve ter pelo menos 10 caracteres')
-  ],
-  aiController.validateEmailHTML
-)
-
-/**
- * @route POST /api/v1/ai/optimize-css
- * @desc Otimizar CSS para email clients usando Python AI Service
- * @access Private
- */
-router.post('/optimize-css',
-  [
-    body('html')
-      .isString()
-      .isLength({ min: 10 })
-      .withMessage('HTML é obrigatório'),
-    body('targetClients')
-      .optional()
-      .isArray()
-      .withMessage('Target clients deve ser um array'),
-    body('enableDarkMode')
-      .optional()
-      .isBoolean()
-      .withMessage('enableDarkMode deve ser boolean')
-  ],
-  aiController.optimizeCSS
-)
-
-// ================================
-// ROTAS ESPECÍFICAS PARA DESENVOLVIMENTO
-// ================================
-
-if (process.env.NODE_ENV === 'development') {
-  /**
-   * @route POST /api/v1/ai/dev/test-generation
-   * @desc Teste rápido de geração (apenas desenvolvimento)
-   * @access Private
-   */
-  router.post('/dev/test-generation',
-    [
-      body('prompt')
-        .optional()
-        .isString()
-        .withMessage('Prompt deve ser string')
-    ],
-    async (req, res) => {
-      try {
-        const { prompt = 'Crie um email de newsletter sobre tecnologia' } = req.body
-        
-        // Usar o controller padrão com dados de teste
-        req.body = {
-          prompt,
-          context: {
-            industry: 'tecnologia',
-            tone: 'professional',
-            type: 'newsletter'
-          }
-        }
-        
-        await aiController.generateEmail(req, res)
-      } catch (error: any) {
-        res.status(500).json({
-          success: false,
-          message: 'Erro no teste de geração',
-          error: error.message
-        })
-      }
-    }
-  )
-
-  /**
-   * @route GET /api/v1/ai/dev/health-detailed
-   * @desc Health check detalhado (apenas desenvolvimento)
-   * @access Private
-   */
-  router.get('/dev/health-detailed',
-    async (req, res) => {
-      try {
-        // Combinar informações de status e métricas
-        const [statusResponse, metricsResponse] = await Promise.allSettled([
-          aiController.getAIServiceStatus(req, {} as any),
-          aiController.getAIMetrics(req, {} as any)
-        ])
-
-        res.json({
-          success: true,
-          timestamp: new Date(),
-          detailed_check: {
-            status: statusResponse.status === 'fulfilled' ? 'ok' : 'error',
-            metrics: metricsResponse.status === 'fulfilled' ? 'ok' : 'error'
-          },
-          environment: process.env.NODE_ENV,
-          python_ai_url: process.env.PYTHON_AI_SERVICE_URL || 'http://localhost:5000'
-        })
-      } catch (error: any) {
-        res.status(500).json({
-          success: false,
-          error: error.message
-        })
-      }
-    }
-  )
-}
+// Rotas de status e monitoramento
+router.get('/health', AIController.getHealthStatus)
+router.get('/metrics', AIController.getMetrics)
+router.get('/test-connection', AIController.testConnection)
 
 export default router

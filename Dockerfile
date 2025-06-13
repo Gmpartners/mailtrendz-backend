@@ -1,45 +1,77 @@
-# Use Node.js 18 Alpine para menor tamanho
-FROM node:18-alpine
+# MailTrendz Backend - Production Dockerfile
+FROM node:18-alpine AS builder
 
-# Definir diretório de trabalho
+WORKDIR /app
+
+# Instalar dependências de build
+RUN apk add --no-cache python3 make g++
+
+# Copiar package files
+COPY package*.json ./
+COPY tsconfig*.json ./
+
+# Instalar dependências
+RUN npm ci --only=production
+
+# Copiar código fonte
+COPY src/ ./src/
+
+# Build TypeScript
+RUN npm run build
+
+# ===== Estágio de produção =====
+FROM node:18-alpine AS production
+
 WORKDIR /app
 
 # Instalar dependências do sistema
 RUN apk add --no-cache \
     python3 \
-    make \
-    g++ \
-    && ln -sf python3 /usr/bin/python
+    py3-pip \
+    curl \
+    && rm -rf /var/cache/apk/*
 
-# Copiar arquivos de dependências
+# Criar usuário não-root
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001
+
+# Copiar node_modules do builder
+COPY --from=builder /app/node_modules ./node_modules
+
+# Copiar código compilado
+COPY --from=builder /app/dist ./dist
 COPY package*.json ./
-COPY tsconfig.json ./
 
-# Instalar dependências
-RUN npm ci --only=production && npm cache clean --force
+# Copiar Python AI Service
+COPY src/ai-service ./src/ai-service
 
-# Copiar código fonte
-COPY src/ ./src/
+# Instalar dependências Python
+RUN cd src/ai-service && \
+    pip3 install --no-cache-dir -r requirements.txt
 
-# Build da aplicação
-RUN npm run build
+# Criar diretórios necessários
+RUN mkdir -p logs && \
+    chown -R nextjs:nodejs /app
 
-# Criar usuário não-root para segurança
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S mailtrendz -u 1001
+# Mudar para usuário não-root
+USER nextjs
 
-# Criar diretório de logs
-RUN mkdir -p logs && chown -R mailtrendz:nodejs logs
+# Variáveis de ambiente
+ENV NODE_ENV=production
+ENV PORT=8000
+ENV PYTHON_AI_PORT=5000
 
-# Trocar para usuário não-root
-USER mailtrendz
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
-# Expor porta
-EXPOSE 8000
+# Expor portas
+EXPOSE 8000 5000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "const http = require('http'); http.get('http://localhost:8000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"
+# Script de inicialização
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+USER root
+RUN chmod +x /docker-entrypoint.sh
+USER nextjs
 
-# Comando para iniciar a aplicação
-CMD ["npm", "run", "start:prod"]
+ENTRYPOINT ["/docker-entrypoint.sh"]

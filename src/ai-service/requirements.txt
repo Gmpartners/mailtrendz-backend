@@ -1,55 +1,41 @@
-# ✅ DEPENDÊNCIAS DO MICROSERVIÇO PYTHON DE IA
-# Servidor web e API
+# MailTrendz Python AI Service - Dependencies
+# Core Framework
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic==2.5.0
-httpx==0.25.2
 
-# IA e Machine Learning
-openai==1.3.8
-anthropic==0.7.7
-requests==2.31.0
-
-# MongoDB
+# Database
 motor==3.3.2
 pymongo==4.6.0
 
-# Processamento de HTML/CSS
-beautifulsoup4==4.12.2
-lxml==4.9.3
-cssutils==2.7.1
-tinycss2==1.2.1
+# HTTP Client
+httpx==0.25.2
 
-# Análise de texto e NLP
-nltk==3.8.1
-textstat==0.7.3
+# Logging
+loguru==0.7.2
 
-# Validação e formatação
-html5lib==1.1
-premailer==3.10.0
-
-# Utilitários
+# Environment
 python-dotenv==1.0.0
-python-multipart==0.0.6
-jinja2==3.1.2
-aiofiles==23.2.1
 
-# Sistema e monitoramento
+# HTML/CSS Processing
+beautifulsoup4==4.12.2
+cssutils==2.9.0
+premailer==3.10.0
+lxml==4.9.3
+
+# Email Processing
+html2text==2020.1.16
+email-validator==2.1.0
+
+# Performance
+aiofiles==23.2.0
+cachetools==5.3.2
+
+# Monitoring
 psutil==5.9.6
 
-# Cache e performance
-redis==5.0.1
-aioredis==2.0.1
-
-# Logs e monitoramento
-loguru==0.7.2
-prometheus-client==0.19.0
-
-# Testes
+# Development
 pytest==7.4.3
 pytest-asyncio==0.21.1
-
-# Desenvolvimento
 black==23.11.0
-flake8==6.1.0
-mypy==1.7.1
+isort==5.12.0

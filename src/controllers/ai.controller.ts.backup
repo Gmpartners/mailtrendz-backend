@@ -1,0 +1,422 @@
+import { Request, Response } from 'express'
+import { validationResult } from 'express-validator'
+import { HTTP_STATUS } from '../utils/constants'
+import { logger } from '../utils/logger'
+
+interface PythonAIClient {
+  baseURL: string
+  timeout: number
+}
+
+class AIController {
+  private pythonClient: PythonAIClient
+
+  constructor() {
+    this.pythonClient = {
+      baseURL: process.env.PYTHON_AI_SERVICE_URL || 'http://localhost:5000',
+      timeout: 30000
+    }
+  }
+
+  async generateEmail(req: Request, res: Response): Promise<void> {
+    try {
+      const errors = validationResult(req)
+      if (!errors.isEmpty()) {
+        res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Dados de entrada inválidos',
+          errors: errors.array()
+        })
+        return
+      }
+
+      const { prompt, context = {}, style_preferences, industry = 'geral', tone = 'professional', urgency = 'medium' } = req.body
+      const userId = (req as any).user?.userId
+
+      if (!prompt?.trim()) {
+        res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Prompt é obrigatório'
+        })
+        return
+      }
+
+      logger.info(`🤖 Geração de email via Python AI - User: ${userId}`)
+
+      const response = await fetch(`${this.pythonClient.baseURL}/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          prompt,
+          context: {
+            ...context,
+            userId,
+            timestamp: new Date().toISOString()
+          },
+          style_preferences,
+          industry,
+          tone,
+          urgency
+        }),
+        timeout: this.pythonClient.timeout
+      })
+
+      if (!response.ok) {
+        throw new Error(`Python AI Service error: ${response.status}`)
+      }
+
+      const data = await response.json()
+
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Email gerado com sucesso',
+        data: {
+          subject: data.data.subject,
+          previewText: data.data.preview_text,
+          html: data.data.html,
+          text: data.data.text
+        },
+        metadata: {
+          processingTime: data.processing_time,
+          service: 'python-ai-service',
+          userId,
+          timestamp: new Date(),
+          ...data.metadata
+        }
+      })
+
+    } catch (error: any) {
+      logger.error('Generate email error:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro interno do servidor',
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Erro na geração de email'
+      })
+    }
+  }
+
+  async improveEmail(req: Request, res: Response): Promise<void> {
+    try {
+      const errors = validationResult(req)
+      if (!errors.isEmpty()) {
+        res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Dados de entrada inválidos',
+          errors: errors.array()
+        })
+        return
+      }
+
+      const { project_id, user_id, instructions, preserve_structure = true } = req.body
+      const userId = (req as any).user?.userId
+
+      if (!project_id || !instructions?.trim()) {
+        res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Project ID e instruções são obrigatórios'
+        })
+        return
+      }
+
+      logger.info(`🔧 Melhoria de email via Python AI - Project: ${project_id}`)
+
+      const response = await fetch(`${this.pythonClient.baseURL}/modify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          project_id,
+          user_id: userId,
+          instructions,
+          preserve_structure
+        }),
+        timeout: this.pythonClient.timeout
+      })
+
+      if (!response.ok) {
+        throw new Error(`Python AI Service error: ${response.status}`)
+      }
+
+      const data = await response.json()
+
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Email melhorado com sucesso',
+        data: {
+          subject: data.data.subject,
+          html: data.data.html,
+          text: data.data.text,
+          modifications_applied: data.data.modifications_applied,
+          project_updated: data.data.project_updated
+        },
+        metadata: {
+          processingTime: data.processing_time,
+          service: 'python-ai-service',
+          userId,
+          timestamp: new Date(),
+          ...data.metadata
+        }
+      })
+
+    } catch (error: any) {
+      logger.error('Improve email error:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro na melhoria do email',
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Erro interno'
+      })
+    }
+  }
+
+  async getHealthStatus(req: Request, res: Response): Promise<void> {
+    try {
+      logger.info('🔍 Verificando status do Python AI Service')
+
+      const healthResponse = await fetch(`${this.pythonClient.baseURL}/health`, {
+        method: 'GET',
+        timeout: 10000
+      })
+
+      const healthData = healthResponse.ok ? await healthResponse.json() : null
+
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Status do serviço de IA',
+        data: {
+          status: healthResponse.ok ? 'healthy' : 'unhealthy',
+          pythonService: {
+            url: this.pythonClient.baseURL,
+            responsive: healthResponse.ok,
+            responseTime: healthData?.response_time || null
+          },
+          healthData,
+          capabilities: [
+            'email-generation',
+            'email-improvement',
+            'smart-chat',
+            'css-optimization',
+            'html-validation',
+            'mongodb-integration'
+          ]
+        },
+        metadata: {
+          timestamp: new Date(),
+          checkedBy: (req as any).user?.userId
+        }
+      })
+
+    } catch (error: any) {
+      logger.error('Health check error:', error.message)
+      
+      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+        success: false,
+        message: 'Python AI Service indisponível',
+        data: {
+          status: 'unhealthy',
+          pythonService: {
+            url: this.pythonClient.baseURL,
+            responsive: false,
+            error: error.message
+          }
+        }
+      })
+    }
+  }
+
+  async validateEmailHTML(req: Request, res: Response): Promise<void> {
+    try {
+      const { html } = req.body
+
+      if (!html?.trim()) {
+        res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'HTML é obrigatório'
+        })
+        return
+      }
+
+      logger.info('🔍 Validando HTML via Python AI Service')
+
+      const response = await fetch(`${this.pythonClient.baseURL}/validate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ html }),
+        timeout: this.pythonClient.timeout
+      })
+
+      if (!response.ok) {
+        throw new Error(`Python AI Service validation failed: ${response.status}`)
+      }
+
+      const validationResult = await response.json()
+
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'HTML validado com sucesso',
+        data: validationResult,
+        metadata: {
+          timestamp: new Date(),
+          service: 'python-ai-service',
+          htmlSize: html.length
+        }
+      })
+
+    } catch (error: any) {
+      logger.error('Validation error:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro na validação do HTML',
+        error: error.message
+      })
+    }
+  }
+
+  async optimizeCSS(req: Request, res: Response): Promise<void> {
+    try {
+      const { html, target_clients = ['gmail', 'outlook'], enable_dark_mode = true, mobile_first = true } = req.body
+
+      if (!html?.trim()) {
+        res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'HTML é obrigatório'
+        })
+        return
+      }
+
+      logger.info('🎨 Otimizando CSS via Python AI Service')
+
+      const response = await fetch(`${this.pythonClient.baseURL}/optimize-css`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          html,
+          target_clients,
+          enable_dark_mode,
+          mobile_first
+        }),
+        timeout: this.pythonClient.timeout
+      })
+
+      if (!response.ok) {
+        throw new Error(`Python AI Service CSS optimization failed: ${response.status}`)
+      }
+
+      const optimizationResult = await response.json()
+
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'CSS otimizado com sucesso',
+        data: optimizationResult.data,
+        metadata: {
+          timestamp: new Date(),
+          service: 'python-ai-service',
+          ...optimizationResult.metadata
+        }
+      })
+
+    } catch (error: any) {
+      logger.error('CSS optimization error:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro na otimização do CSS',
+        error: error.message
+      })
+    }
+  }
+
+  async getMetrics(req: Request, res: Response): Promise<void> {
+    try {
+      logger.info('📊 Obtendo métricas do Python AI Service')
+
+      const response = await fetch(`${this.pythonClient.baseURL}/metrics`, {
+        method: 'GET',
+        timeout: 10000
+      })
+
+      if (!response.ok) {
+        throw new Error(`Python AI Service metrics failed: ${response.status}`)
+      }
+
+      const metrics = await response.json()
+
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Métricas obtidas com sucesso',
+        data: metrics,
+        metadata: {
+          timestamp: new Date(),
+          service: 'python-ai-service',
+          requestedBy: (req as any).user?.userId
+        }
+      })
+
+    } catch (error: any) {
+      logger.error('Metrics error:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro ao obter métricas',
+        error: error.message
+      })
+    }
+  }
+
+  async testConnection(req: Request, res: Response): Promise<void> {
+    try {
+      logger.info('🔗 Testando conectividade com Python AI Service')
+
+      const startTime = Date.now()
+      
+      const response = await fetch(`${this.pythonClient.baseURL}/`, {
+        method: 'GET',
+        timeout: 10000
+      })
+
+      const responseTime = Date.now() - startTime
+      const isConnected = response.ok
+
+      let serviceData = null
+      if (isConnected) {
+        serviceData = await response.json()
+      }
+
+      res.status(HTTP_STATUS.OK).json({
+        success: isConnected,
+        message: isConnected ? 'Conectividade OK' : 'Falha na conectividade',
+        data: {
+          connected: isConnected,
+          responseTime,
+          status: response.status,
+          serviceInfo: serviceData,
+          testTimestamp: new Date()
+        }
+      })
+
+    } catch (error: any) {
+      logger.error('Connection test error:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro no teste de conectividade',
+        error: error.message,
+        data: {
+          connected: false,
+          testTimestamp: new Date()
+        }
+      })
+    }
+  }
+}
+
+export default new AIController()

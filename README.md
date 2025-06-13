@@ -1,460 +1,369 @@
-# 🚀 MailTrendz - Sistema Híbrido Node.js + Python AI
+# 🚀 MailTrendz Backend - Sistema Reestruturado
 
-**MailTrendz é uma plataforma avançada de geração de emails com IA, agora com arquitetura híbrida otimizada para máxima performance e capacidades de IA.**
+Sistema de geração de emails ultra-modernos com IA, agora com arquitetura otimizada e contexto inteligente.
 
-## 📋 Índice
+## ✨ Nova Arquitetura v2.1
 
-- [🏗️ Arquitetura](#️-arquitetura)
-- [✨ Funcionalidades](#-funcionalidades)
-- [🚀 Início Rápido](#-início-rápido)
-- [⚙️ Configuração](#️-configuração)
-- [🛠️ Desenvolvimento](#️-desenvolvimento)
-- [🐳 Docker](#-docker)
-- [📡 API](#-api)
-- [🧪 Testes](#-testes)
-- [🚢 Deploy](#-deploy)
-- [🤝 Contribuição](#-contribuição)
+### **Principais Melhorias:**
+- 🤖 **Python AI Service**: Microserviço dedicado para IA
+- 💬 **Conversations Unificadas**: MongoDB otimizado para contexto
+- 🔄 **Contexto Preservado**: IA lembra histórico completo
+- ⚡ **Performance**: Estrutura otimizada para escala
+- 🛡️ **Robustez**: Sistema de fallbacks inteligentes
+
+---
 
 ## 🏗️ Arquitetura
 
-### Sistema Híbrido Revolucionário
-
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    MailTrendz v2.0                          │
-├─────────────────────────────────────────────────────────────┤
-│  Frontend (React)  →  Node.js API  →  Python AI Service    │
-│                            ↓              ↓                │
-│                      MongoDB ←────────────┘                │
-└─────────────────────────────────────────────────────────────┘
+MailTrendz Backend
+├── Node.js + TypeScript      # API principal, auth, routing
+├── Python AI Service         # IA, geração, chat inteligente  
+├── MongoDB                    # Banco unificado otimizado
+└── Frontend                   # React (separado)
 ```
 
-### Componentes
+### **Fluxo de Dados:**
+```
+Frontend → Node.js (auth/routing) → Python AI Service → MongoDB
+```
 
-#### 🟢 **Node.js API** (Porta 8000)
-- **Função**: Gateway principal, autenticação, gerenciamento de dados
-- **Stack**: TypeScript, Express, MongoDB, JWT
-- **Responsabilidades**:
-  - Autenticação e autorização
-  - CRUD de projetos e usuários
-  - Gerenciamento de chats
-  - Proxy para Python AI Service
+---
 
-#### 🐍 **Python AI Service** (Porta 5000)
-- **Função**: Motor de IA especializado
-- **Stack**: FastAPI, Claude AI, CSS Expert, HTML Optimizer
-- **Responsabilidades**:
-  - Geração ultra-moderna de emails
-  - Processamento inteligente de chat
-  - Otimização CSS/HTML avançada
-  - Acesso direto ao MongoDB para atualizações
+## 📦 Instalação Rápida
 
-#### 🗄️ **MongoDB** (Porta 27017)
-- **Função**: Banco de dados principal
-- **Acesso**: Compartilhado entre Node.js e Python
-- **Collections**: users, projects, chats, chatmessages
-
-## ✨ Funcionalidades
-
-### 🧠 IA Avançada
-- **Geração Ultra-Moderna**: Emails responsivos com design de última geração
-- **Chat Inteligente**: Modificações em tempo real via conversação
-- **CSS Expert**: Otimização automática para Gmail, Outlook, Apple Mail
-- **Validação HTML**: Verificação completa de compatibilidade
-
-### 🎨 Design & Templates
-- **5+ Indústrias**: Saúde, Tecnologia, Educação, E-commerce, Finanças
-- **6+ Tons**: Professional, Friendly, Urgent, Casual, Formal, Luxury
-- **Dark Mode**: Suporte nativo para modo escuro
-- **Mobile-First**: Design responsivo otimizado
-
-### 💬 Chat Inteligente
-- **Modificações Contextuais**: "Mude as cores para azul profissional"
-- **Atualização Instantânea**: Projeto atualizado em tempo real
-- **Histórico Completo**: Todas as conversas são salvas
-- **Multi-projeto**: Chat específico por projeto
-
-### 🔧 Sistema Robusto
-- **Fallback Inteligente**: Sistema continua funcionando mesmo se IA falhar
-- **Health Monitoring**: Monitoramento completo de todos os serviços
-- **Rate Limiting**: Proteção contra abuso
-- **Logs Avançados**: Rastreamento completo de operações
-
-## 🚀 Início Rápido
-
-### Pré-requisitos
-
-- **Node.js** 18+
-- **Python** 3.11+
-- **MongoDB** 7.0+ (local ou Atlas)
-- **Docker** (opcional, mas recomendado)
-
-### ⚡ Setup Automático
-
+### **1. Clone e Setup:**
 ```bash
-# 1. Clone o repositório
-git clone https://github.com/seu-usuario/mailtrendz-backend.git
-cd mailtrendz-backend
-
-# 2. Execute o setup automático
-chmod +x scripts/setup.sh
-./scripts/setup.sh
-
-# 3. Configure suas chaves de API no .env
-# OPENROUTER_API_KEY=sua_chave_aqui
-
-# 4. Inicie o ambiente de desenvolvimento
-chmod +x scripts/dev.sh
-./scripts/dev.sh
+git clone <repository>
+cd Backend\ -\ MailTrendz
+npm run setup
 ```
 
-### 🐳 Setup com Docker (Recomendado)
-
+### **2. Configurar .env:**
 ```bash
-# 1. Clone e configure
-git clone https://github.com/seu-usuario/mailtrendz-backend.git
-cd mailtrendz-backend
-cp .env.example .env
-
-# 2. Configure OPENROUTER_API_KEY no .env
-
-# 3. Inicie com Docker
-docker-compose up -d
-
-# 4. Verifique os serviços
-curl http://localhost:8000/api/v1/health  # Node.js API
-curl http://localhost:5000/health         # Python AI Service
-```
-
-## ⚙️ Configuração
-
-### Variáveis de Ambiente Essenciais
-
-```bash
-# IA - OBRIGATÓRIO
-OPENROUTER_API_KEY=sk-or-v1-sua_chave_aqui
-
-# MongoDB
+# Editar .env com suas configurações
 MONGODB_URL=mongodb://localhost:27017/mailtrendz
-
-# Python AI Service
+OPENROUTER_API_KEY=your-api-key-here
 PYTHON_AI_SERVICE_URL=http://localhost:5000
-
-# JWT
-JWT_SECRET=seu_jwt_secret_seguro
 ```
 
-### Configuração Avançada
-
-Veja `.env.example` para todas as opções disponíveis.
-
-## 🛠️ Desenvolvimento
-
-### Estrutura do Projeto
-
-```
-mailtrendz-backend/
-├── src/                    # Código fonte principal
-│   ├── controllers/        # Controllers da API Node.js
-│   ├── services/           # Serviços de negócio
-│   │   └── ai/            # Cliente Python AI
-│   ├── models/            # Modelos MongoDB
-│   ├── routes/            # Rotas da API
-│   ├── utils/             # Utilitários Node.js
-│   ├── ai-service/        # Python AI Service
-│   │   ├── app/
-│   │   │   ├── services/  # Serviços de IA
-│   │   │   ├── database/  # Cliente MongoDB Python
-│   │   │   ├── models/    # Modelos Python
-│   │   │   └── utils/     # Utilitários Python
-│   │   ├── app.py         # FastAPI principal
-│   │   └── requirements.txt # Dependências Python
-│   ├── app.ts             # Configuração Express
-│   └── server.ts          # Entry point Node.js
-├── scripts/               # Scripts de desenvolvimento
-└── docker-compose.yml    # Configuração Docker
-```
-
-### Comandos de Desenvolvimento
-
+### **3. Migrar Banco (se existente):**
 ```bash
-# Node.js API
-npm run dev          # Servidor desenvolvimento
-npm run build        # Build TypeScript
-npm run test         # Executar testes
-
-# Python AI Service
-cd src/ai-service
-source venv/bin/activate
-python app.py        # Servidor desenvolvimento
-pytest              # Executar testes
-
-# Docker
-docker-compose up -d                    # Iniciar todos os serviços
-docker-compose logs -f python-ai       # Ver logs Python AI
-docker-compose logs -f nodejs-api      # Ver logs Node.js
+npm run migration:conversations
 ```
 
-### Debugging
-
-#### Debug Node.js
+### **4. Iniciar Serviços:**
 ```bash
-# Terminal 1 - Python AI Service
-cd src/ai-service && source venv/bin/activate && python app.py
-
-# Terminal 2 - Node.js com debug
-DEBUG=* npm run dev
-```
-
-#### Debug Python AI
-```bash
-# Terminal 1 - Node.js API
+# Terminal 1 - Node.js
 npm run dev
 
-# Terminal 2 - Python AI com debug
+# Terminal 2 - Python AI  
 cd src/ai-service
-source venv/bin/activate
-uvicorn app:app --host 0.0.0.0 --port 5000 --reload --log-level debug
+pip install -r requirements.txt
+python app.py
 ```
 
-## 📡 API
+---
 
-### Endpoints Principais
+## 🗄️ Nova Estrutura MongoDB
 
-#### Node.js API (http://localhost:8000)
+### **Modelo Conversation (Unificado):**
+```javascript
+{
+  _id: ObjectId,
+  userId: ObjectId,
+  projectId: ObjectId,
+  
+  conversation: {
+    title: String,
+    messages: [{
+      id: ObjectId,
+      type: 'user' | 'ai',
+      content: String,
+      timestamp: Date,
+      metadata: {
+        emailUpdated: Boolean,
+        modifications: [String],
+        confidence: Number
+      }
+    }],
+    
+    context: {
+      projectSnapshot: {
+        name: String,
+        currentHTML: String,
+        industry: String,
+        tone: String
+      },
+      conversationState: {
+        pendingModifications: [String],
+        userPreferences: Object
+      }
+    }
+  },
+  
+  stats: {
+    totalMessages: Number,
+    emailModifications: Number,
+    averageResponseTime: Number
+  }
+}
+```
 
-```bash
+### **Vantagens:**
+- ✅ **Contexto preservado** entre mensagens
+- ✅ **Performance otimizada** (menos queries)
+- ✅ **Escalabilidade** melhorada
+- ✅ **Sincronização** projeto-conversa
+
+---
+
+## 🤖 Python AI Service
+
+### **Recursos:**
+- 🎨 **Email Generator**: Templates ultra-modernos
+- 🔧 **CSS Expert**: Otimização para email clients
+- 💬 **Smart Chat**: Contexto inteligente
+- 🔍 **HTML Optimizer**: Validação e correções
+- 📊 **Performance Monitor**: Métricas em tempo real
+
+### **Endpoints Principais:**
+```
+POST /generate           # Gerar email
+POST /modify             # Modificar email existente
+POST /chat/process       # Chat inteligente
+POST /optimize-css       # Otimizar CSS
+POST /validate           # Validar HTML
+GET  /health            # Status do serviço
+GET  /metrics           # Métricas de performance
+```
+
+### **Modelos IA Suportados:**
+- `anthropic/claude-3.5-sonnet` (primário)
+- `anthropic/claude-3-sonnet-20240229` (backup)
+- `anthropic/claude-3-haiku-20240307` (backup)
+- `openai/gpt-4-turbo-preview` (backup)
+
+---
+
+## 💬 Sistema de Chat Inteligente
+
+### **Detecção de Intenções:**
+- 🎨 **Mudança de cores**: "muda para azul"
+- ✏️ **Modificação de texto**: "altera o título"
+- 🔲 **Mudança de CTA**: "botão para 'Comprar'"
+- 🎯 **Adição de conteúdo**: "adiciona desconto"
+- ❓ **Perguntas gerais**: sobre email marketing
+
+### **Contexto Inteligente:**
+- 📚 **Histórico completo** da conversa
+- 🏗️ **Estado atual** do projeto/email
+- 🎯 **Intenções detectadas** automaticamente
+- 🔄 **Modificações aplicadas** em tempo real
+
+---
+
+## 🛠️ API Endpoints
+
+### **Node.js Backend (Port 8000):**
+```
 # Autenticação
-POST /api/v1/auth/register    # Registrar usuário
-POST /api/v1/auth/login       # Login
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+POST /api/v1/auth/refresh
 
 # Projetos
-GET  /api/v1/projects         # Listar projetos
-POST /api/v1/projects         # Criar projeto
+GET    /api/v1/projects
+POST   /api/v1/projects
+GET    /api/v1/projects/:id
+PUT    /api/v1/projects/:id
+DELETE /api/v1/projects/:id
 
-# Chat
-GET  /api/v1/chats/project/:id # Chat do projeto
-POST /api/v1/chats/:id/messages # Enviar mensagem
+# Conversas
+GET  /api/v1/chats/project/:projectId
+POST /api/v1/chats/project/:projectId/messages
+GET  /api/v1/chats/user/conversations
 
-# IA (proxy para Python)
-POST /api/v1/ai/generate      # Gerar email
-POST /api/v1/ai/improve       # Melhorar email
-POST /api/v1/ai/chat          # Chat com IA
+# IA (Proxy para Python)
+POST /api/v1/ai/generate
+POST /api/v1/ai/improve
+GET  /api/v1/ai/health
 ```
 
-#### Python AI Service (http://localhost:5000)
-
-```bash
-# IA
-POST /generate               # Geração de email
-POST /modify                 # Modificação de email
-POST /chat/process           # Processamento de chat
-
-# Utilitários
-POST /optimize-css           # Otimização CSS
-POST /validate              # Validação HTML
-GET  /health                # Health check
+### **Python AI Service (Port 5000):**
+```
+POST /generate              # Geração de email
+POST /modify                # Modificação inteligente
+POST /chat/process          # Chat com contexto
+POST /optimize-css          # Otimização CSS
+GET  /health               # Status completo
+GET  /metrics              # Métricas detalhadas
 ```
 
-### Documentação Interativa
+---
 
-- **Node.js API**: http://localhost:8000/docs
-- **Python AI Service**: http://localhost:5000/docs
+## 🔧 Comandos Úteis
 
-## 🧪 Testes
-
-### Testes Automatizados
-
+### **Desenvolvimento:**
 ```bash
-# Node.js
-npm test                     # Todos os testes
-npm run test:watch          # Modo watch
-npm run test:coverage       # Com coverage
+npm run dev                    # Iniciar desenvolvimento
+npm run build                 # Build para produção
+npm run start                 # Iniciar produção
+```
 
-# Python
+### **Banco de Dados:**
+```bash
+npm run migration:conversations  # Migrar para nova estrutura
+npm run migration:cleanup       # Limpar collections antigas
+```
+
+### **Logs e Debug:**
+```bash
+npm run logs:clear             # Limpar logs
+tail -f logs/app.log          # Monitorar logs
+```
+
+### **Python AI Service:**
+```bash
 cd src/ai-service
-source venv/bin/activate
-pytest                      # Todos os testes
-pytest --cov=app           # Com coverage
+python app.py                 # Iniciar serviço
+pip install -r requirements.txt  # Instalar deps
 ```
-
-### Testes Manuais
-
-```bash
-# Testar conectividade
-curl http://localhost:8000/api/v1/health
-curl http://localhost:5000/health
-
-# Testar geração de email
-curl -X POST http://localhost:5000/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "Crie um email sobre tecnologia",
-    "industry": "tecnologia",
-    "tone": "professional"
-  }'
-```
-
-## 🐳 Docker
-
-### Desenvolvimento
-
-```bash
-# Iniciar todos os serviços
-docker-compose up -d
-
-# Ver logs
-docker-compose logs -f
-
-# Parar serviços
-docker-compose down
-
-# Rebuild
-docker-compose up --build
-```
-
-### Produção
-
-```bash
-# Com perfis específicos
-docker-compose --profile production up -d
-
-# Com cache Redis
-docker-compose --profile cache --profile production up -d
-```
-
-### Comandos Úteis
-
-```bash
-# Acessar container
-docker-compose exec nodejs-api sh
-docker-compose exec python-ai sh
-
-# Ver status
-docker-compose ps
-
-# Limpar volumes
-docker-compose down -v
-```
-
-## 🚢 Deploy
-
-### Preparação
-
-1. **Configure variáveis de ambiente de produção**
-2. **Configure MongoDB Atlas ou MongoDB dedicado**
-3. **Obtenha chave OPENROUTER_API_KEY**
-4. **Configure domínios e SSL**
-
-### Deploy Render.com
-
-```bash
-# 1. Conecte repositório ao Render
-# 2. Configure variáveis de ambiente
-# 3. Use docker-compose.yml para deploy
-```
-
-### Deploy AWS/GCP
-
-```bash
-# 1. Use docker-compose para container orchestration
-# 2. Configure load balancer
-# 3. Configure auto-scaling
-```
-
-## 🔧 Troubleshooting
-
-### Problemas Comuns
-
-#### Python AI Service não conecta
-```bash
-# Verificar se está rodando
-curl http://localhost:5000/health
-
-# Ver logs
-docker-compose logs python-ai
-
-# Restart
-docker-compose restart python-ai
-```
-
-#### MongoDB não conecta
-```bash
-# Verificar conexão
-mongosh "mongodb://localhost:27017/mailtrendz"
-
-# Ver logs MongoDB
-docker-compose logs mongodb
-```
-
-#### Rate Limit atingido
-```bash
-# Verificar configuração
-grep RATE_LIMIT .env
-
-# Ajustar limites temporariamente
-# Editar RATE_LIMIT_MAX_REQUESTS no .env
-```
-
-## 🤝 Contribuição
-
-### Como Contribuir
-
-1. **Fork o projeto**
-2. **Crie uma branch para sua feature** (`git checkout -b feature/AmazingFeature`)
-3. **Commit suas mudanças** (`git commit -m 'Add some AmazingFeature'`)
-4. **Push para a branch** (`git push origin feature/AmazingFeature`)
-5. **Abra um Pull Request**
-
-### Padrões de Código
-
-- **Node.js**: ESLint + Prettier
-- **Python**: Black + Flake8
-- **Commits**: Conventional Commits
-- **Testes**: Obrigatórios para novas features
-
-### Estrutura de Branch
-
-- `main`: Produção
-- `develop`: Desenvolvimento
-- `feature/*`: Novas funcionalidades
-- `bugfix/*`: Correções
-- `hotfix/*`: Correções urgentes
-
-## 📞 Suporte
-
-### Canais de Suporte
-
-- **Issues**: Para bugs e requests
-- **Discussions**: Para dúvidas gerais
-- **Email**: suporte@mailtrendz.com
-
-### Links Úteis
-
-- **Documentação**: https://docs.mailtrendz.com
-- **Status Page**: https://status.mailtrendz.com
-- **Changelog**: CHANGELOG.md
 
 ---
 
-## 📄 Licença
+## 📊 Monitoramento
 
-Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICENSE) para detalhes.
+### **Health Checks:**
+- 🟢 **Node.js**: `GET /health`
+- 🐍 **Python AI**: `GET http://localhost:5000/health`
+- 📊 **Métricas**: `GET http://localhost:5000/metrics`
+- 📚 **API Docs**: `GET http://localhost:5000/docs`
 
-## 🙏 Agradecimentos
-
-- **OpenRouter** pela API de IA
-- **FastAPI** pelo framework Python
-- **Express.js** pelo framework Node.js
-- **MongoDB** pelo banco de dados
-- **Docker** pela containerização
+### **Logs:**
+- 📝 **App logs**: `./logs/app.log`
+- 🐍 **AI logs**: `./logs/ai-service.log`
+- 🔍 **Error logs**: `./logs/error.log`
 
 ---
 
-<div align="center">
+## 🚀 Deploy
 
-**✨ Desenvolvido com ❤️ para revolucionar o email marketing ✨**
+### **Variáveis de Ambiente (Produção):**
+```bash
+NODE_ENV=production
+PORT=8000
+MONGODB_URL=mongodb+srv://...
+OPENROUTER_API_KEY=your-key
+PYTHON_AI_SERVICE_URL=http://python-ai:5000
+```
 
-[Website](https://mailtrendz.com) • [Documentação](https://docs.mailtrendz.com) • [Demo](https://demo.mailtrendz.com)
+### **Docker:**
+```bash
+npm run docker:build         # Build imagem
+npm run docker:dev           # Desenvolvimento
+npm run docker:dev:down      # Parar containers
+```
 
-</div>
+---
+
+## 🔒 Segurança
+
+### **Recursos:**
+- 🛡️ **Rate limiting** configurável
+- 🔐 **JWT authentication**
+- 🚫 **CORS protection**
+- 🔒 **Helmet security headers**
+- 📝 **Input validation**
+- 🚧 **SQL injection protection**
+
+---
+
+## 📈 Performance
+
+### **Otimizações:**
+- ⚡ **MongoDB indexes** otimizados
+- 🚀 **Connection pooling**
+- 💾 **Conversation caching**
+- 🔄 **AI response caching**
+- 📊 **Performance monitoring**
+
+### **Limites (Configuráveis):**
+```javascript
+// Rate limits por minuto
+FREE: 50 projetos, 100 chats
+PRO: 150 projetos, 300 chats  
+ENTERPRISE: 500 projetos, 1000 chats
+```
+
+---
+
+## 🆘 Troubleshooting
+
+### **Problemas Comuns:**
+
+#### **1. IA não responde:**
+```bash
+# Verificar Python AI Service
+curl http://localhost:5000/health
+
+# Verificar logs
+tail -f logs/ai-service.log
+```
+
+#### **2. Erro de conexão MongoDB:**
+```bash
+# Verificar MongoDB
+mongo --eval "db.adminCommand('ismaster')"
+
+# Verificar .env
+cat .env | grep MONGODB_URL
+```
+
+#### **3. Chat sem contexto:**
+```bash
+# Executar migração
+npm run migration:conversations
+
+# Verificar collections
+mongo mailtrendz --eval "show collections"
+```
+
+#### **4. OpenRouter API falha:**
+```bash
+# Testar API key
+curl -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+     https://openrouter.ai/api/v1/models
+```
+
+---
+
+## 📚 Documentação Adicional
+
+- 🤖 **Python AI Service**: `src/ai-service/README.md`
+- 🗄️ **Database Schema**: `docs/database-schema.md`
+- 🔌 **API Reference**: `docs/api-reference.md`
+- 🚀 **Deploy Guide**: `docs/deployment.md`
+
+---
+
+## 🎯 Próximas Versões
+
+### **v2.2 (Planejado):**
+- 🔄 **Real-time collaboration**
+- 📊 **Advanced analytics** 
+- 🎨 **Visual email builder**
+- 🤖 **Multi-model AI support**
+
+---
+
+## 🤝 Suporte
+
+- 📧 **Email**: support@mailtrendz.com
+- 📚 **Docs**: [Documentation](./docs/)
+- 🐛 **Issues**: [GitHub Issues](./issues)
+- 💬 **Discord**: [Community](./discord)
+
+---
+
+**MailTrendz v2.1** - Sistema de emails ultra-modernos com IA avançada! 🚀✨

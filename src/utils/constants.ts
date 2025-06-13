@@ -6,8 +6,7 @@ export const API_PREFIX = `/api/${API_VERSION}`
 export const COLLECTIONS = {
   USERS: 'users',
   PROJECTS: 'projects',
-  CHATS: 'chats',
-  MESSAGES: 'messages',
+  CONVERSATIONS: 'conversations',
   REFRESH_TOKENS: 'refresh_tokens'
 } as const
 
@@ -64,43 +63,43 @@ export const API_LIMITS = {
   }
 } as const
 
-// Rate Limiting - CORRIGIDO: Limites muito mais generosos
+// Rate Limiting
 export const RATE_LIMITS = {
   GENERAL: {
-    WINDOW_MS: 15 * 60 * 1000, // 15 minutos
-    MAX_REQUESTS: 10000 // Era 3000, agora 10000
+    WINDOW_MS: 15 * 60 * 1000,
+    MAX_REQUESTS: 10000
   },
   AUTH: {
-    WINDOW_MS: 15 * 60 * 1000, // 15 minutos
-    MAX_REQUESTS: 500 // Era 150, agora 500
+    WINDOW_MS: 15 * 60 * 1000,
+    MAX_REQUESTS: 500
   },
   AI: {
-    WINDOW_MS: 60 * 1000, // 1 minuto
-    MAX_REQUESTS: 500 // Era 150, agora 500
+    WINDOW_MS: 60 * 1000,
+    MAX_REQUESTS: 500
   },
   PROJECTS: {
-    WINDOW_MS: 60 * 1000, // 1 minuto
-    MAX_REQUESTS: 1000 // Era 300, agora 1000
+    WINDOW_MS: 60 * 1000,
+    MAX_REQUESTS: 1000
   }
 } as const
 
-// AI Models - CORRIGIDOS
+// AI Models
 export const AI_MODELS = {
-  PRIMARY: 'anthropic/claude-3-sonnet-20240229',
+  PRIMARY: 'anthropic/claude-3.5-sonnet',
   FALLBACKS: [
+    'anthropic/claude-3-sonnet-20240229',
     'anthropic/claude-3-haiku-20240307',
-    'openai/gpt-4-turbo-preview',
-    'openai/gpt-3.5-turbo'
+    'openai/gpt-4-turbo-preview'
   ]
 } as const
 
-// AI Configuration - OTIMIZADO
+// AI Configuration
 export const AI_CONFIG = {
   DEFAULT_TEMPERATURE: 0.7,
-  MAX_TOKENS: 2000, // Era 1500, agora 2000
-  TIMEOUT: 45000, // Era 30000, agora 45000 (45s)
-  RETRY_ATTEMPTS: 2,
-  RETRY_DELAY: 3000 // Era 2000, agora 3000
+  MAX_TOKENS: 2500,
+  TIMEOUT: 45000,
+  RETRY_ATTEMPTS: 3,
+  RETRY_DELAY: 3000
 } as const
 
 // Email Template Colors
@@ -127,15 +126,15 @@ export const VALIDATION = {
     NAME_MAX_LENGTH: 100,
     DESCRIPTION_MAX_LENGTH: 500,
     PROMPT_MIN_LENGTH: 10,
-    PROMPT_MAX_LENGTH: 2000 // Era 1000, agora 2000
+    PROMPT_MAX_LENGTH: 2000
   },
-  CHAT: {
+  CONVERSATION: {
     TITLE_MAX_LENGTH: 100,
-    MESSAGE_MAX_LENGTH: 10000 // Era 5000, agora 10000
+    MESSAGE_MAX_LENGTH: 10000
   }
 } as const
 
-// HTTP Status Codes - CORRIGIDO
+// HTTP Status Codes
 export const HTTP_STATUS = {
   OK: 200,
   CREATED: 201,
@@ -206,16 +205,9 @@ export const CACHE_TTL = {
   USER_PROFILE: 900,
   PROJECTS_LIST: 600,
   PROJECT_DETAILS: 900,
-  CHAT_HISTORY: 300,
+  CONVERSATION_HISTORY: 300,
   ANALYTICS: 1800,
   AI_MODELS: 3600
-} as const
-
-// File Upload Limits
-export const UPLOAD_LIMITS = {
-  MAX_FILE_SIZE: 10 * 1024 * 1024,
-  ALLOWED_TYPES: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-  MAX_FILES: 10
 } as const
 
 // Security
@@ -235,46 +227,26 @@ export const EMAIL_CONFIG = {
   RECOMMENDED_PREVIEW_LENGTH: 90
 } as const
 
-// Queue Configuration - CORRIGIDO: Menos restritivo
-export const QUEUE_CONFIG = {
-  PROJECT_CREATION: {
-    MAX_CONCURRENT: 5, // Era 3, agora 5
-    RETRY_LIMIT: 3, // Era 2, agora 3
-    RETRY_DELAY: 2000, // Era 3000, agora 2000
-    PROCESS_INTERVAL: 100, // Era 200, agora 100
-    USER_COOLDOWN: 1000 // Era 3000, agora 1000 (1s)
-  },
-  AI_GENERATION: {
-    MAX_CONCURRENT: 3, // Era 2, agora 3
-    TIMEOUT: 45000, // Era 30000, agora 45000
-    PRIORITY_LEVELS: {
-      HIGH: 3,
-      NORMAL: 2,
-      LOW: 1
-    }
-  }
-} as const
-
-// Feature Rate Limits - CORRIGIDO: Muito mais generosos
+// Feature Rate Limits
 export const FEATURE_RATE_LIMITS = {
   PROJECT_CREATION: {
-    FREE_PER_MINUTE: 50, // Era 20, agora 50
-    PRO_PER_MINUTE: 150, // Era 60, agora 150
-    ENTERPRISE_PER_MINUTE: 500, // Era 200, agora 500
-    COOLDOWN_SECONDS: 1, // Era 3, agora 1
-    BURST_LIMIT: 10 // Era 5, agora 10
+    FREE_PER_MINUTE: 50,
+    PRO_PER_MINUTE: 150,
+    ENTERPRISE_PER_MINUTE: 500,
+    COOLDOWN_SECONDS: 1,
+    BURST_LIMIT: 10
   },
-  AI_CHAT: {
-    FREE_PER_MINUTE: 100, // Era 30, agora 100
-    PRO_PER_MINUTE: 300, // Era 100, agora 300
-    ENTERPRISE_PER_MINUTE: 1000, // Era 500, agora 1000
-    COOLDOWN_SECONDS: 0.5 // Era 1, agora 0.5
+  AI_CONVERSATION: {
+    FREE_PER_MINUTE: 100,
+    PRO_PER_MINUTE: 300,
+    ENTERPRISE_PER_MINUTE: 1000,
+    COOLDOWN_SECONDS: 0.5
   },
   PROJECT_IMPROVEMENT: {
-    FREE_PER_MINUTE: 30, // Era 10, agora 30
-    PRO_PER_MINUTE: 100, // Era 30, agora 100
-    ENTERPRISE_PER_MINUTE: 300, // Era 100, agora 300
-    COOLDOWN_SECONDS: 2 // Era 5, agora 2
+    FREE_PER_MINUTE: 30,
+    PRO_PER_MINUTE: 100,
+    ENTERPRISE_PER_MINUTE: 300,
+    COOLDOWN_SECONDS: 2
   }
 } as const
 
@@ -290,9 +262,10 @@ export const ERROR_MESSAGES = {
     TIMEOUT: 'A geração de conteúdo está demorando mais que o esperado. Por favor, tente novamente.',
     OVERLOADED: 'Sistema sobrecarregado. Sua requisição foi adicionada à fila.'
   },
-  QUEUE: {
-    POSITION: (position: number) => `Você está na posição ${position} da fila.`,
-    ESTIMATED_TIME: (seconds: number) => `Tempo estimado: ${seconds} segundos.`
+  PYTHON_AI: {
+    CONNECTION_FAILED: 'Falha na conexão com o serviço Python AI.',
+    TIMEOUT: 'Timeout na comunicação com o serviço Python AI.',
+    INVALID_RESPONSE: 'Resposta inválida do serviço Python AI.'
   }
 } as const
 
@@ -314,10 +287,8 @@ export default {
   ERROR_CODES,
   PAGINATION,
   CACHE_TTL,
-  UPLOAD_LIMITS,
   SECURITY,
   EMAIL_CONFIG,
-  QUEUE_CONFIG,
   FEATURE_RATE_LIMITS,
   ERROR_MESSAGES
 }
