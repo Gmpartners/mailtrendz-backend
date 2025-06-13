@@ -50,7 +50,7 @@ const convertMessageToInterface = (message: IChatMessageDocument): IMessage => {
 class ChatService {
   async createChat(userId: string, createChatDto: CreateChatDto): Promise<ChatResponse> {
     try {
-      // ✅ CORREÇÃO: Verificar se já existe chat para o projeto
+      // Verificar se já existe chat para o projeto
       if (createChatDto.projectId) {
         const existingChat = await Chat.findOne({
           userId: new Types.ObjectId(userId),
@@ -63,7 +63,6 @@ class ChatService {
             projectId: createChatDto.projectId 
           })
 
-          // Buscar mensagens do chat existente
           const messages = await ChatMessage.find({ chatId: existingChat._id })
             .sort({ createdAt: 1 })
             .limit(50)
@@ -108,7 +107,7 @@ class ChatService {
 
       await chat.save()
 
-      // ✅ CORREÇÃO: Vincular chat ao projeto
+      // Vincular chat ao projeto
       if (createChatDto.projectId) {
         await Project.findByIdAndUpdate(createChatDto.projectId, {
           chatId: chat._id
@@ -154,7 +153,6 @@ class ChatService {
     try {
       console.log('🔍 [CHAT SERVICE] Buscando chat por projeto:', { projectId, userId })
 
-      // ✅ CORREÇÃO: Busca mais robusta
       let chat = await Chat.findOne({
         projectId: new Types.ObjectId(projectId),
         userId: new Types.ObjectId(userId)
@@ -189,27 +187,37 @@ class ChatService {
           chatId: chat._id
         })
 
-        // ✅ NOVO: Criar mensagem de boas-vindas automaticamente
+        // ✅ MELHORADO: Mensagem de boas-vindas mais informativa
         const welcomeMessage = new ChatMessage({
           chatId: chat._id,
           type: 'ai',
           content: `Olá! 👋 Este é o chat inteligente do seu projeto "${project.name}". 
 
-Posso ajudar você a:
-• ✏️ Editar o conteúdo do email
-• 🎨 Alterar cores e design
-• 📝 Melhorar textos e títulos
-• 🚀 Otimizar para conversão
+**Posso ajudar você a:**
+• ✏️ Editar textos e títulos
+• 🎨 Alterar cores e design  
+• 📝 Melhorar conteúdo para conversão
+• 🚀 Otimizar elementos visuais
+• 📧 Modificar assunto e preview
 
 **Como usar:**
-- Seja específico: "mude o botão para azul" 
-- Peça melhorias: "deixe o título mais urgente"
-- Solicite mudanças: "adicione um desconto de 20%"
+- Seja específico: *"mude o botão para azul"*
+- Peça melhorias: *"deixe o título mais urgente"*
+- Solicite mudanças: *"adicione um desconto de 20%"*
+- Teste variações: *"faça uma versão mais formal"*
 
-O projeto atual tem o conteúdo carregado. Diga o que gostaria de modificar!`,
+**✨ IA Inteligente Ativa:** Suas modificações serão aplicadas automaticamente ao email!
+
+**Projeto atual carregado:** ${project.content?.subject || 'Sem assunto'}
+Digite o que gostaria de modificar!`,
           metadata: {
             isWelcome: true,
-            enhancedFeatures: ['contexto-projeto', 'modificacao-automatica']
+            enhancedFeatures: ['contexto-projeto', 'modificacao-automatica'],
+            projectContext: {
+              hasContent: !!project.content?.html,
+              projectType: project.type,
+              projectIndustry: project.metadata?.industry
+            }
           }
         })
 
@@ -225,7 +233,7 @@ O projeto atual tem o conteúdo carregado. Diga o que gostaria de modificar!`,
       // Buscar mensagens do chat
       const messages = await ChatMessage.find({ chatId: chat._id })
         .sort({ createdAt: 1 })
-        .limit(100) // ✅ CORREÇÃO: Aumentar limite de mensagens
+        .limit(100)
 
       const userMessages = messages.filter(m => m.type === 'user').length
       const aiMessages = messages.filter(m => m.type === 'ai').length
@@ -233,7 +241,8 @@ O projeto atual tem o conteúdo carregado. Diga o que gostaria de modificar!`,
       console.log('✅ [CHAT SERVICE] Chat encontrado com contexto completo:', {
         chatId: chat._id.toString(),
         messagesCount: messages.length,
-        projectName: project.name
+        projectName: project.name,
+        hasProjectContent: !!project.content?.html
       })
 
       return {
@@ -456,17 +465,12 @@ O projeto atual tem o conteúdo carregado. Diga o que gostaria de modificar!`,
     }
   }
 
+  // ✅ CRÍTICO: Método sendMessage totalmente reescrito para aplicar modificações
   async sendMessage(chatId: string, userId: string, messageDto: SendMessageDto): Promise<MessageResponse> {
     try {
-      console.log('💬 [CHAT SERVICE] Processando mensagem com contexto completo...')
-      console.log('📊 [CHAT SERVICE] Dados de entrada:', {
-        chatId,
-        userId,
-        messageLength: messageDto.content?.length,
-        messageType: messageDto.type || 'user'
-      })
+      console.log('💬 [CHAT SERVICE] Processando mensagem com IA Enhanced...')
 
-      // ✅ NOVO: Validação de entrada mais robusta
+      // Validações de entrada
       if (!chatId || !Types.ObjectId.isValid(chatId)) {
         throw new Error('ID do chat inválido')
       }
@@ -488,9 +492,46 @@ O projeto atual tem o conteúdo carregado. Diga o que gostaria de modificar!`,
         throw new Error('Chat não encontrado')
       }
 
-      console.log('✅ [CHAT SERVICE] Chat encontrado:', {
-        chatId: chat._id.toString(),
-        hasProject: !!chat.projectId
+      // ✅ CRUCIAL: Buscar projeto atual com conteúdo
+      let projectToUpdate = null
+      let projectContext: any = {
+        userId,
+        projectName: 'Chat Geral',
+        type: 'campaign',
+        industry: 'geral',
+        tone: 'profissional',
+        hasProjectContent: false,
+        currentEmailContent: null
+      }
+
+      if (chat.projectId) {
+        projectToUpdate = await Project.findById(chat.projectId)
+        
+        if (projectToUpdate) {
+          projectContext = {
+            userId,
+            projectName: projectToUpdate.name,
+            type: projectToUpdate.type,
+            industry: projectToUpdate.metadata?.industry || 'geral',
+            tone: projectToUpdate.metadata?.tone || 'profissional',
+            targetAudience: projectToUpdate.metadata?.targetAudience,
+            status: projectToUpdate.status,
+            hasProjectContent: !!(projectToUpdate.content?.html),
+            currentEmailContent: {
+              subject: projectToUpdate.content?.subject,
+              html: projectToUpdate.content?.html,
+              text: projectToUpdate.content?.text,
+              previewText: projectToUpdate.content?.previewText
+            },
+            originalPrompt: projectToUpdate.metadata?.originalPrompt
+          }
+        }
+      }
+
+      console.log('📊 [CHAT SERVICE] Contexto do projeto:', {
+        hasProject: !!projectToUpdate,
+        hasContent: projectContext.hasProjectContent,
+        projectName: projectContext.projectName
       })
 
       // Criar mensagem do usuário
@@ -499,21 +540,22 @@ O projeto atual tem o conteúdo carregado. Diga o que gostaria de modificar!`,
         type: 'user',
         content: messageDto.content.trim(),
         metadata: {
-          enhancedProcessing: true
+          enhancedProcessing: true,
+          timestamp: new Date()
         }
       })
 
       await userMessage.save()
-      console.log('✅ [CHAT SERVICE] Mensagem do usuário salva:', userMessage._id.toString())
+      console.log('✅ [CHAT SERVICE] Mensagem do usuário salva')
 
-      // ✅ CORREÇÃO CRÍTICA: Try-catch para o Enhanced AI
-      let enhancedResponse: any
-      let aiContent = 'Desculpe, houve um problema temporário. Tente novamente em alguns momentos.'
+      // ✅ CRÍTICO: Processamento com Enhanced AI
+      let aiContent = 'Desculpe, houve um problema temporário. Tente novamente.'
       let shouldUpdateEmail = false
       let projectUpdated = false
+      let enhancedResponse: any = null
 
       try {
-        // Buscar histórico completo para contexto
+        // Buscar histórico recente para contexto
         const recentMessages = await ChatMessage.find({ chatId: new Types.ObjectId(chatId) })
           .sort({ createdAt: -1 })
           .limit(20)
@@ -524,76 +566,14 @@ O projeto atual tem o conteúdo carregado. Diga o que gostaria de modificar!`,
           timestamp: msg.createdAt
         }))
 
-        console.log('📚 [CHAT SERVICE] Histórico carregado:', {
-          mensagensCarregadas: chatHistory.length
-        })
+        console.log('🧠 [CHAT SERVICE] Chamando Enhanced AI com contexto completo...')
 
-        // Contexto completo do projeto
-        let projectContext: any = {
-          userId,
-          projectName: 'Chat Geral',
-          type: 'campaign',
-          industry: 'geral',
-          tone: 'profissional',
-          hasProjectContent: false,
-          currentEmailContent: null
-        }
-
-        let projectToUpdate = null
-
-        if (chat.projectId) {
-          const project = chat.projectId as any
-          projectToUpdate = project
-
-          projectContext = {
-            userId,
-            projectName: project.name,
-            type: project.type,
-            industry: project.metadata?.industry || 'geral',
-            tone: project.metadata?.tone || 'profissional',
-            targetAudience: project.metadata?.targetAudience,
-            status: project.status,
-            hasProjectContent: true,
-            currentEmailContent: {
-              subject: project.content?.subject,
-              html: project.content?.html,
-              text: project.content?.text,
-              previewText: project.content?.previewText
-            },
-            originalPrompt: project.metadata?.originalPrompt
-          }
-
-          // Detectar intenção de modificação
-          const modificationKeywords = [
-            'mude', 'altere', 'modifique', 'troque', 'substitua',
-            'edite', 'corrija', 'ajuste', 'melhore', 'otimize',
-            'adicione', 'remova', 'inclua', 'retire', 'delete',
-            'cor', 'botão', 'título', 'texto', 'assunto',
-            'desconto', 'preço', 'valor', 'data', 'prazo'
-          ]
-
-          shouldUpdateEmail = modificationKeywords.some(keyword => 
-            messageDto.content.toLowerCase().includes(keyword)
-          )
-
-          console.log('🔍 [CHAT SERVICE] Análise de intenção:', {
-            shouldUpdateEmail,
-            hasContent: !!project.content?.html,
-            projectName: project.name
-          })
-        }
-
-        console.log('🧠 [CHAT SERVICE] Chamando Enhanced AI...')
-        
-        // ✅ NOVO: Health check do Enhanced AI antes de usar
+        // Health check do Enhanced AI
         const aiHealthCheck = await EnhancedAIService.healthCheck()
-        console.log('🏥 [CHAT SERVICE] AI Health Check:', aiHealthCheck)
+        console.log('🏥 [CHAT SERVICE] AI Health:', aiHealthCheck.status)
 
-        if (aiHealthCheck.status === 'unavailable') {
-          console.warn('⚠️ [CHAT SERVICE] Enhanced AI indisponível, usando resposta padrão')
-          aiContent = 'O serviço de IA está temporariamente indisponível. Por favor, tente novamente em alguns momentos.'
-        } else {
-          // Chamar Enhanced AI com contexto completo
+        if (aiHealthCheck.status === 'available') {
+          // Chamar Enhanced AI
           enhancedResponse = await EnhancedAIService.smartChatWithAI(
             messageDto.content,
             chatHistory,
@@ -601,62 +581,105 @@ O projeto atual tem o conteúdo carregado. Diga o que gostaria de modificar!`,
           )
 
           aiContent = enhancedResponse.response
-          shouldUpdateEmail = enhancedResponse.shouldUpdateEmail || shouldUpdateEmail
+          shouldUpdateEmail = enhancedResponse.shouldUpdateEmail || false
 
-          console.log('✅ [CHAT SERVICE] Enhanced AI respondeu:', {
-            contentLength: aiContent.length,
+          console.log('✅ [ENHANCED AI] Resposta processada:', {
             shouldUpdateEmail,
-            confidence: enhancedResponse.metadata?.confidence
+            hasEnhancedContent: !!enhancedResponse.enhancedContent,
+            confidence: enhancedResponse.analysis?.confidence
           })
 
-          // Atualizar projeto se necessário
-          if ((enhancedResponse.shouldUpdateEmail || shouldUpdateEmail) && 
-              projectToUpdate && 
-              enhancedResponse.enhancedContent) {
-            
+          // ✅ CRÍTICO: Aplicar modificações no projeto se necessário
+          if (shouldUpdateEmail && projectToUpdate && enhancedResponse.enhancedContent) {
             try {
-              console.log('📧 [CHAT SERVICE] Atualizando projeto com novo conteúdo...')
+              console.log('📧 [CHAT SERVICE] APLICANDO MODIFICAÇÕES NO PROJETO...')
 
-              await Project.findByIdAndUpdate(projectToUpdate._id, {
-                $set: {
-                  'content.subject': enhancedResponse.enhancedContent.subject || projectToUpdate.content?.subject,
-                  'content.previewText': enhancedResponse.enhancedContent.previewText || projectToUpdate.content?.previewText,
-                  'content.html': enhancedResponse.enhancedContent.html || projectToUpdate.content?.html,
-                  'content.text': enhancedResponse.enhancedContent.text || 
-                                 enhancedResponse.enhancedContent.html?.replace(/<[^>]*>/g, '') ||
-                                 projectToUpdate.content?.text
-                },
-                $inc: { 'metadata.version': 1 }
-              })
-
-              projectUpdated = true
+              const updates: any = {}
               
-              // Incrementar contador de atualizações do chat
-              await Chat.findByIdAndUpdate(chatId, {
-                $inc: { 'metadata.emailUpdates': 1 }
-              })
+              // Atualizar campos que foram modificados
+              if (enhancedResponse.enhancedContent.subject) {
+                updates['content.subject'] = enhancedResponse.enhancedContent.subject
+              }
+              
+              if (enhancedResponse.enhancedContent.previewText) {
+                updates['content.previewText'] = enhancedResponse.enhancedContent.previewText
+              }
+              
+              if (enhancedResponse.enhancedContent.html) {
+                updates['content.html'] = enhancedResponse.enhancedContent.html
+              }
+              
+              if (enhancedResponse.enhancedContent.text) {
+                updates['content.text'] = enhancedResponse.enhancedContent.text
+              }
+              
+              // Incrementar versão
+              updates['metadata.version'] = (projectToUpdate.metadata?.version || 1) + 1
+              updates['metadata.lastModification'] = {
+                by: 'ai-chat',
+                message: messageDto.content,
+                timestamp: new Date(),
+                analysis: enhancedResponse.analysis
+              }
 
-              console.log('✅ [CHAT SERVICE] Projeto atualizado com sucesso')
-            } catch (updateError) {
-              console.error('❌ [CHAT SERVICE] Erro ao atualizar projeto:', updateError)
+              // ✅ APLICAR MUDANÇAS NO PROJETO  
+              const updatedProject = await Project.findByIdAndUpdate(
+                projectToUpdate._id,
+                { $set: updates },
+                { new: true, runValidators: true }
+              )
+
+              if (updatedProject) {
+                projectUpdated = true
+                
+                // Incrementar contador de atualizações do chat
+                await Chat.findByIdAndUpdate(chatId, {
+                  $inc: { 'metadata.emailUpdates': 1 },
+                  $set: { 'metadata.lastActivity': new Date() }
+                })
+
+                console.log('✅ [CHAT SERVICE] PROJETO ATUALIZADO COM SUCESSO!', {
+                  projectId: projectToUpdate._id,
+                  version: updates['metadata.version'],
+                  hasNewHTML: !!enhancedResponse.enhancedContent.html,
+                  hasNewSubject: !!enhancedResponse.enhancedContent.subject
+                })
+              }
+            } catch (updateError: any) {
+              console.error('❌ [CHAT SERVICE] ERRO ao atualizar projeto:', {
+                error: updateError.message,
+                projectId: projectToUpdate._id
+              })
+              
+              // Adicionar aviso na resposta da IA
+              aiContent += '\n\n⚠️ Houve um problema ao aplicar as modificações. O conteúdo foi processado mas não foi salvo automaticamente.'
             }
           }
+        } else {
+          console.warn('⚠️ [CHAT SERVICE] Enhanced AI indisponível, usando resposta padrão')
+          aiContent = `Entendi sua mensagem sobre "${messageDto.content.substring(0, 50)}${messageDto.content.length > 50 ? '...' : ''}".
+
+O serviço de IA Enhanced está temporariamente indisponível. Tente novamente em alguns momentos.
+
+Se o problema persistir:
+• Reformule sua pergunta
+• Seja mais específico
+• Entre em contato com o suporte`
         }
       } catch (aiError: any) {
         console.error('❌ [CHAT SERVICE] Erro no Enhanced AI:', {
           message: aiError.message,
-          stack: aiError.stack?.split('\n').slice(0, 5).join('\n')
+          stack: aiError.stack?.split('\n').slice(0, 3).join('\n')
         })
         
-        // Resposta de fallback em caso de erro na IA
-        aiContent = `Entendi sua mensagem sobre "${messageDto.content.substring(0, 50)}${messageDto.content.length > 50 ? '...' : ''}". 
+        aiContent = `Entendi sua solicitação sobre "${messageDto.content.substring(0, 50)}${messageDto.content.length > 50 ? '...' : ''}".
 
-Houve um problema temporário com o serviço de IA inteligente. Por favor, tente novamente em alguns momentos.
+Houve um problema temporário com o serviço de IA inteligente. 
 
-Se o problema persistir, você pode:
-• Reformular sua pergunta de forma mais direta
-• Tentar uma ação mais específica
-• Entrar em contato com o suporte
+**O que você pode fazer:**
+• Aguarde alguns momentos e tente novamente
+• Reformule sua pergunta de forma mais direta
+• Seja mais específico sobre a modificação desejada
 
 Obrigado pela paciência! 🙏`
       }
@@ -668,31 +691,36 @@ Obrigado pela paciência! 🙏`
         content: aiContent,
         metadata: {
           emailUpdated: shouldUpdateEmail,
+          projectUpdated: projectUpdated,
           suggestions: enhancedResponse?.suggestions || [],
           model: enhancedResponse?.metadata?.model || 'fallback',
           confidence: enhancedResponse?.metadata?.confidence || 0.5,
           enhancedFeatures: enhancedResponse?.metadata?.enhancedFeatures || ['fallback-response'],
           executionTime: enhancedResponse?.metadata?.processingTime || 0,
-          projectContextUsed: !!chat.projectId,
-          isErrorFallback: !enhancedResponse
+          projectContext: {
+            hasProject: !!projectToUpdate,
+            hasContent: projectContext.hasProjectContent,
+            projectName: projectContext.projectName
+          },
+          analysisData: enhancedResponse?.analysis || null,
+          modificationsApplied: shouldUpdateEmail ? enhancedResponse?.enhancedContent || {} : null
         }
       })
 
       await aiMessage.save()
-      console.log('✅ [CHAT SERVICE] Mensagem da IA salva:', aiMessage._id.toString())
+      console.log('✅ [CHAT SERVICE] Mensagem da IA salva')
 
       // Atualizar metadata do chat
       await Chat.findByIdAndUpdate(chatId, {
         $inc: { 'metadata.totalMessages': 2 },
-        $set: { 
-          'metadata.lastActivity': new Date()
-        }
+        $set: { 'metadata.lastActivity': new Date() }
       })
 
-      console.log('✅ [CHAT SERVICE] Mensagem processada com sucesso:', {
+      console.log('🎉 [CHAT SERVICE] PROCESSAMENTO COMPLETO:', {
         projectUpdated,
         shouldUpdateEmail,
-        hasEnhancedResponse: !!enhancedResponse
+        hasEnhancedResponse: !!enhancedResponse,
+        messageId: aiMessage._id
       })
 
       return {
@@ -701,7 +729,7 @@ Obrigado pela paciência! 🙏`
         projectUpdated
       }
     } catch (error: any) {
-      console.error('❌ [CHAT SERVICE] Erro crítico ao enviar mensagem:', {
+      console.error('❌ [CHAT SERVICE] ERRO CRÍTICO ao enviar mensagem:', {
         error: error.message,
         stack: error.stack?.split('\n').slice(0, 10).join('\n'),
         chatId,
@@ -713,10 +741,8 @@ Obrigado pela paciência! 🙏`
     }
   }
 
-  // ✅ CORREÇÃO: Método updateChat corrigido para aceitar UpdateChatDto
   async updateChat(chatId: string, userId: string, updates: UpdateChatDto): Promise<IChat | null> {
     try {
-      // Construir objeto de atualização compatível com o modelo
       const updateObject: any = {
         'metadata.lastActivity': new Date()
       }
@@ -775,7 +801,7 @@ Obrigado pela paciência! 🙏`
         return false
       }
 
-      // ✅ CORREÇÃO: Desvincular do projeto
+      // Desvincular do projeto
       if (chat.projectId) {
         await Project.findByIdAndUpdate(chat.projectId, { 
           $unset: { chatId: 1 } 

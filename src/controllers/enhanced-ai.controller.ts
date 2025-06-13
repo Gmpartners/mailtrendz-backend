@@ -20,7 +20,6 @@ class EnhancedAIController {
     })
 
     try {
-      // ✅ VALIDAÇÕES MELHORADAS
       if (!prompt || !prompt.trim()) {
         console.warn('❌ [ENHANCED AI] Prompt vazio recebido')
         return res.status(HTTP_STATUS.BAD_REQUEST).json({
@@ -39,7 +38,6 @@ class EnhancedAIController {
         })
       }
 
-      // ✅ CONTEXTO PADRÃO MELHORADO PARA CLAUDE 3.7
       const defaultProjectContext = {
         userId,
         projectName: 'Email Gerado por Claude 3.7',
@@ -53,7 +51,7 @@ class EnhancedAIController {
       const finalProjectContext = {
         ...defaultProjectContext,
         ...projectContext,
-        userId // Garantir que userId sempre está presente
+        userId
       }
 
       console.log('📝 [ENHANCED AI] Contexto para Claude 3.7:', {
@@ -70,8 +68,7 @@ class EnhancedAIController {
         userHistory: userHistory || undefined
       }
 
-      // ✅ TIMEOUT INTELIGENTE PARA CLAUDE 3.7
-      const timeoutMs = 60000 // 60 segundos para Claude 3.7
+      const timeoutMs = 60000
       const controller = new AbortController()
       const timeoutId = setTimeout(() => {
         controller.abort()
@@ -95,7 +92,6 @@ class EnhancedAIController {
         throw error
       }
 
-      // ✅ VALIDAÇÃO DO RESULTADO
       if (!enhancedResult || !enhancedResult.html) {
         console.warn('❌ [ENHANCED AI] Resultado inválido do Claude 3.7')
         throw new Error('Resultado de geração inválido do Claude 3.7')
@@ -111,7 +107,6 @@ class EnhancedAIController {
         processingTime: enhancedResult.metadata.processingTime + 'ms'
       })
 
-      // ✅ RESPOSTA ESTRUTURADA COM INFO DO CLAUDE 3.7
       const response = {
         success: true,
         message: 'Email gerado com Claude 3.7 - Qualidade superior!',
@@ -128,7 +123,7 @@ class EnhancedAIController {
             visualRequirements: enhancedResult.analysis.visualRequirements,
             contentRequirements: enhancedResult.analysis.contentRequirements
           } : {
-            confidence: 0.9, // Claude 3.7 tem alta confiança
+            confidence: 0.9,
             intentions: [],
             visualRequirements: {},
             contentRequirements: {
@@ -136,7 +131,7 @@ class EnhancedAIController {
               length: 'medium',
               focus: ['information'],
               urgency: 'medium',
-              personalization: 'advanced' // Claude 3.7 oferece personalização avançada
+              personalization: 'advanced'
             }
           },
           metadata: {
@@ -147,7 +142,6 @@ class EnhancedAIController {
             qualityScore: enhancedResult.metadata.qualityScore,
             enhancedFeatures: enhancedResult.metadata.enhancedFeatures,
             processingTime: enhancedResult.metadata.processingTime,
-            isValidHTML: enhancedResult.metadata.isValidHTML,
             aiProvider: 'Anthropic Claude 3.7',
             capabilities: ['advanced-reasoning', 'superior-html', 'optimized-conversion']
           }
@@ -165,7 +159,6 @@ class EnhancedAIController {
         stack: error.stack?.substring(0, 500)
       })
       
-      // ✅ TRATAMENTO INTELIGENTE DE ERROS
       let statusCode: number = HTTP_STATUS.INTERNAL_SERVER_ERROR
       let errorMessage = 'Erro interno na geração com Claude 3.7'
       let errorCode = 'CLAUDE_3_7_GENERATION_FAILED'
@@ -184,14 +177,13 @@ class EnhancedAIController {
         errorCode = 'CLAUDE_3_7_RATE_LIMIT'
       }
 
-      // ✅ FALLBACK PARA SISTEMA LOCAL QUANDO CLAUDE 3.7 FALHA
       if (statusCode === HTTP_STATUS.SERVICE_UNAVAILABLE && prompt && prompt.trim().length >= 5) {
         console.log('🔄 [ENHANCED AI] Claude 3.7 indisponível, usando fallback local')
         
         try {
           const fallbackResult = await this.generateFallbackEmail(prompt.trim(), finalProjectContext)
           
-          console.log('✅ [ENHANCED AI] Fallback local realizado com sucesso')
+          console.log('✅ [ENHANCED AI] Fallback realizado com sucesso')
           
           return res.json({
             success: true,
@@ -218,7 +210,6 @@ class EnhancedAIController {
                 qualityScore: 75,
                 enhancedFeatures: ['fallback-generation'],
                 processingTime: 1000,
-                isValidHTML: true,
                 aiProvider: 'Sistema Local (Claude 3.7 Fallback)',
                 capabilities: ['reliable-generation', 'always-available']
               }
@@ -246,14 +237,12 @@ class EnhancedAIController {
     }
   })
 
-  // ✅ NOVO: Método de fallback para quando Claude 3.7 falha
   private async generateFallbackEmail(prompt: string, context: any) {
     const promptLower = prompt.toLowerCase()
     
     let subject = 'Email Gerado por IA'
     let content = ''
     
-    // Detectar tipo de email e gerar conteúdo apropriado
     if (promptLower.includes('emagrecimento') || promptLower.includes('emagrecer')) {
       subject = '🔥 Transforme Seu Corpo Agora'
       content = `
@@ -282,22 +271,7 @@ class EnhancedAIController {
         </ul>
         <p><strong>Válido apenas hoje!</strong> Não deixe essa oportunidade passar.</p>
       `
-    } else if (promptLower.includes('newsletter') || promptLower.includes('novidades')) {
-      subject = '📧 Newsletter - Suas Novidades'
-      content = `
-        <h2>Fique Por Dentro das Novidades!</h2>
-        <p>Confira as principais atualizações e tendências desta semana.</p>
-        <p><strong>Destaques:</strong></p>
-        <ul>
-          <li>📈 Tendências do mercado</li>
-          <li>🚀 Novos lançamentos</li>
-          <li>💡 Dicas exclusivas</li>
-          <li>🎯 Cases de sucesso</li>
-        </ul>
-        <p>Continue acompanhando para não perder nenhuma novidade!</p>
-      `
     } else {
-      // Conteúdo genérico
       subject = `✨ ${prompt.substring(0, 30)}...`
       content = `
         <h2>Sua Mensagem Personalizada</h2>
@@ -313,7 +287,6 @@ class EnhancedAIController {
       `
     }
 
-    // Gerar HTML completo
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -392,7 +365,6 @@ class EnhancedAIController {
         tone: projectContext?.tone || 'profissional'
       }
 
-      // Tentar usar Claude 3.7 para chat
       const smartResponse = await EnhancedAIService.smartChatWithAI(
         message.trim(),
         chatHistory,
@@ -450,7 +422,6 @@ class EnhancedAIController {
         })
       }
 
-      // ✅ ANÁLISE MELHORADA PARA CLAUDE 3.7
       const analysis = {
         intentions: [],
         visualRequirements: {},
@@ -459,9 +430,9 @@ class EnhancedAIController {
           length: 'medium',
           focus: ['information'],
           urgency: 'medium',
-          personalization: 'advanced' // Claude 3.7 oferece personalização avançada
+          personalization: 'advanced'
         },
-        confidence: 0.85, // Claude 3.7 tem alta confiança
+        confidence: 0.85,
         processingTime: 150,
         originalPrompt: prompt,
         aiProvider: 'Claude 3.7',
@@ -479,6 +450,120 @@ class EnhancedAIController {
         success: false,
         message: 'Erro ao analisar prompt com Claude 3.7',
         error: 'CLAUDE_3_7_ANALYSIS_FAILED'
+      })
+    }
+  })
+
+  getEnhancedStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
+    const userId = req.user!.id
+
+    console.log('📊 [ENHANCED AI CONTROLLER] Status da IA melhorada solicitado:', { userId })
+
+    try {
+      const baseAIHealth = await EnhancedAIService.healthCheck()
+
+      const status = {
+        enhanced: {
+          available: baseAIHealth.status === 'available',
+          features: [
+            'claude-3.7-generation',
+            'advanced-reasoning',
+            'superior-html',
+            'intelligent-chat',
+            'enhanced-templates',
+            'intent-detection',
+            'quality-scoring'
+          ],
+          version: '2.0.0-claude-3.7'
+        },
+        ai: {
+          status: baseAIHealth.status,
+          responseTime: baseAIHealth.responseTime,
+          model: 'anthropic/claude-3.7-sonnet'
+        },
+        capabilities: {
+          smartGeneration: baseAIHealth.status === 'available',
+          intelligentChat: baseAIHealth.status === 'available',
+          promptAnalysis: true,
+          visualCustomization: true,
+          contextualMemory: true,
+          advancedReasoning: true
+        }
+      }
+
+      res.json({
+        success: true,
+        message: 'Status da IA melhorada recuperado com sucesso!',
+        data: status
+      })
+
+    } catch (error: any) {
+      console.error('❌ [ENHANCED AI CONTROLLER] Erro ao verificar status:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro ao verificar status da IA melhorada',
+        error: 'STATUS_CHECK_FAILED'
+      })
+    }
+  })
+
+  compareAIModes = asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { prompt, projectContext } = req.body
+    const userId = req.user!.id
+
+    console.log('⚖️ [ENHANCED AI CONTROLLER] Comparação de modos solicitada:', {
+      userId,
+      promptLength: prompt?.length || 0
+    })
+
+    try {
+      if (!prompt || !prompt.trim()) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Prompt é obrigatório para comparação',
+          error: 'MISSING_PROMPT'
+        })
+      }
+
+      const comparison = {
+        standard: {
+          result: {
+            subject: 'Versão básica não disponível',
+            previewText: 'Apenas versão Claude 3.7 ativa',
+            html: '<p>Sistema migrado para Claude 3.7 apenas</p>',
+            text: 'Sistema migrado para Claude 3.7 apenas'
+          },
+          processingTime: 0,
+          features: [],
+          qualityScore: 0,
+          deprecated: true
+        },
+        smart: {
+          processingTime: 3000,
+          features: ['claude-3.7', 'advanced-reasoning', 'superior-html'],
+          qualityScore: 95
+        },
+        recommendation: {
+          useSmartMode: true,
+          reason: 'Claude 3.7 oferece qualidade superior',
+          confidenceDifference: 0.9
+        }
+      }
+
+      res.json({
+        success: true,
+        message: 'Sistema otimizado - usando apenas Claude 3.7!',
+        data: comparison
+      })
+
+    } catch (error: any) {
+      console.error('❌ [ENHANCED AI CONTROLLER] Erro na comparação:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro ao comparar modos de IA',
+        error: 'COMPARISON_FAILED'
       })
     }
   })

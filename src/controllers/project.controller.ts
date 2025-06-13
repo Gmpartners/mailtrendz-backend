@@ -9,7 +9,63 @@ import { logger } from '../utils/logger'
 import { asyncHandler, createNotFoundError } from '../middleware/error.middleware'
 
 class ProjectController {
-  // Criar novo projeto COM FILA
+  // ✅ NOVA FUNÇÃO: Gerar nome inteligente baseado no prompt
+  private generateSmartProjectName(prompt: string): string {
+    // Limpar o prompt
+    const cleanPrompt = prompt.trim().toLowerCase()
+    
+    // Palavras-chave para diferentes tipos de email
+    const emailTypes = {
+      'newsletter': ['newsletter', 'notícias', 'novidades', 'informativo'],
+      'promocional': ['promoção', 'desconto', 'oferta', 'black friday', 'liquidação', 'sale'],
+      'boas-vindas': ['boas vindas', 'bem vindo', 'welcome', 'cadastro', 'novo cliente'],
+      'seguimento': ['follow up', 'acompanhamento', 'lembrete', 'segunda chance'],
+      'anúncio': ['anúncio', 'lançamento', 'novo produto', 'novidade'],
+      'abandono': ['carrinho abandonado', 'finalizar compra', 'esqueceu'],
+      'emagrecimento': ['emagrecimento', 'emagrecer', 'perder peso', 'dieta', 'fitness'],
+      'vendas': ['venda', 'comprar', 'adquirir', 'produto']
+    }
+    
+    // Tentar identificar o tipo baseado no prompt
+    let detectedType = 'email'
+    for (const [type, keywords] of Object.entries(emailTypes)) {
+      if (keywords.some(keyword => cleanPrompt.includes(keyword))) {
+        detectedType = type
+        break
+      }
+    }
+    
+    // Extrair palavras importantes do prompt (substantivos e termos relevantes)
+    const importantWords = cleanPrompt
+      .replace(/^(crie|criar|gere|gerar|faça|fazer|desenvolva|desenvolver)\s+/i, '') // Remover verbos de ação
+      .replace(/\b(um|uma|o|a|do|da|de|para|com|sobre|email|e-mail)\b/g, '') // Remover artigos e preposições
+      .split(' ')
+      .filter(word => word.length > 3) // Palavras com mais de 3 caracteres
+      .slice(0, 3) // Pegar no máximo 3 palavras
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1)) // Capitalizar
+    
+    // Construir o nome
+    if (importantWords.length > 0) {
+      const baseWords = importantWords.join(' ')
+      return `Email ${detectedType === 'email' ? 'de' : detectedType.charAt(0).toUpperCase() + detectedType.slice(1)} - ${baseWords}`
+    } else {
+      // Fallback baseado no tipo detectado
+      const typeNames = {
+        'newsletter': 'Newsletter',
+        'promocional': 'Promocional',
+        'boas-vindas': 'Boas-vindas',
+        'seguimento': 'Follow-up',
+        'anúncio': 'Anúncio',
+        'abandono': 'Carrinho Abandonado',
+        'emagrecimento': 'Emagrecimento',
+        'vendas': 'Vendas',
+        'email': 'Marketing'
+      }
+      return `Email ${typeNames[detectedType as keyof typeof typeNames]} - ${new Date().toLocaleDateString('pt-BR')}`
+    }
+  }
+
+  // Criar novo projeto COM FILA - CORRIGIDO COM NOME PERSONALIZADO
   createProject = asyncHandler(async (req: AuthRequest, res: Response) => {
     console.log('📝 [CREATE PROJECT] Dados recebidos:', {
       body: JSON.stringify(req.body, null, 2),
@@ -17,7 +73,15 @@ class ProjectController {
       timestamp: new Date().toISOString()
     })
 
-    const { prompt, type, industry, targetAudience, tone } = req.body as CreateProjectDto
+    const { 
+      prompt, 
+      type, 
+      industry, 
+      targetAudience, 
+      tone,
+      name // ✅ NOVO: Campo opcional para nome personalizado
+    } = req.body as CreateProjectDto & { name?: string }
+    
     const userId = req.user!.id
 
     // Verificar campos obrigatórios
@@ -30,10 +94,20 @@ class ProjectController {
       })
     }
 
+    // ✅ NOVO: Gerar nome inteligente se não fornecido
+    const projectName = name?.trim() || this.generateSmartProjectName(prompt)
+    
+    console.log('🏷️ [CREATE PROJECT] Nome do projeto:', {
+      providedName: name,
+      generatedName: projectName,
+      prompt: prompt.substring(0, 50)
+    })
+
     // Aplicar valores padrão para campos opcionais
     const projectData = {
       prompt: prompt.trim(),
-      type: type || 'campaign',
+      name: projectName,
+      type: type || 'newsletter', // Mudado de 'campaign' para 'newsletter'
       industry: industry || 'geral',
       targetAudience: targetAudience || 'Geral',
       tone: tone || 'profissional'
@@ -59,7 +133,7 @@ class ProjectController {
       })
     }
 
-    // ✅ NOVO: Verificar status da fila
+    // Verificar status da fila
     const queueStatus = projectQueue.getQueueStatus()
     const userPosition = projectQueue.getUserQueuePosition(userId)
     
@@ -70,10 +144,11 @@ class ProjectController {
       userCooldown: queueStatus.userCooldowns[userId]
     })
 
-    // ✅ NOVO: Adicionar à fila ao invés de processar diretamente
+    // Adicionar à fila ao invés de processar diretamente
     try {
       logger.info('Adding project to queue', { 
         userId, 
+        projectName,
         prompt: prompt.substring(0, 50),
         type: projectData.type,
         queueStatus
@@ -87,6 +162,7 @@ class ProjectController {
           // Este código será executado quando chegar a vez na fila
           console.log('🤖 [QUEUE] Processando projeto:', {
             userId,
+            projectName: data.name,
             promptPreview: data.prompt.substring(0, 100)
           })
 
@@ -106,12 +182,14 @@ class ProjectController {
 
       console.log('✅ [CREATE PROJECT] Projeto criado com sucesso:', {
         projectId: project.id || project._id.toString(),
+        projectName: project.name,
         userId,
         type: project.type
       })
 
       logger.info('Project created successfully', { 
         projectId: project.id || project._id, 
+        projectName: project.name,
         userId, 
         type: project.type 
       })
@@ -133,7 +211,7 @@ class ProjectController {
 
       res.status(HTTP_STATUS.CREATED).json({
         success: true,
-        message: 'Projeto criado com sucesso!',
+        message: `Projeto "${project.name}" criado com sucesso!`,
         data: {
           project: responseProject,
           queue: {
@@ -147,12 +225,13 @@ class ProjectController {
       console.error('❌ [CREATE PROJECT] Erro na criação:', {
         error: error.message,
         userId,
+        projectName,
         prompt: prompt.substring(0, 50)
       })
 
       logger.error('Project creation failed:', error)
 
-      // ✅ NOVO: Mensagens de erro mais específicas
+      // Mensagens de erro mais específicas
       if (error.message?.includes('aguarde')) {
         return res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
           success: false,
@@ -180,7 +259,7 @@ class ProjectController {
     }
   })
 
-  // ✅ NOVO: Endpoint para verificar status da fila
+  // Endpoint para verificar status da fila
   getQueueStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id
     const status = projectQueue.getQueueStatus()
@@ -313,11 +392,23 @@ class ProjectController {
     })
   })
 
-  // Atualizar projeto
+  // Atualizar projeto - CORRIGIDO PARA PERMITIR ATUALIZAÇÃO DE NOME
   updateProject = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params
     const userId = req.user!.id
-    const updates = req.body as UpdateProjectDto
+    const updates = req.body as UpdateProjectDto & { name?: string }
+
+    // ✅ NOVO: Permitir atualização do nome
+    if (updates.name) {
+      updates.name = updates.name.trim()
+      if (updates.name.length < 3) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Nome do projeto deve ter pelo menos 3 caracteres',
+          error: { code: 'INVALID_NAME' }
+        })
+      }
+    }
 
     const project = await ProjectService.updateProject(id, userId, updates)
 
@@ -328,12 +419,13 @@ class ProjectController {
     logger.info('Project updated', { 
       projectId: id, 
       userId, 
-      updates: Object.keys(updates) 
+      updates: Object.keys(updates),
+      newName: updates.name
     })
 
     res.json({
       success: true,
-      message: 'Projeto atualizado com sucesso!',
+      message: `Projeto "${project.name}" atualizado com sucesso!`,
       data: { project }
     })
   })
@@ -372,7 +464,7 @@ class ProjectController {
       })
     }
 
-    // ✅ NOVO: Usar fila para duplicação também
+    // Usar fila para duplicação também
     try {
       const duplicatedProject = await projectQueue.add(
         userId,
@@ -395,7 +487,7 @@ class ProjectController {
 
       res.status(HTTP_STATUS.CREATED).json({
         success: true,
-        message: 'Projeto duplicado com sucesso!',
+        message: `Projeto "${duplicatedProject.name}" duplicado com sucesso!`,
         data: { project: duplicatedProject }
       })
 
@@ -447,7 +539,7 @@ class ProjectController {
       throw createNotFoundError('Projeto')
     }
 
-    // ✅ NOVO: Usar fila para melhorias também
+    // Usar fila para melhorias também
     try {
       const improvedProject = await projectQueue.add(
         userId,

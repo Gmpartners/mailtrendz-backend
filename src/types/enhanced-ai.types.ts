@@ -1,14 +1,10 @@
 import { EmailContent, ProjectContext } from './ai.types'
 
-// =====================================
-// TIPOS PARA IA MELHORADA - MailTrendz
-// =====================================
-
 export interface EnhancedEmailContent {
   subject: string
   previewText: string
   html: string
-  text: string  // ✅ PROPRIEDADE ADICIONADA
+  text: string
   css: string
   components: EmailComponent[]
   analysis: PromptAnalysis
@@ -25,11 +21,11 @@ export interface PromptAnalysis {
 }
 
 export interface Intention {
-  action: 'create' | 'modify' | 'improve' | 'redesign'
+  action: 'create' | 'modify' | 'improve' | 'redesign' | 'customize'
   target: 'subject' | 'content' | 'layout' | 'colors' | 'typography' | 'cta' | 'images'
-  specification: string
-  priority: number
-  scope: 'global' | 'section' | 'element'
+  specification?: string
+  priority?: number
+  scope?: 'global' | 'section' | 'element'
   confidence: number
 }
 
@@ -56,12 +52,13 @@ export interface VisualRequirements {
     imageStyle?: 'minimal' | 'bordered' | 'shadow'
     sectionStyle?: 'clean' | 'divided' | 'cards'
   }
+  primaryColor?: string
 }
 
 export interface ContentRequirements {
-  tone: 'professional' | 'casual' | 'urgent' | 'friendly' | 'formal'
+  tone: 'professional' | 'casual' | 'urgent' | 'friendly' | 'formal' | 'persuasive'
   length: 'short' | 'medium' | 'long'
-  focus: Array<'conversion' | 'information' | 'engagement' | 'branding'>
+  focus: Array<'conversion' | 'information' | 'engagement' | 'branding' | 'sales' | 'promotion'>
   urgency: 'low' | 'medium' | 'high'
   personalization: 'none' | 'basic' | 'advanced'
 }
@@ -122,6 +119,12 @@ export interface EmailMetadata {
   supportedClients: string[]
   enhancedFeatures: string[]
   processingTime: number
+  isValidHTML?: boolean
+  htmlValidation?: {
+    issues: string[]
+    fixes: string[]
+    qualityBreakdown: Record<string, any>
+  }
 }
 
 export interface UserHistory {
@@ -174,5 +177,7 @@ export interface EnhancedChatResponse {
     confidence: number
     enhancedFeatures: string[]
     processingTime: number
+    appliedModifications?: boolean
+    validationResults?: string[]
   }
 }

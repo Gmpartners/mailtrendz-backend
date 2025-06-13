@@ -39,7 +39,6 @@ export const errorHandler = (error: any, req: Request, res: Response, next: Next
   let statusCode = res.statusCode !== 200 ? res.statusCode : 500
   let message = error.message
 
-  // Melhor tratamento de erros específicos
   if (error.name === 'ValidationError') {
     statusCode = 400
     message = Object.values(error.errors).map((val: any) => val.message).join(', ')
@@ -60,7 +59,6 @@ export const errorHandler = (error: any, req: Request, res: Response, next: Next
     message = 'ID do recurso inválido'
   }
 
-  // ✅ NOVO: Tratamento especial para timeouts e problemas de IA
   if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
     statusCode = 503
     message = 'Serviço temporariamente indisponível - timeout'
@@ -71,14 +69,12 @@ export const errorHandler = (error: any, req: Request, res: Response, next: Next
     message = 'Serviço de IA temporariamente indisponível'
   }
 
-  // ✅ NOVO: Evitar erro 503 em desenvolvimento
   if (process.env.NODE_ENV === 'development' && statusCode === 503) {
     logger.warn('503 error converted to 500 in development', { originalError: error.message })
     statusCode = 500
     message = 'Erro interno do servidor (desenvolvimento)'
   }
 
-  // Log do erro
   logger.error('Request error:', {
     message: error.message,
     stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
@@ -102,9 +98,44 @@ export const errorHandler = (error: any, req: Request, res: Response, next: Next
   })
 }
 
-// ✅ NOVO: Middleware para health check automático
+export class AppError extends Error {
+  public statusCode: number
+  public isOperational: boolean
+
+  constructor(message: string, statusCode: number) {
+    super(message)
+    this.statusCode = statusCode
+    this.isOperational = true
+
+    Error.captureStackTrace(this, this.constructor)
+  }
+}
+
+export const createNotFoundError = (message: string = 'Resource not found') => {
+  return new AppError(message, 404)
+}
+
+export const createUnauthorizedError = (message: string = 'Unauthorized access') => {
+  return new AppError(message, 401)
+}
+
+export const createForbiddenError = (message: string = 'Forbidden access') => {
+  return new AppError(message, 403)
+}
+
+export const createConflictError = (message: string = 'Conflict error') => {
+  return new AppError(message, 409)
+}
+
+export const createBadRequestError = (message: string = 'Bad request') => {
+  return new AppError(message, 400)
+}
+
+export const createInternalServerError = (message: string = 'Internal server error') => {
+  return new AppError(message, 500)
+}
+
 export const healthCheckMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  // Verificar se o sistema está sobrecarregado
   const memoryUsage = process.memoryUsage()
   const usedMemory = memoryUsage.heapUsed / memoryUsage.heapTotal
 
@@ -112,14 +143,12 @@ export const healthCheckMiddleware = (req: Request, res: Response, next: NextFun
     logger.warn('High memory usage detected', { usedMemory: Math.round(usedMemory * 100) + '%' })
   }
 
-  // Adicionar header de saúde do sistema
   res.setHeader('X-System-Health', usedMemory > 0.8 ? 'degraded' : 'healthy')
   res.setHeader('X-Memory-Usage', Math.round(usedMemory * 100) + '%')
   
   next()
 }
 
-// ✅ NOVO: Middleware para rate limiting inteligente
 export const smartRateLimitHandler = (error: any, req: Request, res: Response, next: NextFunction) => {
   if (error.status === 429) {
     const retryAfter = error.retryAfter || 60
@@ -141,7 +170,6 @@ export const smartRateLimitHandler = (error: any, req: Request, res: Response, n
   next(error)
 }
 
-// ✅ NOVO: Middleware para timeout inteligente
 export const timeoutHandler = (timeoutMs: number = 60000) => {
   return (req: Request, res: Response, next: NextFunction) => {
     const timeout = setTimeout(() => {

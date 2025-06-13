@@ -45,42 +45,42 @@ export const MESSAGE_TYPES = {
 // API Limits
 export const API_LIMITS = {
   [SUBSCRIPTION_TYPES.FREE]: {
-    MONTHLY_PROJECTS: 50,
-    MONTHLY_AI_REQUESTS: 200,
-    MONTHLY_CHAT_MESSAGES: 500,
-    MAX_PROJECTS: 25
+    MONTHLY_PROJECTS: 100,
+    MONTHLY_AI_REQUESTS: 500,
+    MONTHLY_CHAT_MESSAGES: 1000,
+    MAX_PROJECTS: 50
   },
   [SUBSCRIPTION_TYPES.PRO]: {
-    MONTHLY_PROJECTS: 500,
-    MONTHLY_AI_REQUESTS: 2000,
-    MONTHLY_CHAT_MESSAGES: 5000,
-    MAX_PROJECTS: 250
+    MONTHLY_PROJECTS: 1000,
+    MONTHLY_AI_REQUESTS: 5000,
+    MONTHLY_CHAT_MESSAGES: 10000,
+    MAX_PROJECTS: 500
   },
   [SUBSCRIPTION_TYPES.ENTERPRISE]: {
-    MONTHLY_PROJECTS: 5000,
-    MONTHLY_AI_REQUESTS: 20000,
-    MONTHLY_CHAT_MESSAGES: 50000,
-    MAX_PROJECTS: 2500
+    MONTHLY_PROJECTS: 10000,
+    MONTHLY_AI_REQUESTS: 50000,
+    MONTHLY_CHAT_MESSAGES: 100000,
+    MAX_PROJECTS: 5000
   }
 } as const
 
-// Rate Limiting
+// Rate Limiting - CORRIGIDO: Limites muito mais generosos
 export const RATE_LIMITS = {
   GENERAL: {
-    WINDOW_MS: 15 * 60 * 1000,
-    MAX_REQUESTS: 3000
+    WINDOW_MS: 15 * 60 * 1000, // 15 minutos
+    MAX_REQUESTS: 10000 // Era 3000, agora 10000
   },
   AUTH: {
-    WINDOW_MS: 15 * 60 * 1000,
-    MAX_REQUESTS: 150
+    WINDOW_MS: 15 * 60 * 1000, // 15 minutos
+    MAX_REQUESTS: 500 // Era 150, agora 500
   },
   AI: {
-    WINDOW_MS: 60 * 1000,
-    MAX_REQUESTS: 150
+    WINDOW_MS: 60 * 1000, // 1 minuto
+    MAX_REQUESTS: 500 // Era 150, agora 500
   },
   PROJECTS: {
-    WINDOW_MS: 60 * 1000,
-    MAX_REQUESTS: 300
+    WINDOW_MS: 60 * 1000, // 1 minuto
+    MAX_REQUESTS: 1000 // Era 300, agora 1000
   }
 } as const
 
@@ -97,10 +97,10 @@ export const AI_MODELS = {
 // AI Configuration - OTIMIZADO
 export const AI_CONFIG = {
   DEFAULT_TEMPERATURE: 0.7,
-  MAX_TOKENS: 1500,
-  TIMEOUT: 30000,
+  MAX_TOKENS: 2000, // Era 1500, agora 2000
+  TIMEOUT: 45000, // Era 30000, agora 45000 (45s)
   RETRY_ATTEMPTS: 2,
-  RETRY_DELAY: 2000
+  RETRY_DELAY: 3000 // Era 2000, agora 3000
 } as const
 
 // Email Template Colors
@@ -127,11 +127,11 @@ export const VALIDATION = {
     NAME_MAX_LENGTH: 100,
     DESCRIPTION_MAX_LENGTH: 500,
     PROMPT_MIN_LENGTH: 10,
-    PROMPT_MAX_LENGTH: 1000
+    PROMPT_MAX_LENGTH: 2000 // Era 1000, agora 2000
   },
   CHAT: {
     TITLE_MAX_LENGTH: 100,
-    MESSAGE_MAX_LENGTH: 5000
+    MESSAGE_MAX_LENGTH: 10000 // Era 5000, agora 10000
   }
 } as const
 
@@ -235,18 +235,18 @@ export const EMAIL_CONFIG = {
   RECOMMENDED_PREVIEW_LENGTH: 90
 } as const
 
-// Queue Configuration
+// Queue Configuration - CORRIGIDO: Menos restritivo
 export const QUEUE_CONFIG = {
   PROJECT_CREATION: {
-    MAX_CONCURRENT: 3,
-    RETRY_LIMIT: 2,
-    RETRY_DELAY: 3000,
-    PROCESS_INTERVAL: 200,
-    USER_COOLDOWN: 3000
+    MAX_CONCURRENT: 5, // Era 3, agora 5
+    RETRY_LIMIT: 3, // Era 2, agora 3
+    RETRY_DELAY: 2000, // Era 3000, agora 2000
+    PROCESS_INTERVAL: 100, // Era 200, agora 100
+    USER_COOLDOWN: 1000 // Era 3000, agora 1000 (1s)
   },
   AI_GENERATION: {
-    MAX_CONCURRENT: 2,
-    TIMEOUT: 30000,
+    MAX_CONCURRENT: 3, // Era 2, agora 3
+    TIMEOUT: 45000, // Era 30000, agora 45000
     PRIORITY_LEVELS: {
       HIGH: 3,
       NORMAL: 2,
@@ -255,26 +255,26 @@ export const QUEUE_CONFIG = {
   }
 } as const
 
-// Feature Rate Limits
+// Feature Rate Limits - CORRIGIDO: Muito mais generosos
 export const FEATURE_RATE_LIMITS = {
   PROJECT_CREATION: {
-    FREE_PER_MINUTE: 20,
-    PRO_PER_MINUTE: 60,
-    ENTERPRISE_PER_MINUTE: 200,
-    COOLDOWN_SECONDS: 3,
-    BURST_LIMIT: 5
+    FREE_PER_MINUTE: 50, // Era 20, agora 50
+    PRO_PER_MINUTE: 150, // Era 60, agora 150
+    ENTERPRISE_PER_MINUTE: 500, // Era 200, agora 500
+    COOLDOWN_SECONDS: 1, // Era 3, agora 1
+    BURST_LIMIT: 10 // Era 5, agora 10
   },
   AI_CHAT: {
-    FREE_PER_MINUTE: 30,
-    PRO_PER_MINUTE: 100,
-    ENTERPRISE_PER_MINUTE: 500,
-    COOLDOWN_SECONDS: 1
+    FREE_PER_MINUTE: 100, // Era 30, agora 100
+    PRO_PER_MINUTE: 300, // Era 100, agora 300
+    ENTERPRISE_PER_MINUTE: 1000, // Era 500, agora 1000
+    COOLDOWN_SECONDS: 0.5 // Era 1, agora 0.5
   },
   PROJECT_IMPROVEMENT: {
-    FREE_PER_MINUTE: 10,
-    PRO_PER_MINUTE: 30,
-    ENTERPRISE_PER_MINUTE: 100,
-    COOLDOWN_SECONDS: 5
+    FREE_PER_MINUTE: 30, // Era 10, agora 30
+    PRO_PER_MINUTE: 100, // Era 30, agora 100
+    ENTERPRISE_PER_MINUTE: 300, // Era 100, agora 300
+    COOLDOWN_SECONDS: 2 // Era 5, agora 2
   }
 } as const
 

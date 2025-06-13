@@ -3,7 +3,7 @@ import { Request, Response } from 'express'
 import { RATE_LIMITS, HTTP_STATUS, ERROR_CODES } from '../utils/constants'
 import { logger } from '../utils/logger'
 
-// Rate limiter geral
+// Rate limiter geral - MUITO MAIS GENEROSO
 export const generalLimiter = rateLimit({
   windowMs: RATE_LIMITS.GENERAL.WINDOW_MS,
   max: RATE_LIMITS.GENERAL.MAX_REQUESTS,
@@ -20,6 +20,10 @@ export const generalLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    // Pular rate limit para health checks
+    return req.path === '/health' || req.path === '/api/v1/health'
+  },
   handler: (req: Request, res: Response) => {
     logger.warn('Rate limit exceeded', {
       ip: req.ip,
@@ -28,7 +32,6 @@ export const generalLimiter = rateLimit({
       method: req.method
     })
     
-    // ✅ MELHORIA: Adicionar Retry-After header
     res.setHeader('Retry-After', Math.ceil(RATE_LIMITS.GENERAL.WINDOW_MS / 1000))
     
     res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
@@ -46,7 +49,7 @@ export const generalLimiter = rateLimit({
   }
 })
 
-// Rate limiter para autenticação
+// Rate limiter para autenticação - MAIS GENEROSO
 export const authLimiter = rateLimit({
   windowMs: RATE_LIMITS.AUTH.WINDOW_MS,
   max: RATE_LIMITS.AUTH.MAX_REQUESTS,
@@ -88,7 +91,7 @@ export const authLimiter = rateLimit({
   }
 })
 
-// Rate limiter para IA
+// Rate limiter para IA - MUITO MAIS GENEROSO
 export const aiLimiter = rateLimit({
   windowMs: RATE_LIMITS.AI.WINDOW_MS,
   max: RATE_LIMITS.AI.MAX_REQUESTS,
@@ -107,6 +110,10 @@ export const aiLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req: Request) => {
     return (req as any).user?.id || req.ip
+  },
+  skip: (req) => {
+    // Pular rate limit para health checks de IA
+    return req.path.includes('/health')
   },
   handler: (req: Request, res: Response) => {
     logger.warn('AI rate limit exceeded', {
@@ -132,7 +139,7 @@ export const aiLimiter = rateLimit({
   }
 })
 
-// Rate limiter para projetos
+// Rate limiter para projetos - MUITO MAIS GENEROSO
 export const projectLimiter = rateLimit({
   windowMs: RATE_LIMITS.PROJECTS.WINDOW_MS,
   max: RATE_LIMITS.PROJECTS.MAX_REQUESTS,
@@ -177,7 +184,7 @@ export const projectLimiter = rateLimit({
   }
 })
 
-// Rate limiter customizado para diferentes planos
+// Rate limiter customizado para diferentes planos - MAIS GENEROSO
 export const createUserBasedLimiter = (
   freeLimit: number,
   proLimit: number,
@@ -242,7 +249,6 @@ export const createUserBasedLimiter = (
         enterprise: enterpriseLimit
       }
       
-      // ✅ MELHORIA: Adicionar Retry-After header
       res.setHeader('Retry-After', Math.ceil(windowMs / 1000))
       
       res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
@@ -265,21 +271,33 @@ export const createUserBasedLimiter = (
   })
 }
 
-// ✅ AJUSTE TEMPORÁRIO: Rate limiter mais generoso para criação de projetos
+// Rate limiter MUITO GENEROSO para criação de projetos
 export const projectCreationLimiter = createUserBasedLimiter(
-  50,   // Free: 50 projetos por minuto (era 10)
-  150,  // Pro: 150 projetos por minuto (era 30) 
-  500,  // Enterprise: 500 projetos por minuto (era 100)
+  100,  // Free: 100 projetos por minuto (era 50)
+  300,  // Pro: 300 projetos por minuto (era 150) 
+  1000, // Enterprise: 1000 projetos por minuto (era 500)
   60000 // 1 minuto
 )
 
-// ✅ AJUSTE TEMPORÁRIO: Rate limiter mais generoso para chat com IA
+// Rate limiter MUITO GENEROSO para chat com IA
 export const aiChatLimiter = createUserBasedLimiter(
-  50,   // Free: 50 mensagens por minuto (era 15)
-  200,  // Pro: 200 mensagens por minuto (era 50)
-  1000, // Enterprise: 1000 mensagens por minuto (era 200)
+  200,  // Free: 200 mensagens por minuto (era 50)
+  500,  // Pro: 500 mensagens por minuto (era 200)
+  2000, // Enterprise: 2000 mensagens por minuto (era 1000)
   60000 // 1 minuto
 )
+
+// Rate limiter super leve para desenvolvimento
+export const developmentLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minuto
+  max: 5000, // 5000 requisições por minuto
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => {
+    // Sempre pular em desenvolvimento se NODE_ENV não for production
+    return process.env.NODE_ENV !== 'production'
+  }
+})
 
 export default {
   generalLimiter,
@@ -288,5 +306,6 @@ export default {
   projectLimiter,
   projectCreationLimiter,
   aiChatLimiter,
+  developmentLimiter,
   createUserBasedLimiter
 }
