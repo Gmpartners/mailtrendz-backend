@@ -1,8 +1,0 @@
-# Railway Configuration - MailTrendz Backend
-[build]
-builder = "NIXPACKS"
-
-[deploy]
-startCommand = "npm start"
-healthcheckPath = "/health"
-healthcheckTimeout = 300
