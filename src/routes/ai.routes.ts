@@ -16,32 +16,53 @@ const generateEmailValidation = [
   body('urgency').optional().isIn(['low', 'medium', 'high']).withMessage('Urgência inválida')
 ]
 
-const improveEmailValidation = [
-  body('project_id').isMongoId().withMessage('Project ID inválido'),
-  body('instructions').trim().isLength({ min: 3, max: 1000 }).withMessage('Instruções devem ter entre 3 e 1000 caracteres'),
-  body('preserve_structure').optional().isBoolean().withMessage('preserve_structure deve ser boolean')
-]
-
-const validateHTMLValidation = [
-  body('html').trim().isLength({ min: 10 }).withMessage('HTML é obrigatório')
-]
-
-const optimizeCSSValidation = [
-  body('html').trim().isLength({ min: 10 }).withMessage('HTML é obrigatório'),
-  body('target_clients').optional().isArray().withMessage('target_clients deve ser array'),
-  body('enable_dark_mode').optional().isBoolean().withMessage('enable_dark_mode deve ser boolean'),
-  body('mobile_first').optional().isBoolean().withMessage('mobile_first deve ser boolean')
-]
-
 // Rotas principais
 router.post('/generate', generateEmailValidation, AIController.generateEmail)
-router.post('/improve', improveEmailValidation, AIController.improveEmail)
-router.post('/validate', validateHTMLValidation, AIController.validateEmailHTML)
-router.post('/optimize-css', optimizeCSSValidation, AIController.optimizeCSS)
 
 // Rotas de status e monitoramento
 router.get('/health', AIController.getHealthStatus)
-router.get('/metrics', AIController.getMetrics)
 router.get('/test-connection', AIController.testConnection)
+
+// Rotas stub para compatibilidade (retornam indicação para usar Python AI Service)
+router.post('/improve', (req, res) => {
+  res.json({
+    success: false,
+    message: 'Use Python AI Service endpoint /modify instead',
+    redirectTo: '/python-ai/modify'
+  })
+})
+
+router.post('/validate', (req, res) => {
+  res.json({
+    success: false,
+    message: 'Use Python AI Service endpoint /validate instead',
+    redirectTo: '/python-ai/validate'
+  })
+})
+
+router.post('/optimize-css', (req, res) => {
+  res.json({
+    success: false,
+    message: 'Use Python AI Service endpoint /optimize-css instead',
+    redirectTo: '/python-ai/optimize-css'
+  })
+})
+
+router.get('/metrics', (req, res) => {
+  res.json({
+    success: true,
+    message: 'AI metrics service',
+    data: {
+      service: 'node-ai-service',
+      status: 'operational',
+      pythonAIService: process.env.PYTHON_AI_SERVICE_URL || 'not-configured',
+      endpoints: {
+        generate: '/api/v1/ai/generate',
+        health: '/api/v1/ai/health',
+        testConnection: '/api/v1/ai/test-connection'
+      }
+    }
+  })
+})
 
 export default router

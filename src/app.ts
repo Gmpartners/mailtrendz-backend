@@ -25,7 +25,6 @@ import projectRoutes from './routes/project.routes'
 import chatRoutes from './routes/chat.routes'
 import userRoutes from './routes/user.routes'
 import aiRoutes from './routes/ai.routes'
-import enhancedAIRoutes from './routes/enhanced-ai.routes'
 
 class App {
   public app: express.Application
@@ -108,16 +107,22 @@ class App {
         const dbHealth = await Database.healthCheck()
         const memoryUsage = process.memoryUsage()
         
-        let enhancedAIHealth = { status: 'unknown', available: false }
+        let pythonAIHealth = { status: 'unknown', available: false }
         try {
-          const EnhancedAIService = (await import('./services/ai/enhanced/EnhancedAIService')).default
-          const baseAIHealth = await EnhancedAIService.healthCheck()
-          enhancedAIHealth = {
-            status: baseAIHealth.status,
-            available: baseAIHealth.status === 'available'
+          // Check Python AI Service
+          const pythonAIUrl = process.env.PYTHON_AI_SERVICE_URL
+          if (pythonAIUrl) {
+            const response = await fetch(`${pythonAIUrl}/health`, { 
+              method: 'GET',
+              headers: { 'Content-Type': 'application/json' },
+              signal: AbortSignal.timeout(5000)
+            })
+            if (response.ok) {
+              pythonAIHealth = { status: 'healthy', available: true }
+            }
           }
         } catch (error) {
-          enhancedAIHealth = { status: 'error', available: false }
+          pythonAIHealth = { status: 'error', available: false }
         }
         
         const health = {
@@ -129,8 +134,7 @@ class App {
           services: {
             database: dbHealth,
             api: { status: 'ok' },
-            enhancedAI: enhancedAIHealth,
-            compatibilityAI: { status: 'ok', available: true }
+            pythonAI: pythonAIHealth
           },
           memory: {
             used: Math.round(memoryUsage.heapUsed / 1024 / 1024 * 100) / 100,
@@ -183,7 +187,6 @@ class App {
     this.app.use(`${API_PREFIX}/projects`, projectRoutes)
     this.app.use(`${API_PREFIX}/chats`, chatRoutes)
     this.app.use(`${API_PREFIX}/ai`, aiRoutes)
-    this.app.use(`${API_PREFIX}/enhanced-ai`, enhancedAIRoutes)
     this.app.use(`${API_PREFIX}/users`, userRoutes)
 
     this.app.get(`${API_PREFIX}`, (req, res) => {
@@ -196,26 +199,12 @@ class App {
           projects: `${API_PREFIX}/projects`,
           chats: `${API_PREFIX}/chats`,
           ai: `${API_PREFIX}/ai`,
-          enhancedAI: `${API_PREFIX}/enhanced-ai`,
           users: `${API_PREFIX}/users`,
           health: `${API_PREFIX}/health`
         },
-        compatibilityFeatures: {
+        features: {
           standardGeneration: `${API_PREFIX}/ai/generate`,
-          emailImprovement: `${API_PREFIX}/ai/improve`,
-          aiHealthCheck: `${API_PREFIX}/ai/health`
-        },
-        enhancedFeatures: {
-          smartEmailGeneration: `${API_PREFIX}/enhanced-ai/generate`,
-          intelligentChat: `${API_PREFIX}/enhanced-ai/chat`,
-          promptAnalysis: `${API_PREFIX}/enhanced-ai/analyze`,
-          aiComparison: `${API_PREFIX}/enhanced-ai/compare`,
-          enhancedStatus: `${API_PREFIX}/enhanced-ai/status`
-        },
-        changes: {
-          added: ['Enhanced AI', 'Compatibility layer', 'Better error handling'],
-          improved: ['Performance', 'Response time', 'Error messages'],
-          maintained: ['Backward compatibility', 'Existing endpoints']
+          healthCheck: `${API_PREFIX}/ai/health`
         },
         timestamp: new Date()
       })
@@ -244,17 +233,12 @@ class App {
           base: `http://localhost:${this.port}`,
           api: `http://localhost:${this.port}${API_PREFIX}`,
           ai: `http://localhost:${this.port}${API_PREFIX}/ai`,
-          enhancedAI: `http://localhost:${this.port}${API_PREFIX}/enhanced-ai`,
           health: `http://localhost:${this.port}/health`
         })
 
         console.log('✨ [APP] IA com Compatibilidade Total:')
         console.log(`   📧 Geração Padrão: POST ${API_PREFIX}/ai/generate`)
-        console.log(`   🔧 Melhoria: POST ${API_PREFIX}/ai/improve`) 
         console.log(`   ⚡ Health Check: GET ${API_PREFIX}/ai/health`)
-        console.log(`   🚀 Enhanced: POST ${API_PREFIX}/enhanced-ai/generate`)
-        console.log(`   💬 Chat Inteligente: POST ${API_PREFIX}/enhanced-ai/chat`)
-        console.log(`   🔍 Análise: POST ${API_PREFIX}/enhanced-ai/analyze`)
       })
       
       process.on('SIGTERM', this.gracefulShutdown.bind(this))

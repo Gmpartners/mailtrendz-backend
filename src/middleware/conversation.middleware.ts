@@ -293,7 +293,7 @@ export const checkPythonAIHealth = async (
     try {
       const response = await fetch(`${pythonServiceUrl}/health`, {
         method: 'GET',
-        timeout: 5000
+        signal: AbortSignal.timeout(5000)
       })
 
       if (!response.ok) {

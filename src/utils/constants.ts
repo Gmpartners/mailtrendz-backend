@@ -7,6 +7,8 @@ export const COLLECTIONS = {
   USERS: 'users',
   PROJECTS: 'projects',
   CONVERSATIONS: 'conversations',
+  CHATS: 'chats',
+  MESSAGES: 'messages',
   REFRESH_TOKENS: 'refresh_tokens'
 } as const
 
@@ -129,6 +131,10 @@ export const VALIDATION = {
     PROMPT_MAX_LENGTH: 2000
   },
   CONVERSATION: {
+    TITLE_MAX_LENGTH: 100,
+    MESSAGE_MAX_LENGTH: 10000
+  },
+  CHAT: {
     TITLE_MAX_LENGTH: 100,
     MESSAGE_MAX_LENGTH: 10000
   }

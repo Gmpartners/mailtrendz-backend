@@ -106,7 +106,7 @@ class AIController {
           pythonService: {
             url: this.pythonServiceUrl,
             responsive: healthResponse.ok,
-            responseTime: healthData?.response_time || null
+            responseTime: healthData?.processing_time || null
           },
           healthData,
           capabilities: [

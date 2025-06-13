@@ -105,11 +105,11 @@ class ChatService {
             user_id: userId,
             project_id: projectId
           }),
-          timeout: 30000
+          signal: AbortSignal.timeout(30000)
         })
 
         if (response.ok) {
-          const data = await response.json()
+          const data = (await response.json()) as any
           aiResponse = data.data?.ai_response || aiResponse
           projectUpdated = data.data?.project_updated || false
         }
