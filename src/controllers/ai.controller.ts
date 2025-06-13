@@ -10,6 +10,14 @@ interface PythonAIResponse {
   metadata?: any
 }
 
+interface PythonServiceStatus {
+  url: string
+  responsive: boolean
+  status: string
+  error: string | null
+  responseTime?: number
+}
+
 class AIController {
   private pythonServiceUrl: string
 
@@ -100,7 +108,7 @@ class AIController {
       logger.info('🔍 Health check AI Service - Endpoint público')
 
       // Timeout para evitar travamentos
-      const timeoutPromise = new Promise((_, reject) => {
+      const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error('Health check timeout')), 10000)
       })
 
@@ -116,11 +124,11 @@ class AIController {
       }
 
       // Tentativa de verificar Python AI Service (opcional)
-      let pythonStatus = {
+      let pythonStatus: PythonServiceStatus = {
         url: this.pythonServiceUrl,
         responsive: false,
         status: 'unknown',
-        error: null as string | null
+        error: null
       }
 
       try {
@@ -130,10 +138,10 @@ class AIController {
           signal: AbortSignal.timeout(8000)
         })
 
-        const response = await Promise.race([healthCheckPromise, timeoutPromise]) as Response
+        const fetchResponse = await Promise.race([healthCheckPromise, timeoutPromise])
 
-        if (response.ok) {
-          const healthData = await response.json()
+        if (fetchResponse.ok) {
+          const healthData = await fetchResponse.json() as PythonAIResponse
           pythonStatus = {
             ...pythonStatus,
             responsive: true,
@@ -141,7 +149,7 @@ class AIController {
             responseTime: healthData?.processing_time || null
           }
         } else {
-          pythonStatus.status = `http-${response.status}`
+          pythonStatus.status = `http-${fetchResponse.status}`
         }
       } catch (pythonError: any) {
         pythonStatus.error = pythonError.message
@@ -205,18 +213,18 @@ class AIController {
 
       const startTime = Date.now()
       
-      const response = await fetch(`${this.pythonServiceUrl}/`, {
+      const fetchResponse = await fetch(`${this.pythonServiceUrl}/`, {
         method: 'GET',
         signal: AbortSignal.timeout(10000)
       })
 
       const responseTime = Date.now() - startTime
-      const isConnected = response.ok
+      const isConnected = fetchResponse.ok
 
       let serviceData = null
       if (isConnected) {
         try {
-          serviceData = await response.json()
+          serviceData = await fetchResponse.json()
         } catch {
           serviceData = { message: 'Response not JSON' }
         }
@@ -228,7 +236,7 @@ class AIController {
         data: {
           connected: isConnected,
           responseTime,
-          status: response.status,
+          status: fetchResponse.status,
           serviceInfo: serviceData,
           pythonServiceUrl: this.pythonServiceUrl,
           testTimestamp: new Date().toISOString()
