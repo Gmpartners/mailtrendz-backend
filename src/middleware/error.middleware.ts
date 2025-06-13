@@ -1,272 +1,170 @@
 import { Request, Response, NextFunction } from 'express'
-import mongoose from 'mongoose'
-import { ApiError } from '../types/api.types'
-import { HTTP_STATUS, ERROR_CODES } from '../utils/constants'
+import { AuthRequest } from '../types/auth.types'
 import { logger } from '../utils/logger'
 
-// Classe customizada para erros da API
-export class AppError extends Error implements ApiError {
-  public statusCode: number
-  public code?: string
-  public details?: any
-  public isOperational: boolean
-
-  constructor(
-    message: string,
-    statusCode: number = HTTP_STATUS.INTERNAL_SERVER_ERROR,
-    code?: string,
-    details?: any
-  ) {
-    super(message)
-    this.statusCode = statusCode
-    this.code = code
-    this.details = details
-    this.isOperational = true
-
-    Error.captureStackTrace(this, this.constructor)
-  }
-}
-
-// Middleware principal de tratamento de erros
-export const errorHandler = (
-  error: Error | AppError | mongoose.Error,
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void => {
-  let statusCode: number = HTTP_STATUS.INTERNAL_SERVER_ERROR
-  let message = 'Erro interno do servidor'
-  let code: string = ERROR_CODES.INTERNAL_ERROR
-  let details: any = undefined
-
-  // Log do erro
-  logger.error('Error caught by error handler', {
-    error: error.message,
-    stack: error.stack,
-    url: req.url,
-    method: req.method,
-    userId: (req as any).user?.id,
-    ip: req.ip
-  })
-
-  // Tratamento específico por tipo de erro
-  if (error instanceof AppError) {
-    // Erro customizado da aplicação
-    statusCode = error.statusCode
-    message = error.message
-    code = error.code || ERROR_CODES.INTERNAL_ERROR
-    details = error.details
-  } else if (error instanceof mongoose.Error.ValidationError) {
-    // Erro de validação do Mongoose
-    statusCode = HTTP_STATUS.BAD_REQUEST
-    message = 'Dados inválidos'
-    code = ERROR_CODES.VALIDATION_ERROR
-    details = Object.values(error.errors).map(err => ({
-      field: err.path,
-      message: err.message
-    }))
-  } else if (error instanceof mongoose.Error.CastError) {
-    // Erro de cast do Mongoose (ex: ObjectId inválido)
-    statusCode = HTTP_STATUS.BAD_REQUEST
-    message = 'ID inválido'
-    code = ERROR_CODES.INVALID_INPUT
-    details = {
-      field: error.path,
-      value: error.value
-    }
-  } else if ((error as any).code === 11000) {
-    // Erro de duplicação no MongoDB (E11000)
-    statusCode = HTTP_STATUS.CONFLICT
-    message = 'Recurso já existe'
-    code = ERROR_CODES.RESOURCE_ALREADY_EXISTS
-    
-    const field = Object.keys((error as any).keyValue)[0]
-    const value = (error as any).keyValue[field]
-    details = {
-      field,
-      value,
-      message: `${field} '${value}' já está em uso`
-    }
-  } else if (error.name === 'JsonWebTokenError') {
-    // Erro de JWT inválido
-    statusCode = HTTP_STATUS.UNAUTHORIZED
-    message = 'Token inválido'
-    code = ERROR_CODES.TOKEN_INVALID
-  } else if (error.name === 'TokenExpiredError') {
-    // Erro de JWT expirado
-    statusCode = HTTP_STATUS.UNAUTHORIZED
-    message = 'Token expirado'
-    code = ERROR_CODES.TOKEN_EXPIRED
-  } else if (error.name === 'MulterError') {
-    // Erro de upload de arquivo
-    statusCode = HTTP_STATUS.BAD_REQUEST
-    message = 'Erro no upload do arquivo'
-    code = ERROR_CODES.INVALID_INPUT
-    details = {
-      type: 'file_upload',
-      error: error.message
-    }
-  } else if (error.message.includes('ECONNREFUSED')) {
-    // Erro de conexão com serviços externos
-    statusCode = HTTP_STATUS.SERVICE_UNAVAILABLE
-    message = 'Serviço temporariamente indisponível'
-    code = ERROR_CODES.SERVICE_UNAVAILABLE
-  } else if (error.message.includes('timeout')) {
-    // Erro de timeout
-    statusCode = HTTP_STATUS.SERVICE_UNAVAILABLE
-    message = 'Tempo limite excedido'
-    code = ERROR_CODES.SERVICE_UNAVAILABLE
-  }
-
-  // Não expor detalhes internos em produção
-  if (process.env.NODE_ENV === 'production' && statusCode === HTTP_STATUS.INTERNAL_SERVER_ERROR) {
-    message = 'Erro interno do servidor'
-    details = undefined
-  }
-
-  // Resposta de erro padronizada
-  const errorResponse = {
-    success: false,
-    message,
-    error: {
-      code,
-      ...(details && { details }),
-      ...(process.env.NODE_ENV === 'development' && { 
-        stack: error.stack,
-        originalMessage: error.message 
-      })
-    },
-    meta: {
-      timestamp: new Date(),
-      requestId: req.headers['x-request-id'] || 'unknown',
-      path: req.path,
-      method: req.method
-    }
-  }
-
-  res.status(statusCode).json(errorResponse)
-}
-
-// Middleware para capturar erros assíncronos
-export const asyncHandler = (fn: Function) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    Promise.resolve(fn(req, res, next)).catch(next)
-  }
-}
-
-// Middleware para rotas não encontradas
-export const notFoundHandler = (req: Request, res: Response, next: NextFunction): void => {
-  const error = new AppError(
-    `Rota ${req.originalUrl} não encontrada`,
-    HTTP_STATUS.NOT_FOUND,
-    ERROR_CODES.RESOURCE_NOT_FOUND,
-    {
-      path: req.originalUrl,
-      method: req.method
-    }
-  )
-  
-  next(error)
-}
-
-// Funções utilitárias para criar erros específicos
-export const createValidationError = (message: string, details?: any) => {
-  return new AppError(message, HTTP_STATUS.BAD_REQUEST, ERROR_CODES.VALIDATION_ERROR, details)
-}
-
-export const createNotFoundError = (resource: string = 'Recurso') => {
-  return new AppError(
-    `${resource} não encontrado`,
-    HTTP_STATUS.NOT_FOUND,
-    ERROR_CODES.RESOURCE_NOT_FOUND
-  )
-}
-
-export const createUnauthorizedError = (message: string = 'Não autorizado') => {
-  return new AppError(message, HTTP_STATUS.UNAUTHORIZED, ERROR_CODES.INVALID_CREDENTIALS)
-}
-
-export const createForbiddenError = (message: string = 'Acesso negado') => {
-  return new AppError(message, HTTP_STATUS.FORBIDDEN, ERROR_CODES.INSUFFICIENT_PERMISSIONS)
-}
-
-export const createConflictError = (message: string, details?: any) => {
-  return new AppError(message, HTTP_STATUS.CONFLICT, ERROR_CODES.RESOURCE_CONFLICT, details)
-}
-
-export const createRateLimitError = (details?: any) => {
-  return new AppError(
-    'Limite de requisições excedido',
-    HTTP_STATUS.TOO_MANY_REQUESTS,
-    ERROR_CODES.RATE_LIMIT_EXCEEDED,
-    details
-  )
-}
-
-export const createAPILimitError = (details?: any) => {
-  return new AppError(
-    'Limite de API excedido',
-    HTTP_STATUS.TOO_MANY_REQUESTS,
-    ERROR_CODES.API_LIMIT_EXCEEDED,
-    details
-  )
-}
-
-export const createExternalServiceError = (service: string, originalError?: Error) => {
-  return new AppError(
-    `Erro no serviço ${service}`,
-    HTTP_STATUS.SERVICE_UNAVAILABLE,
-    ERROR_CODES.EXTERNAL_SERVICE_ERROR,
-    {
-      service,
-      originalMessage: originalError?.message
-    }
-  )
-}
-
-// Middleware para logs de performance
-export const performanceLogger = (req: Request, res: Response, next: NextFunction): void => {
+export const performanceLogger = (req: Request, res: Response, next: NextFunction) => {
   const startTime = Date.now()
   
   res.on('finish', () => {
     const duration = Date.now() - startTime
-    const isSlowRequest = duration > 2000 // 2 segundos
+    const { method, url, ip } = req
+    const { statusCode } = res
     
-    if (isSlowRequest) {
+    if (duration > 1000) {
       logger.warn('Slow request detected', {
-        method: req.method,
-        url: req.url,
-        duration,
-        statusCode: res.statusCode,
-        userId: (req as any).user?.id
+        method,
+        url,
+        statusCode,
+        duration: `${duration}ms`,
+        ip: ip || 'unknown'
       })
     }
-    
-    logger.info('Request completed', {
-      method: req.method,
-      url: req.url,
-      statusCode: res.statusCode,
-      duration,
-      userId: (req as any).user?.id,
-      ip: req.ip
-    })
   })
   
   next()
 }
 
-export default {
-  AppError,
-  errorHandler,
-  asyncHandler,
-  notFoundHandler,
-  createValidationError,
-  createNotFoundError,
-  createUnauthorizedError,
-  createForbiddenError,
-  createConflictError,
-  createRateLimitError,
-  createAPILimitError,
-  createExternalServiceError,
-  performanceLogger
+export const asyncHandler = (fn: Function) => (req: Request, res: Response, next: NextFunction) => {
+  const fnReturn = fn(req, res, next)
+  return Promise.resolve(fnReturn).catch(next)
+}
+
+export const notFoundHandler = (req: Request, res: Response, next: NextFunction) => {
+  const error = new Error(`Route ${req.originalUrl} not found`)
+  res.status(404)
+  next(error)
+}
+
+export const errorHandler = (error: any, req: Request, res: Response, next: NextFunction) => {
+  let statusCode = res.statusCode !== 200 ? res.statusCode : 500
+  let message = error.message
+
+  // Melhor tratamento de erros específicos
+  if (error.name === 'ValidationError') {
+    statusCode = 400
+    message = Object.values(error.errors).map((val: any) => val.message).join(', ')
+  }
+
+  if (error.code === 11000) {
+    statusCode = 400
+    message = 'Recurso duplicado encontrado'
+  }
+
+  if (error.name === 'JsonWebTokenError') {
+    statusCode = 401
+    message = 'Token inválido'
+  }
+
+  if (error.name === 'CastError') {
+    statusCode = 400
+    message = 'ID do recurso inválido'
+  }
+
+  // ✅ NOVO: Tratamento especial para timeouts e problemas de IA
+  if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+    statusCode = 503
+    message = 'Serviço temporariamente indisponível - timeout'
+  }
+
+  if (error.message.includes('OpenRouter') || error.message.includes('API')) {
+    statusCode = 503
+    message = 'Serviço de IA temporariamente indisponível'
+  }
+
+  // ✅ NOVO: Evitar erro 503 em desenvolvimento
+  if (process.env.NODE_ENV === 'development' && statusCode === 503) {
+    logger.warn('503 error converted to 500 in development', { originalError: error.message })
+    statusCode = 500
+    message = 'Erro interno do servidor (desenvolvimento)'
+  }
+
+  // Log do erro
+  logger.error('Request error:', {
+    message: error.message,
+    stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    statusCode,
+    method: req.method,
+    url: req.originalUrl,
+    ip: req.ip,
+    userAgent: req.get('User-Agent')
+  })
+
+  res.status(statusCode).json({
+    success: false,
+    message,
+    error: process.env.NODE_ENV === 'development' ? {
+      stack: error.stack,
+      details: error
+    } : undefined,
+    timestamp: new Date().toISOString(),
+    path: req.originalUrl,
+    method: req.method
+  })
+}
+
+// ✅ NOVO: Middleware para health check automático
+export const healthCheckMiddleware = (req: Request, res: Response, next: NextFunction) => {
+  // Verificar se o sistema está sobrecarregado
+  const memoryUsage = process.memoryUsage()
+  const usedMemory = memoryUsage.heapUsed / memoryUsage.heapTotal
+
+  if (usedMemory > 0.9) {
+    logger.warn('High memory usage detected', { usedMemory: Math.round(usedMemory * 100) + '%' })
+  }
+
+  // Adicionar header de saúde do sistema
+  res.setHeader('X-System-Health', usedMemory > 0.8 ? 'degraded' : 'healthy')
+  res.setHeader('X-Memory-Usage', Math.round(usedMemory * 100) + '%')
+  
+  next()
+}
+
+// ✅ NOVO: Middleware para rate limiting inteligente
+export const smartRateLimitHandler = (error: any, req: Request, res: Response, next: NextFunction) => {
+  if (error.status === 429) {
+    const retryAfter = error.retryAfter || 60
+
+    res.setHeader('Retry-After', retryAfter)
+    res.setHeader('X-RateLimit-Limit', error.limit || 100)
+    res.setHeader('X-RateLimit-Remaining', 0)
+    res.setHeader('X-RateLimit-Reset', Date.now() + (retryAfter * 1000))
+
+    return res.status(429).json({
+      success: false,
+      message: `Muitas requisições. Tente novamente em ${retryAfter} segundos.`,
+      error: 'RATE_LIMIT_EXCEEDED',
+      retryAfter,
+      timestamp: new Date().toISOString()
+    })
+  }
+
+  next(error)
+}
+
+// ✅ NOVO: Middleware para timeout inteligente
+export const timeoutHandler = (timeoutMs: number = 60000) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const timeout = setTimeout(() => {
+      if (!res.headersSent) {
+        logger.warn('Request timeout', {
+          method: req.method,
+          url: req.originalUrl,
+          timeout: timeoutMs
+        })
+
+        res.status(503).json({
+          success: false,
+          message: 'Requisição expirou - tente novamente',
+          error: 'REQUEST_TIMEOUT',
+          timeout: timeoutMs,
+          timestamp: new Date().toISOString()
+        })
+      }
+    }, timeoutMs)
+
+    res.on('finish', () => clearTimeout(timeout))
+    res.on('close', () => clearTimeout(timeout))
+
+    next()
+  }
 }
