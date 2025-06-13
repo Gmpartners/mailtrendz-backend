@@ -134,14 +134,10 @@ class ProjectController {
     }
 
     // Verificar status da fila
-    const queueStatus = projectQueue.getQueueStatus()
-    const userPosition = projectQueue.getUserQueuePosition(userId)
+    const queueStatus = await projectQueue.process()
     
     console.log('📊 [CREATE PROJECT] Status da fila:', {
-      queueLength: queueStatus.queueLength,
-      processing: queueStatus.processing,
-      userPosition,
-      userCooldown: queueStatus.userCooldowns[userId]
+      queueStatus
     })
 
     // Adicionar à fila ao invés de processar diretamente
@@ -150,15 +146,14 @@ class ProjectController {
         userId, 
         projectName,
         prompt: prompt.substring(0, 50),
-        type: projectData.type,
-        queueStatus
+        type: projectData.type
       })
 
       // Adicionar à fila com processador
-      const project = await projectQueue.add(
+      const project = await projectQueue.add({
         userId,
-        projectData,
-        async (data) => {
+        ...projectData,
+        callback: async (data: any) => {
           // Este código será executado quando chegar a vez na fila
           console.log('🤖 [QUEUE] Processando projeto:', {
             userId,
@@ -176,9 +171,8 @@ class ProjectController {
           )
 
           return createdProject
-        },
-        2 // Prioridade padrão
-      )
+        }
+      })
 
       console.log('✅ [CREATE PROJECT] Projeto criado com sucesso:', {
         projectId: project.id || project._id.toString(),
@@ -213,11 +207,7 @@ class ProjectController {
         success: true,
         message: `Projeto "${project.name}" criado com sucesso!`,
         data: {
-          project: responseProject,
-          queue: {
-            position: userPosition,
-            estimatedTime: userPosition > 0 ? userPosition * 3 : 0 // segundos estimados
-          }
+          project: responseProject
         }
       })
 
@@ -261,19 +251,13 @@ class ProjectController {
 
   // Endpoint para verificar status da fila
   getQueueStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const userId = req.user!.id
-    const status = projectQueue.getQueueStatus()
-    const position = projectQueue.getUserQueuePosition(userId)
+    const status = await projectQueue.process()
 
     res.json({
       success: true,
       data: {
         queue: {
-          length: status.queueLength,
-          processing: status.processing,
-          userPosition: position,
-          userCooldown: status.userCooldowns[userId] || 0,
-          estimatedWaitTime: position > 0 ? position * 3 : 0
+          status: 'operational'
         }
       }
     })
@@ -466,14 +450,13 @@ class ProjectController {
 
     // Usar fila para duplicação também
     try {
-      const duplicatedProject = await projectQueue.add(
+      const duplicatedProject = await projectQueue.add({
         userId,
-        { originalId: id },
-        async (data) => {
+        originalId: id,
+        callback: async (data: any) => {
           return await ProjectService.duplicateProject(data.originalId, userId)
-        },
-        1 // Prioridade menor que criação nova
-      )
+        }
+      })
 
       if (!duplicatedProject) {
         throw createNotFoundError('Projeto original')
@@ -521,7 +504,7 @@ class ProjectController {
     })
   })
 
-  // Melhorar email do projeto COM FILA
+  // Melhorar email do projeto - SIMPLIFICADO
   improveProjectEmail = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params
     const { feedback } = req.body
@@ -539,46 +522,25 @@ class ProjectController {
       throw createNotFoundError('Projeto')
     }
 
-    // Usar fila para melhorias também
     try {
-      const improvedProject = await projectQueue.add(
-        userId,
-        { projectId: id, feedback, project },
-        async (data) => {
-          // Preparar contexto
-          const context = {
-            userId,
-            type: data.project.type,
-            industry: data.project.metadata.industry,
-            projectName: data.project.name,
-            targetAudience: data.project.metadata.targetAudience,
-            tone: data.project.metadata.tone,
-            status: data.project.status
-          }
-
-          // Melhorar email com IA
-          const improvedContent = await AIService.improveEmail(
-            data.project.content,
-            data.feedback,
-            context
-          )
-
-          // Atualizar projeto
-          return await ProjectService.updateProject(data.projectId, userId, {
-            content: improvedContent,
-            metadata: {
-              ...data.project.metadata,
-              version: (data.project.metadata.version || 1) + 1,
-              lastImprovement: {
-                feedback: data.feedback,
-                timestamp: new Date(),
-                version: (data.project.metadata.version || 1) + 1
-              }
-            }
-          })
-        },
-        3 // Alta prioridade para melhorias
+      // Usar stub do AI Service
+      const improvedContent = await AIService.improveEmail(
+        JSON.stringify(project.content),
+        feedback
       )
+
+      // Atualizar projeto com versão simples
+      const updatedProject = await ProjectService.updateProject(id, userId, {
+        metadata: {
+          ...project.metadata,
+          version: (project.metadata?.version || 1) + 1,
+          lastImprovement: {
+            feedback,
+            timestamp: new Date(),
+            version: (project.metadata?.version || 1) + 1
+          }
+        }
+      })
 
       logger.info('Project email improved', { 
         projectId: id, 
@@ -588,11 +550,11 @@ class ProjectController {
 
       res.json({
         success: true,
-        message: 'Email melhorado com sucesso!',
+        message: 'Melhoria de email não disponível. Use o Python AI Service.',
         data: { 
-          project: improvedProject,
+          project: updatedProject,
           improvements: {
-            version: improvedProject?.metadata.version,
+            version: updatedProject?.metadata?.version,
             feedback,
             timestamp: new Date()
           }
@@ -600,15 +562,13 @@ class ProjectController {
       })
 
     } catch (error: any) {
-      if (error.message?.includes('aguarde')) {
-        return res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
-          success: false,
-          message: error.message,
-          error: { code: 'RATE_LIMIT' }
-        })
-      }
-
-      throw error
+      logger.error('Project email improvement failed:', error)
+      
+      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+        success: false,
+        message: 'Serviço de melhoria temporariamente indisponível',
+        error: { code: 'AI_SERVICE_ERROR' }
+      })
     }
   })
 

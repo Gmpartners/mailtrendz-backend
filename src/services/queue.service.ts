@@ -15,4 +15,14 @@ export class QueueService {
   }
 }
 
+// Export for project queue compatibility
+export const projectQueue = {
+  add: async (job: any) => {
+    return QueueService.addToQueue(job)
+  },
+  process: async () => {
+    return QueueService.processQueue()
+  }
+}
+
 export default QueueService

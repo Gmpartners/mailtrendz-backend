@@ -22,6 +22,14 @@ export class AIService {
       message: 'Use Python AI Service'
     }
   }
+
+  static async getStatus() {
+    return {
+      status: 'unavailable',
+      message: 'Use Python AI Service instead',
+      pythonAIService: process.env.PYTHON_AI_SERVICE_URL || 'not-configured'
+    }
+  }
 }
 
 export default AIService

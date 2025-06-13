@@ -3,6 +3,13 @@ import { validationResult } from 'express-validator'
 import { HTTP_STATUS } from '../utils/constants'
 import { logger } from '../utils/logger'
 
+interface PythonAIResponse {
+  success: boolean
+  data?: any
+  processing_time?: number
+  metadata?: any
+}
+
 class AIController {
   private pythonServiceUrl: string
 
@@ -58,7 +65,7 @@ class AIController {
         throw new Error(`Python AI Service error: ${response.status}`)
       }
 
-      const data = await response.json() as any
+      const data = await response.json() as PythonAIResponse
 
       res.status(HTTP_STATUS.OK).json({
         success: true,
@@ -96,7 +103,7 @@ class AIController {
         method: 'GET'
       })
 
-      const healthData = healthResponse.ok ? await healthResponse.json() : null
+      const healthData = healthResponse.ok ? await healthResponse.json() as PythonAIResponse : null
 
       res.status(HTTP_STATUS.OK).json({
         success: true,
@@ -106,7 +113,7 @@ class AIController {
           pythonService: {
             url: this.pythonServiceUrl,
             responsive: healthResponse.ok,
-            responseTime: healthData?.processing_time || null
+            responseTime: healthData?.processing_time || healthData?.metadata?.processing_time || null
           },
           healthData,
           capabilities: [
