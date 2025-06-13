@@ -1,7 +1,7 @@
-"""
-✅ CLIENTE HTTP PYTHON AI - NODE.JS → PYTHON
-Cliente para comunicação entre Node.js e microserviço Python
-"""
+/**
+ * ✅ CLIENTE HTTP PYTHON AI - NODE.JS → PYTHON
+ * Cliente para comunicação entre Node.js e microserviço Python
+ */
 
 import axios, { AxiosResponse, AxiosError } from 'axios'
 import { EmailContent, ProjectContext, AIChatResponse } from '../../types/ai.types'

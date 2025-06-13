@@ -1,5 +1,12 @@
 import { EmailContent, ProjectContext, AIChatResponse } from '../../types/ai.types'
-import { EnhancedEmailContent, SmartEmailRequest, EnhancedChatResponse, PromptAnalysis, UserHistory, ContentRequirements } from '../../types/enhanced-ai.types'
+import { 
+  EnhancedEmailContent, 
+  SmartEmailRequest, 
+  EnhancedChatResponse, 
+  PromptAnalysis, 
+  UserHistory, 
+  ContentRequirements 
+} from '../../types/enhanced-ai.types'
 import { AI_MODELS, AI_CONFIG } from '../../utils/constants'
 import { logger } from '../../utils/logger'
 
@@ -392,8 +399,6 @@ Aplique as melhorias solicitadas mantendo design moderno e responsivo.`
           ],
           processingTime: duration,
           isValidHTML: true,
-          templateConfig,
-          styleConfig: styles,
           htmlValidation: {
             issues: [],
             fixes: ['Ultra-modern design applied', 'Perfect compatibility'],
