@@ -1,5 +1,5 @@
 import { EmailContent, ProjectContext, AIChatResponse } from '../../../types/ai.types'
-import { EnhancedEmailContent, SmartEmailRequest, EnhancedChatResponse, PromptAnalysis, UserHistory } from '../../../types/enhanced-ai.types'
+import { EnhancedEmailContent, SmartEmailRequest, EnhancedChatResponse, PromptAnalysis, UserHistory, ContentRequirements } from '../../../types/enhanced-ai.types'
 import { AI_MODELS, AI_CONFIG } from '../../../utils/constants'
 import { logger } from '../../../utils/logger'
 
@@ -164,7 +164,7 @@ class EnhancedAIService {
       const emailContent = this.parseEmailResponse(response.content)
       const duration = Date.now() - startTime
 
-      const validHTML = this.createValidEmailHTML(emailContent.subject, emailContent.html || emailContent.content)
+      const validHTML = this.createValidEmailHTML(emailContent.subject, emailContent.html || '')
       const textContent = this.extractTextFromHTML(validHTML)
 
       const enhancedContent: EnhancedEmailContent = {
@@ -518,7 +518,7 @@ Responda APENAS com o JSON válido, sem explicações adicionais.`
         length: this.detectLength(prompt),
         focus: this.detectFocus(prompt),
         urgency: this.detectUrgency(prompt),
-        personalization: 'basic'
+        personalization: 'basic' as const
       },
       confidence: 0.8,
       processingTime: 50,
@@ -600,7 +600,7 @@ Responda APENAS com o JSON válido, sem explicações adicionais.`
     return visual
   }
 
-  private detectTone(prompt: string): string {
+  private detectTone(prompt: string): ContentRequirements['tone'] {
     const promptLower = prompt.toLowerCase()
     
     if (promptLower.includes('urgente') || promptLower.includes('importante')) {
@@ -616,7 +616,7 @@ Responda APENAS com o JSON válido, sem explicações adicionais.`
     return 'professional'
   }
 
-  private detectLength(prompt: string): string {
+  private detectLength(prompt: string): ContentRequirements['length'] {
     const promptLower = prompt.toLowerCase()
     
     if (promptLower.includes('curto') || promptLower.includes('breve')) {
@@ -629,9 +629,9 @@ Responda APENAS com o JSON válido, sem explicações adicionais.`
     return 'medium'
   }
 
-  private detectFocus(prompt: string): string[] {
+  private detectFocus(prompt: string): ContentRequirements['focus'] {
     const promptLower = prompt.toLowerCase()
-    const focus = []
+    const focus: ContentRequirements['focus'] = []
     
     if (promptLower.includes('venda') || promptLower.includes('comprar')) {
       focus.push('sales')
@@ -646,7 +646,7 @@ Responda APENAS com o JSON válido, sem explicações adicionais.`
     return focus.length > 0 ? focus : ['information']
   }
 
-  private detectUrgency(prompt: string): string {
+  private detectUrgency(prompt: string): ContentRequirements['urgency'] {
     const promptLower = prompt.toLowerCase()
     
     if (promptLower.includes('urgente') || promptLower.includes('agora') || promptLower.includes('hoje')) {

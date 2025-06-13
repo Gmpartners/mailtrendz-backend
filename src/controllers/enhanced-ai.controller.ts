@@ -19,6 +19,23 @@ class EnhancedAIController {
       timestamp: new Date().toISOString()
     })
 
+    // Definir contexto padrão no início, fora do try block
+    const defaultProjectContext = {
+      userId,
+      projectName: 'Email Gerado por Claude 3.7',
+      type: PROJECT_TYPES.NEWSLETTER,
+      industry: 'geral',
+      targetAudience: 'Público Geral',
+      tone: 'profissional',
+      status: 'ativo'
+    }
+
+    const finalProjectContext = {
+      ...defaultProjectContext,
+      ...projectContext,
+      userId
+    }
+
     try {
       if (!prompt || !prompt.trim()) {
         console.warn('❌ [ENHANCED AI] Prompt vazio recebido')
@@ -36,22 +53,6 @@ class EnhancedAIController {
           message: 'Prompt deve ter pelo menos 5 caracteres',
           error: 'PROMPT_TOO_SHORT'
         })
-      }
-
-      const defaultProjectContext = {
-        userId,
-        projectName: 'Email Gerado por Claude 3.7',
-        type: PROJECT_TYPES.NEWSLETTER,
-        industry: 'geral',
-        targetAudience: 'Público Geral',
-        tone: 'profissional',
-        status: 'ativo'
-      }
-
-      const finalProjectContext = {
-        ...defaultProjectContext,
-        ...projectContext,
-        userId
       }
 
       console.log('📝 [ENHANCED AI] Contexto para Claude 3.7:', {
@@ -127,11 +128,11 @@ class EnhancedAIController {
             intentions: [],
             visualRequirements: {},
             contentRequirements: {
-              tone: finalProjectContext.tone,
-              length: 'medium',
-              focus: ['information'],
-              urgency: 'medium',
-              personalization: 'advanced'
+              tone: finalProjectContext.tone as 'professional' | 'casual' | 'urgent' | 'friendly' | 'formal' | 'persuasive',
+              length: 'medium' as 'short' | 'medium' | 'long',
+              focus: ['information'] as Array<'conversion' | 'information' | 'engagement' | 'branding' | 'sales' | 'promotion'>,
+              urgency: 'medium' as 'low' | 'medium' | 'high',
+              personalization: 'advanced' as 'none' | 'basic' | 'advanced'
             }
           },
           metadata: {
@@ -195,11 +196,11 @@ class EnhancedAIController {
                 intentions: [],
                 visualRequirements: {},
                 contentRequirements: {
-                  tone: finalProjectContext.tone,
-                  length: 'medium',
-                  focus: ['information'],
-                  urgency: 'medium',
-                  personalization: 'basic'
+                  tone: finalProjectContext.tone as 'professional' | 'casual' | 'urgent' | 'friendly' | 'formal' | 'persuasive',
+                  length: 'medium' as 'short' | 'medium' | 'long',
+                  focus: ['information'] as Array<'conversion' | 'information' | 'engagement' | 'branding' | 'sales' | 'promotion'>,
+                  urgency: 'medium' as 'low' | 'medium' | 'high',
+                  personalization: 'basic' as 'none' | 'basic' | 'advanced'
                 }
               },
               metadata: {
@@ -426,11 +427,11 @@ class EnhancedAIController {
         intentions: [],
         visualRequirements: {},
         contentRequirements: {
-          tone: 'professional',
-          length: 'medium',
-          focus: ['information'],
-          urgency: 'medium',
-          personalization: 'advanced'
+          tone: 'professional' as 'professional' | 'casual' | 'urgent' | 'friendly' | 'formal' | 'persuasive',
+          length: 'medium' as 'short' | 'medium' | 'long',
+          focus: ['information'] as Array<'conversion' | 'information' | 'engagement' | 'branding' | 'sales' | 'promotion'>,
+          urgency: 'medium' as 'low' | 'medium' | 'high',
+          personalization: 'advanced' as 'none' | 'basic' | 'advanced'
         },
         confidence: 0.85,
         processingTime: 150,
