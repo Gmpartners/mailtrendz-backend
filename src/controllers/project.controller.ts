@@ -3,7 +3,6 @@ import { AuthRequest } from '../types/auth.types'
 import { CreateProjectDto, UpdateProjectDto, ProjectFilters } from '../types/project.types'
 import ProjectService from '../services/project.service'
 import AIService from '../services/ai.service'
-import { projectQueue } from '../services/queue.service'
 import { HTTP_STATUS } from '../utils/constants'
 import { logger } from '../utils/logger'
 import { asyncHandler, createNotFoundError } from '../middleware/error.middleware'
@@ -65,7 +64,7 @@ class ProjectController {
     }
   }
 
-  // Criar novo projeto COM FILA - CORRIGIDO COM NOME PERSONALIZADO
+  // Criar novo projeto - SIMPLIFICADO SEM FILA
   createProject = asyncHandler(async (req: AuthRequest, res: Response) => {
     console.log('📝 [CREATE PROJECT] Dados recebidos:', {
       body: JSON.stringify(req.body, null, 2),
@@ -107,7 +106,7 @@ class ProjectController {
     const projectData = {
       prompt: prompt.trim(),
       name: projectName,
-      type: type || 'newsletter', // Mudado de 'campaign' para 'newsletter'
+      type: type || 'newsletter',
       industry: industry || 'geral',
       targetAudience: targetAudience || 'Geral',
       tone: tone || 'profissional'
@@ -133,46 +132,23 @@ class ProjectController {
       })
     }
 
-    // Verificar status da fila
-    const queueStatus = await projectQueue.process()
-    
-    console.log('📊 [CREATE PROJECT] Status da fila:', {
-      queueStatus
-    })
-
-    // Adicionar à fila ao invés de processar diretamente
+    // Criar projeto diretamente (sem fila por enquanto)
     try {
-      logger.info('Adding project to queue', { 
+      logger.info('Creating project directly', { 
         userId, 
         projectName,
         prompt: prompt.substring(0, 50),
         type: projectData.type
       })
 
-      // Adicionar à fila com processador
-      const project = await projectQueue.add({
-        userId,
-        ...projectData,
-        callback: async (data: any) => {
-          // Este código será executado quando chegar a vez na fila
-          console.log('🤖 [QUEUE] Processando projeto:', {
-            userId,
-            projectName: data.name,
-            promptPreview: data.prompt.substring(0, 100)
-          })
+      // Criar projeto usando IA
+      const project = await ProjectService.createProjectWithAI(userId, projectData)
 
-          // Criar projeto usando IA
-          const createdProject = await ProjectService.createProjectWithAI(userId, data)
-
-          // Rastrear criação do projeto
-          await ProjectService.trackProjectCreation(
-            userId, 
-            createdProject.id || createdProject._id.toString()
-          )
-
-          return createdProject
-        }
-      })
+      // Rastrear criação do projeto
+      await ProjectService.trackProjectCreation(
+        userId, 
+        project.id || project._id.toString()
+      )
 
       console.log('✅ [CREATE PROJECT] Projeto criado com sucesso:', {
         projectId: project.id || project._id.toString(),
@@ -221,26 +197,6 @@ class ProjectController {
 
       logger.error('Project creation failed:', error)
 
-      // Mensagens de erro mais específicas
-      if (error.message?.includes('aguarde')) {
-        return res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
-          success: false,
-          message: error.message,
-          error: { 
-            code: 'RATE_LIMIT',
-            cooldownSeconds: parseInt(error.message.match(/\d+/)?.[0] || '60')
-          }
-        })
-      }
-
-      if (error.message?.includes('OpenRouter') || error.message?.includes('AI')) {
-        return res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
-          success: false,
-          message: 'Serviço de IA temporariamente indisponível. Tente novamente em alguns minutos.',
-          error: { code: 'AI_SERVICE_ERROR' }
-        })
-      }
-
       return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
         success: false,
         message: 'Erro interno ao criar projeto. Nossa equipe foi notificada.',
@@ -251,19 +207,18 @@ class ProjectController {
 
   // Endpoint para verificar status da fila
   getQueueStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const status = await projectQueue.process()
-
     res.json({
       success: true,
       data: {
         queue: {
-          status: 'operational'
+          status: 'operational',
+          message: 'Queue service is a stub - projects created directly'
         }
       }
     })
   })
 
-  // Buscar projetos do usuário - CORRIGIDO COM LOGS
+  // Buscar projetos do usuário
   getUserProjects = asyncHandler(async (req: AuthRequest, res: Response) => {
     console.log('📋 [GET PROJECTS] Iniciando busca de projetos:', {
       userId: req.user?.id,
@@ -284,17 +239,6 @@ class ProjectController {
         sortOrder = 'desc'
       } = req.query
 
-      console.log('🔍 [GET PROJECTS] Parâmetros processados:', {
-        userId,
-        page: parseInt(page as string),
-        limit: parseInt(limit as string),
-        search,
-        type,
-        category,
-        sortBy,
-        sortOrder
-      })
-
       const filters: ProjectFilters = {
         userId,
         search: search as string,
@@ -310,17 +254,7 @@ class ProjectController {
         }
       }
 
-      console.log('⚙️ [GET PROJECTS] Chamando ProjectService.getUserProjects...')
-      
       const result = await ProjectService.getUserProjects(filters)
-
-      console.log('✅ [GET PROJECTS] Resultado obtido:', {
-        projectsCount: result.projects.length,
-        currentPage: result.pagination.currentPage,
-        totalPages: result.pagination.totalPages,
-        totalItems: result.pagination.totalItems,
-        statsTotal: result.stats.total
-      })
 
       res.json({
         success: true,
@@ -334,17 +268,12 @@ class ProjectController {
     } catch (error: any) {
       console.error('❌ [GET PROJECTS] Erro detalhado:', {
         message: error.message,
-        stack: error.stack,
         userId: req.user?.id,
-        query: req.query,
-        name: error.name,
-        code: error.code,
         timestamp: new Date().toISOString()
       })
 
       logger.error('Get user projects failed:', error)
 
-      // Retornar erro 500 com mais detalhes para debug
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
         success: false,
         message: 'Erro interno ao buscar projetos',
@@ -376,7 +305,7 @@ class ProjectController {
     })
   })
 
-  // Atualizar projeto - CORRIGIDO PARA PERMITIR ATUALIZAÇÃO DE NOME
+  // Atualizar projeto
   updateProject = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params
     const userId = req.user!.id
@@ -433,7 +362,7 @@ class ProjectController {
     })
   })
 
-  // Duplicar projeto COM FILA
+  // Duplicar projeto
   duplicateProject = asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params
     const userId = req.user!.id
@@ -448,15 +377,8 @@ class ProjectController {
       })
     }
 
-    // Usar fila para duplicação também
     try {
-      const duplicatedProject = await projectQueue.add({
-        userId,
-        originalId: id,
-        callback: async (data: any) => {
-          return await ProjectService.duplicateProject(data.originalId, userId)
-        }
-      })
+      const duplicatedProject = await ProjectService.duplicateProject(id, userId)
 
       if (!duplicatedProject) {
         throw createNotFoundError('Projeto original')
@@ -475,15 +397,13 @@ class ProjectController {
       })
 
     } catch (error: any) {
-      if (error.message?.includes('aguarde')) {
-        return res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
-          success: false,
-          message: error.message,
-          error: { code: 'RATE_LIMIT' }
-        })
-      }
-
-      throw error
+      logger.error('Project duplication failed:', error)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro ao duplicar projeto',
+        error: { code: 'INTERNAL_ERROR' }
+      })
     }
   })
 
@@ -524,7 +444,7 @@ class ProjectController {
 
     try {
       // Usar stub do AI Service
-      const improvedContent = await AIService.improveEmail(
+      await AIService.improveEmail(
         JSON.stringify(project.content),
         feedback
       )
