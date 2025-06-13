@@ -18,7 +18,13 @@ import {
   createForbiddenError,
   createConflictError 
 } from '../middleware/error.middleware'
-import AIService from './ai.service'
+import AIService from './ai/AIService'
+
+/**
+ * ✅ PROJECT SERVICE ATUALIZADO
+ * Agora usa o AIService unificado
+ * Mantém todas as funcionalidades
+ */
 
 const convertProjectToInterface = (project: IProjectDocument): IProject => {
   return {
@@ -150,18 +156,22 @@ class ProjectService {
     }
   }
 
+  // ✅ ATUALIZADO: Usa o AIService unificado
   async createProjectWithAI(userId: string, createProjectDto: CreateProjectDto): Promise<IProject> {
     try {
+      console.log('📝 [PROJECT SERVICE] Criando projeto com IA unificada...')
+
       const context = {
         userId,
         type: createProjectDto.type || 'campaign',
         industry: createProjectDto.industry || 'geral',
         targetAudience: createProjectDto.targetAudience,
-        tone: createProjectDto.tone || 'profissional',
+        tone: createProjectDto.tone || 'professional',
         projectName: this.generateProjectName(createProjectDto.prompt),
         status: 'draft' as const
       }
 
+      // ✅ Usar o AIService unificado
       const emailContent = await AIService.generateEmail(createProjectDto.prompt, context)
 
       const project = new Project({
@@ -174,9 +184,10 @@ class ProjectService {
         metadata: {
           industry: createProjectDto.industry || 'Geral',
           targetAudience: createProjectDto.targetAudience,
-          tone: createProjectDto.tone || 'profissional',
+          tone: createProjectDto.tone || 'professional',
           originalPrompt: createProjectDto.prompt,
-          version: 1
+          version: 1,
+          aiVersion: '5.0.0-unified'
         },
         tags: this.generateTags(createProjectDto.prompt, createProjectDto.type),
         color: this.generateColor(createProjectDto.type),
@@ -186,6 +197,12 @@ class ProjectService {
       await project.save()
       await this.createProjectChat(project._id as Types.ObjectId, userId)
 
+      console.log('✅ [PROJECT SERVICE] Projeto criado com IA unificada:', {
+        projectId: project._id.toString(),
+        hasHTML: !!emailContent.html,
+        htmlLength: emailContent.html?.length
+      })
+
       logger.info('Project created with AI', { 
         projectId: project._id.toString(), 
         userId,
@@ -194,6 +211,7 @@ class ProjectService {
 
       return convertProjectToInterface(project)
     } catch (error) {
+      console.error('❌ [PROJECT SERVICE] Erro ao criar projeto com IA:', error)
       logger.error('Create project with AI failed:', error)
       throw error
     }
@@ -205,7 +223,13 @@ class ProjectService {
         userId: new Types.ObjectId(userId),
         projectId,
         title: 'Chat do Projeto',
-        isActive: true
+        isActive: true,
+        metadata: {
+          totalMessages: 0,
+          emailUpdates: 0,
+          lastActivity: new Date(),
+          version: '5.0.0-unified'
+        }
       })
 
       await chat.save()
@@ -425,7 +449,8 @@ class ProjectService {
         content: originalProject.content,
         metadata: {
           ...originalProject.metadata,
-          version: 1
+          version: 1,
+          aiVersion: '5.0.0-unified'
         },
         tags: [...originalProject.tags, 'Duplicado'],
         color: originalProject.color,
@@ -602,6 +627,67 @@ class ProjectService {
         totalUses: 0,
         avgConversion: 0
       }
+    }
+  }
+
+  // ✅ NOVO: Método para melhorar projeto com IA
+  async improveProjectWithAI(projectId: string, userId: string, feedback: string): Promise<IProject | null> {
+    try {
+      console.log('🔧 [PROJECT SERVICE] Melhorando projeto com IA unificada...')
+
+      const project = await Project.findOne({
+        _id: projectId,
+        userId: new Types.ObjectId(userId)
+      })
+
+      if (!project) {
+        return null
+      }
+
+      const context = {
+        userId,
+        projectName: project.name,
+        type: project.type,
+        industry: project.metadata?.industry || 'geral'
+      }
+
+      const improvedContent = await AIService.improveEmail(project.content, feedback, context)
+
+      const currentVersion = project.metadata?.version || 1
+      const newVersion = currentVersion + 1
+
+      const updatedProject = await Project.findByIdAndUpdate(
+        projectId,
+        {
+          $set: {
+            content: improvedContent,
+            'metadata.version': newVersion,
+            'metadata.lastImprovement': {
+              feedback,
+              timestamp: new Date(),
+              version: newVersion
+            },
+            'metadata.lastUpdate': new Date()
+          }
+        },
+        { new: true }
+      )
+
+      if (updatedProject) {
+        console.log('✅ [PROJECT SERVICE] Projeto melhorado:', {
+          projectId,
+          newVersion,
+          htmlLength: improvedContent.html?.length
+        })
+
+        return convertProjectToInterface(updatedProject)
+      }
+
+      return null
+    } catch (error) {
+      console.error('❌ [PROJECT SERVICE] Erro ao melhorar projeto:', error)
+      logger.error('Improve project with AI failed:', error)
+      throw error
     }
   }
 }

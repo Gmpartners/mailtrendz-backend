@@ -1,413 +1,567 @@
-import { Response } from 'express'
-import { AuthRequest } from '../types/auth.types'
-import { CreateChatDto, SendMessageDto, UpdateChatDto, ChatFilters } from '../types/chat.types'
+import { Request, Response } from 'express'
+import { validationResult } from 'express-validator'
 import ChatService from '../services/chat.service'
-import { HTTP_STATUS, PAGINATION } from '../utils/constants'
+import { HTTP_STATUS, ERROR_CODES } from '../utils/constants'
 import { logger } from '../utils/logger'
-import { asyncHandler, createNotFoundError } from '../middleware/error.middleware'
 
+/**
+ * ✅ CHAT CONTROLLER ATUALIZADO - USA PYTHON AI SERVICE
+ * Gerencia chats com integração completa ao microserviço Python
+ */
 class ChatController {
-  createChat = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const userId = req.user!.id
-    const createChatDto: CreateChatDto = req.body
 
+  // ✅ ENVIAR MENSAGEM - ENDPOINT PRINCIPAL
+  async sendMessage(req: Request, res: Response): Promise<void> {
     try {
-      const chatResponse = await ChatService.createChat(userId, createChatDto)
-
-      res.status(HTTP_STATUS.CREATED).json({
-        success: true,
-        message: 'Chat criado com sucesso!',
-        data: chatResponse
-      })
-    } catch (error: any) {
-      console.error('❌ [CHAT CONTROLLER] Erro ao criar chat:', error.message)
-      throw error
-    }
-  })
-
-  getChatByProject = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { projectId } = req.params
-    const userId = req.user!.id
-
-    try {
-      if (!projectId?.trim()) {
-        return res.status(400).json({
+      const errors = validationResult(req)
+      if (!errors.isEmpty()) {
+        res.status(HTTP_STATUS.BAD_REQUEST).json({
           success: false,
-          message: 'ID do projeto é obrigatório',
-          error: 'INVALID_PROJECT_ID'
+          message: 'Dados de entrada inválidos',
+          errors: errors.array()
         })
+        return
       }
 
-      const chatResponse = await ChatService.getChatByProject(projectId.trim(), userId.trim())
+      const { chatId } = req.params
+      const { content } = req.body
+      const userId = (req as any).user?.userId
 
-      if (!chatResponse?.chat) {
-        return res.status(500).json({
+      if (!chatId || !content?.trim()) {
+        res.status(HTTP_STATUS.BAD_REQUEST).json({
           success: false,
-          message: 'Chat não encontrado na resposta do serviço',
-          error: 'MISSING_CHAT_IN_RESPONSE'
+          message: 'Chat ID e conteúdo são obrigatórios'
         })
+        return
       }
 
-      const response = {
+      logger.info(`💬 [CHAT CONTROLLER] Enviando mensagem - Chat: ${chatId}, User: ${userId}`)
+
+      const startTime = Date.now()
+      const result = await ChatService.sendMessage(chatId, userId, { content: content.trim() })
+      const processingTime = Date.now() - startTime
+
+      logger.info(`✅ [CHAT CONTROLLER] Mensagem processada com sucesso - ${processingTime}ms`)
+
+      res.status(HTTP_STATUS.OK).json({
         success: true,
+        message: 'Mensagem enviada e processada com sucesso',
         data: {
-          chat: {
-            ...chatResponse.chat,
-            id: chatResponse.chat.id || chatResponse.chat._id?.toString() || '',
-            title: chatResponse.chat.title || 'Chat sem título',
-            isActive: chatResponse.chat.isActive !== undefined ? chatResponse.chat.isActive : true,
-            userId: chatResponse.chat.userId || userId,
-            projectId: chatResponse.chat.projectId || projectId
-          },
-          messages: Array.isArray(chatResponse.messages) ? chatResponse.messages : [],
-          project: chatResponse.project || {
-            id: projectId,
-            name: 'Projeto',
-            type: 'email'
-          },
-          stats: chatResponse.stats || {
-            totalMessages: 0,
-            userMessages: 0,
-            aiMessages: 0,
-            emailUpdates: 0,
-            lastActivity: new Date()
-          }
+          userMessage: result.userMessage,
+          aiMessage: result.aiMessage,
+          projectUpdated: result.projectUpdated
+        },
+        metadata: {
+          processingTime,
+          chatId,
+          userId,
+          timestamp: new Date(),
+          pythonAIUsed: true,
+          contentLength: content.length
         }
-      }
-
-      res.json(response)
+      })
 
     } catch (error: any) {
-      let statusCode = 500
-      let errorCode = 'INTERNAL_ERROR'
-      let userMessage = 'Erro interno do servidor'
+      logger.error('❌ [CHAT CONTROLLER] Erro ao enviar mensagem:', error.message)
+      
+      // Verificar tipo de erro
+      let statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR
+      let errorCode = ERROR_CODES.INTERNAL_ERROR
 
-      if (error.message?.includes('Projeto não encontrado')) {
-        statusCode = 404
-        errorCode = 'PROJECT_NOT_FOUND'
-        userMessage = 'Projeto não encontrado'
-      } else if (error.message?.includes('não é um ObjectId válido')) {
-        statusCode = 400
-        errorCode = 'INVALID_ID_FORMAT'
-        userMessage = 'Formato de ID inválido'
+      if (error.message.includes('inválido')) {
+        statusCode = HTTP_STATUS.BAD_REQUEST
+        errorCode = ERROR_CODES.INVALID_INPUT
+      } else if (error.message.includes('não encontrado')) {
+        statusCode = HTTP_STATUS.NOT_FOUND
+        errorCode = ERROR_CODES.RESOURCE_NOT_FOUND
       }
 
       res.status(statusCode).json({
         success: false,
-        message: userMessage,
-        error: errorCode
+        message: 'Erro ao processar mensagem',
+        error: error.message,
+        errorCode,
+        fallbackAvailable: true
       })
     }
-  })
+  }
 
-  getChatById = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { id } = req.params
-    const userId = req.user!.id
-
+  // ✅ CRIAR CHAT
+  async createChat(req: Request, res: Response): Promise<void> {
     try {
-      const chatResponse = await ChatService.getChatById(id, userId)
+      const errors = validationResult(req)
+      if (!errors.isEmpty()) {
+        res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Dados de entrada inválidos',
+          errors: errors.array()
+        })
+        return
+      }
 
-      res.json({
-        success: true,
-        data: chatResponse
+      const { title, projectId } = req.body
+      const userId = (req as any).user?.userId
+
+      if (!title?.trim()) {
+        res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Título do chat é obrigatório'
+        })
+        return
+      }
+
+      logger.info(`📝 [CHAT CONTROLLER] Criando chat - User: ${userId}, Project: ${projectId}`)
+
+      const result = await ChatService.createChat(userId, {
+        title: title.trim(),
+        projectId
       })
-    } catch (error: any) {
-      console.error('❌ [CHAT CONTROLLER] Erro ao buscar chat:', error.message)
-      throw error
-    }
-  })
 
-  sendMessage = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { chatId } = req.params
-    const userId = req.user!.id
-    const messageDto: SendMessageDto = req.body
-
-    try {
-      if (!chatId?.trim()) {
-        return res.status(400).json({
-          success: false,
-          message: 'ID do chat é obrigatório',
-          error: 'MISSING_CHAT_ID'
-        })
-      }
-
-      if (!messageDto?.content?.trim()) {
-        return res.status(400).json({
-          success: false,
-          message: 'Conteúdo da mensagem é obrigatório',
-          error: 'MISSING_MESSAGE_CONTENT'
-        })
-      }
-
-      if (messageDto.content.length > 5000) {
-        return res.status(400).json({
-          success: false,
-          message: 'Mensagem muito longa (máximo 5000 caracteres)',
-          error: 'MESSAGE_TOO_LONG'
-        })
-      }
-
-      const messageResponse = await ChatService.sendMessage(chatId, userId, messageDto)
+      logger.info(`✅ [CHAT CONTROLLER] Chat criado com sucesso - ID: ${result.chat.id}`)
 
       res.status(HTTP_STATUS.CREATED).json({
         success: true,
-        message: 'Mensagem enviada com sucesso!',
-        data: messageResponse
+        message: 'Chat criado com sucesso',
+        data: result,
+        metadata: {
+          userId,
+          timestamp: new Date(),
+          pythonAIEnabled: true
+        }
       })
+
     } catch (error: any) {
-      console.error('❌ [CHAT CONTROLLER] Erro ao enviar mensagem:', error.message)
-      throw error
+      logger.error('❌ [CHAT CONTROLLER] Erro ao criar chat:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro ao criar chat',
+        error: error.message
+      })
     }
-  })
+  }
 
-  getChatHistory = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { chatId } = req.params
-    const userId = req.user!.id
-    const { page = 1, limit = 50 } = req.query
-
+  // ✅ OBTER CHAT POR PROJETO
+  async getChatByProject(req: Request, res: Response): Promise<void> {
     try {
-      const historyResponse = await ChatService.getChatHistory(
-        chatId,
-        userId,
-        parseInt(page as string),
+      const { projectId } = req.params
+      const userId = (req as any).user?.userId
+
+      if (!projectId) {
+        res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'ID do projeto é obrigatório'
+        })
+        return
+      }
+
+      logger.info(`🔍 [CHAT CONTROLLER] Buscando chat por projeto - Project: ${projectId}, User: ${userId}`)
+
+      const result = await ChatService.getChatByProject(projectId, userId)
+
+      logger.info(`✅ [CHAT CONTROLLER] Chat encontrado - ID: ${result.chat.id}`)
+
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Chat encontrado',
+        data: result,
+        metadata: {
+          projectId,
+          userId,
+          timestamp: new Date(),
+          messageCount: result.stats?.totalMessages || 0
+        }
+      })
+
+    } catch (error: any) {
+      logger.error('❌ [CHAT CONTROLLER] Erro ao buscar chat por projeto:', error.message)
+      
+      let statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR
+      if (error.message.includes('não encontrado')) {
+        statusCode = HTTP_STATUS.NOT_FOUND
+      }
+
+      res.status(statusCode).json({
+        success: false,
+        message: 'Erro ao buscar chat',
+        error: error.message
+      })
+    }
+  }
+
+  // ✅ OBTER CHAT POR ID
+  async getChatById(req: Request, res: Response): Promise<void> {
+    try {
+      const { chatId } = req.params
+      const userId = (req as any).user?.userId
+
+      if (!chatId) {
+        res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'ID do chat é obrigatório'
+        })
+        return
+      }
+
+      logger.info(`🔍 [CHAT CONTROLLER] Buscando chat por ID - Chat: ${chatId}, User: ${userId}`)
+
+      const result = await ChatService.getChatById(chatId, userId)
+
+      logger.info(`✅ [CHAT CONTROLLER] Chat encontrado - ${result.stats?.totalMessages || 0} mensagens`)
+
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Chat encontrado',
+        data: result,
+        metadata: {
+          chatId,
+          userId,
+          timestamp: new Date()
+        }
+      })
+
+    } catch (error: any) {
+      logger.error('❌ [CHAT CONTROLLER] Erro ao buscar chat por ID:', error.message)
+      
+      let statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR
+      if (error.message.includes('não encontrado')) {
+        statusCode = HTTP_STATUS.NOT_FOUND
+      }
+
+      res.status(statusCode).json({
+        success: false,
+        message: 'Erro ao buscar chat',
+        error: error.message
+      })
+    }
+  }
+
+  // ✅ OBTER HISTÓRICO DO CHAT
+  async getChatHistory(req: Request, res: Response): Promise<void> {
+    try {
+      const { chatId } = req.params
+      const { page = 1, limit = 50 } = req.query
+      const userId = (req as any).user?.userId
+
+      logger.info(`📚 [CHAT CONTROLLER] Buscando histórico - Chat: ${chatId}, Page: ${page}`)
+
+      const result = await ChatService.getChatHistory(
+        chatId, 
+        userId, 
+        parseInt(page as string), 
         parseInt(limit as string)
       )
 
-      res.json({
+      res.status(HTTP_STATUS.OK).json({
         success: true,
-        data: historyResponse
+        message: 'Histórico obtido com sucesso',
+        data: result,
+        metadata: {
+          chatId,
+          userId,
+          timestamp: new Date()
+        }
       })
+
     } catch (error: any) {
-      console.error('❌ [CHAT CONTROLLER] Erro ao carregar histórico:', error.message)
-      throw error
-    }
-  })
-
-  updateChat = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { id } = req.params
-    const userId = req.user!.id
-    const updates: UpdateChatDto = req.body
-
-    try {
-      const chat = await ChatService.updateChat(id, userId, updates)
-
-      if (!chat) {
-        throw createNotFoundError('Chat')
-      }
-
-      res.json({
-        success: true,
-        message: 'Chat atualizado com sucesso!',
-        data: { chat }
+      logger.error('❌ [CHAT CONTROLLER] Erro ao buscar histórico:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro ao buscar histórico',
+        error: error.message
       })
-    } catch (error: any) {
-      console.error('❌ [CHAT CONTROLLER] Erro ao atualizar chat:', error.message)
-      throw error
     }
-  })
+  }
 
-  deleteChat = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { id } = req.params
-    const userId = req.user!.id
-
+  // ✅ OBTER CHATS DO USUÁRIO
+  async getUserChats(req: Request, res: Response): Promise<void> {
     try {
-      const deleted = await ChatService.deleteChat(id, userId)
+      const userId = (req as any).user?.userId
+      const { 
+        projectId, 
+        isActive, 
+        search, 
+        dateFrom, 
+        dateTo,
+        page = 1,
+        limit = 20,
+        sortField = 'updatedAt',
+        sortOrder = 'desc'
+      } = req.query
 
-      if (!deleted) {
-        throw createNotFoundError('Chat')
-      }
+      logger.info(`📋 [CHAT CONTROLLER] Buscando chats do usuário - User: ${userId}`)
 
-      res.json({
-        success: true,
-        message: 'Chat deletado com sucesso!'
-      })
-    } catch (error: any) {
-      console.error('❌ [CHAT CONTROLLER] Erro ao deletar chat:', error.message)
-      throw error
-    }
-  })
-
-  getUserChats = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const userId = req.user!.id
-    const {
-      projectId,
-      isActive,
-      search,
-      dateFrom,
-      dateTo,
-      page = 1,
-      limit = 20,
-      sortBy = 'updatedAt',
-      sortOrder = 'desc'
-    } = req.query
-
-    try {
-      const filters: ChatFilters = {
-        userId,
+      const filters: any = {
         projectId: projectId as string,
-        isActive: isActive === 'true' ? true : isActive === 'false' ? false : undefined,
+        isActive: isActive ? isActive === 'true' : undefined,
         search: search as string,
         dateFrom: dateFrom ? new Date(dateFrom as string) : undefined,
         dateTo: dateTo ? new Date(dateTo as string) : undefined,
         pagination: {
           page: parseInt(page as string),
-          limit: Math.min(parseInt(limit as string), PAGINATION.MAX_LIMIT)
+          limit: parseInt(limit as string)
         },
         sort: {
-          field: sortBy as string,
+          field: sortField as string,
           order: sortOrder as 'asc' | 'desc'
         }
       }
 
       const chats = await ChatService.getUserChats(userId, filters)
 
-      res.json({
+      res.status(HTTP_STATUS.OK).json({
         success: true,
-        data: { chats }
-      })
-    } catch (error: any) {
-      console.error('❌ [CHAT CONTROLLER] Erro ao carregar chats:', error.message)
-      throw error
-    }
-  })
-
-  getActiveChats = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const userId = req.user!.id
-
-    try {
-      const chats = await ChatService.getActiveChats(userId)
-
-      res.json({
-        success: true,
-        data: { chats }
-      })
-    } catch (error: any) {
-      console.error('❌ [CHAT CONTROLLER] Erro ao carregar chats ativos:', error.message)
-      throw error
-    }
-  })
-
-  getChatAnalytics = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { id } = req.params
-    const userId = req.user!.id
-
-    try {
-      const analytics = await ChatService.getChatAnalytics(id, userId)
-
-      if (!analytics) {
-        throw createNotFoundError('Chat')
-      }
-
-      res.json({
-        success: true,
-        data: { analytics }
-      })
-    } catch (error: any) {
-      console.error('❌ [CHAT CONTROLLER] Erro ao carregar analytics:', error.message)
-      throw error
-    }
-  })
-
-  getRecentMessages = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { chatId } = req.params
-    const userId = req.user!.id
-    const { limit = 10 } = req.query
-
-    try {
-      const historyResponse = await ChatService.getChatHistory(
-        chatId,
-        userId,
-        1,
-        parseInt(limit as string)
-      )
-
-      res.json({
-        success: true,
-        data: {
-          messages: historyResponse.messages,
-          stats: historyResponse.stats
+        message: 'Chats obtidos com sucesso',
+        data: chats,
+        metadata: {
+          userId,
+          totalFound: chats.length,
+          filters,
+          timestamp: new Date()
         }
       })
+
     } catch (error: any) {
-      console.error('❌ [CHAT CONTROLLER] Erro ao carregar mensagens recentes:', error.message)
-      throw error
-    }
-  })
-
-  toggleChatStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { id } = req.params
-    const userId = req.user!.id
-
-    try {
-      const currentChat = await ChatService.getChatById(id, userId)
-      const newStatus = !currentChat.chat.isActive
-
-      const chat = await ChatService.updateChat(id, userId, { 
-        isActive: newStatus 
+      logger.error('❌ [CHAT CONTROLLER] Erro ao buscar chats do usuário:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro ao buscar chats',
+        error: error.message
       })
+    }
+  }
 
-      res.json({
+  // ✅ OBTER CHATS ATIVOS
+  async getActiveChats(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = (req as any).user?.userId
+
+      logger.info(`⚡ [CHAT CONTROLLER] Buscando chats ativos - User: ${userId}`)
+
+      const chats = await ChatService.getActiveChats(userId)
+
+      res.status(HTTP_STATUS.OK).json({
         success: true,
-        message: `Chat ${newStatus ? 'ativado' : 'desativado'} com sucesso!`,
-        data: { chat }
+        message: 'Chats ativos obtidos com sucesso',
+        data: chats,
+        metadata: {
+          userId,
+          activeCount: chats.length,
+          timestamp: new Date()
+        }
       })
+
     } catch (error: any) {
-      console.error('❌ [CHAT CONTROLLER] Erro ao alterar status:', error.message)
-      throw error
+      logger.error('❌ [CHAT CONTROLLER] Erro ao buscar chats ativos:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro ao buscar chats ativos',
+        error: error.message
+      })
     }
-  })
+  }
 
-  getUserChatStats = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const userId = req.user!.id
-
+  // ✅ ATUALIZAR CHAT
+  async updateChat(req: Request, res: Response): Promise<void> {
     try {
-      const filters: ChatFilters = {
+      const { chatId } = req.params
+      const updates = req.body
+      const userId = (req as any).user?.userId
+
+      logger.info(`📝 [CHAT CONTROLLER] Atualizando chat - Chat: ${chatId}`)
+
+      const result = await ChatService.updateChat(chatId, userId, updates)
+
+      if (!result) {
+        res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
+          message: 'Chat não encontrado'
+        })
+        return
+      }
+
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Chat atualizado com sucesso',
+        data: result,
+        metadata: {
+          chatId,
+          userId,
+          timestamp: new Date()
+        }
+      })
+
+    } catch (error: any) {
+      logger.error('❌ [CHAT CONTROLLER] Erro ao atualizar chat:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro ao atualizar chat',
+        error: error.message
+      })
+    }
+  }
+
+  // ✅ DELETAR CHAT
+  async deleteChat(req: Request, res: Response): Promise<void> {
+    try {
+      const { chatId } = req.params
+      const userId = (req as any).user?.userId
+
+      logger.info(`🗑️ [CHAT CONTROLLER] Deletando chat - Chat: ${chatId}`)
+
+      const success = await ChatService.deleteChat(chatId, userId)
+
+      if (!success) {
+        res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
+          message: 'Chat não encontrado'
+        })
+        return
+      }
+
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Chat deletado com sucesso',
+        metadata: {
+          chatId,
+          userId,
+          timestamp: new Date()
+        }
+      })
+
+    } catch (error: any) {
+      logger.error('❌ [CHAT CONTROLLER] Erro ao deletar chat:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro ao deletar chat',
+        error: error.message
+      })
+    }
+  }
+
+  // ✅ ANALYTICS DO CHAT
+  async getChatAnalytics(req: Request, res: Response): Promise<void> {
+    try {
+      const { chatId } = req.params
+      const userId = (req as any).user?.userId
+
+      logger.info(`📊 [CHAT CONTROLLER] Obtendo analytics - Chat: ${chatId}`)
+
+      const analytics = await ChatService.getChatAnalytics(chatId, userId)
+
+      if (!analytics) {
+        res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
+          message: 'Chat não encontrado'
+        })
+        return
+      }
+
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Analytics obtidos com sucesso',
+        data: analytics,
+        metadata: {
+          chatId,
+          userId,
+          timestamp: new Date()
+        }
+      })
+
+    } catch (error: any) {
+      logger.error('❌ [CHAT CONTROLLER] Erro ao obter analytics:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro ao obter analytics',
+        error: error.message
+      })
+    }
+  }
+
+  // ✅ STATUS DO PYTHON AI SERVICE
+  async getPythonAIStatus(req: Request, res: Response): Promise<void> {
+    try {
+      logger.info('🐍 [CHAT CONTROLLER] Verificando status do Python AI Service')
+
+      const status = await ChatService.getPythonAIStatus()
+
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Status do Python AI Service',
+        data: status,
+        metadata: {
+          timestamp: new Date(),
+          requestedBy: (req as any).user?.userId
+        }
+      })
+
+    } catch (error: any) {
+      logger.error('❌ [CHAT CONTROLLER] Erro ao verificar status Python AI:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro ao verificar status do Python AI Service',
+        error: error.message
+      })
+    }
+  }
+
+  // ✅ TESTE DE MENSAGEM (DESENVOLVIMENTO)
+  async testMessage(req: Request, res: Response): Promise<void> {
+    try {
+      const { message = 'Teste de conectividade' } = req.body
+      const userId = (req as any).user?.userId || 'test-user'
+
+      logger.info('🧪 [CHAT CONTROLLER] Teste de mensagem Python AI')
+
+      // Simular contexto de teste
+      const testContext = {
         userId,
-        pagination: { page: 1, limit: 1000 },
-        sort: { field: 'createdAt', order: 'desc' }
+        projectName: 'Teste',
+        type: 'newsletter',
+        industry: 'tecnologia',
+        hasProjectContent: false,
+        currentEmailContent: null
       }
 
-      const chats = await ChatService.getUserChats(userId, filters)
-
-      const stats = {
-        totalChats: chats.length,
-        activeChats: chats.filter(chat => chat.isActive).length,
-        totalMessages: chats.reduce((sum, chat) => sum + (chat.metadata?.totalMessages || 0), 0),
-        totalEmailUpdates: chats.reduce((sum, chat) => sum + (chat.metadata?.emailUpdates || 0), 0),
-        averageMessagesPerChat: chats.length > 0 
-          ? Math.round(chats.reduce((sum, chat) => sum + (chat.metadata?.totalMessages || 0), 0) / chats.length)
-          : 0,
-        recentActivity: chats.filter(chat => {
-          const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
-          const lastActivity = new Date(chat.metadata?.lastActivity || 0)
-          return lastActivity > dayAgo
-        }).length
-      }
-
-      res.json({
-        success: true,
-        data: { stats }
+      const startTime = Date.now()
+      const response = await ChatService.sendMessage('test-chat', userId, {
+        content: message
       })
+      const processingTime = Date.now() - startTime
+
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Teste concluído com sucesso',
+        data: {
+          testMessage: message,
+          aiResponse: response.aiMessage?.content,
+          processingTime,
+          pythonAIWorking: true
+        },
+        metadata: {
+          timestamp: new Date(),
+          testMode: true
+        }
+      })
+
     } catch (error: any) {
-      console.error('❌ [CHAT CONTROLLER] Erro ao calcular estatísticas:', error.message)
-      throw error
+      logger.error('❌ [CHAT CONTROLLER] Erro no teste:', error.message)
+      
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Teste falhou',
+        error: error.message,
+        pythonAIWorking: false
+      })
     }
-  })
-
-  healthCheck = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const health = {
-      status: 'ok',
-      timestamp: new Date(),
-      service: 'chat',
-      version: process.env.npm_package_version || '1.0.0',
-      environment: process.env.NODE_ENV || 'development'
-    }
-
-    res.json({
-      success: true,
-      data: health
-    })
-  })
+  }
 }
 
 export default new ChatController()

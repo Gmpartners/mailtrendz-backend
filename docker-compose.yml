@@ -1,10 +1,15 @@
+# ✅ DOCKER COMPOSE - MAILTRENDZ COMPLETO
+# Node.js API + Python AI Service + MongoDB
 version: '3.8'
 
 services:
+  # ================================
+  # MONGODB
+  # ================================
   mongodb:
     image: mongo:7.0
     container_name: mailtrendz-mongodb
-    restart: always
+    restart: unless-stopped
     ports:
       - "27017:27017"
     environment:
@@ -13,7 +18,209 @@ services:
       MONGO_INITDB_DATABASE: mailtrendz
     volumes:
       - mongodb_data:/data/db
-      - ./scripts/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - mailtrendz-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
+  # ================================
+  # PYTHON AI SERVICE
+  # ================================
+  python-ai:
+    build:
+      context: ./src/ai-service
+      dockerfile: Dockerfile
+    container_name: mailtrendz-python-ai
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      # Configurações do Python
+      PORT: 5000
+      ENVIRONMENT: development
+      
+      # MongoDB
+      MONGODB_URL: mongodb://admin:password123@mongodb:27017/mailtrendz?authSource=admin
+      MONGODB_DATABASE: mailtrendz
+      
+      # OpenRouter (IA)
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_BASE_URL: https://openrouter.ai/api/v1
+      
+      # URLs
+      FRONTEND_URL: http://localhost:3000
+      
+      # Performance
+      WORKERS: 1
+      MAX_REQUESTS: 1000
+      TIMEOUT: 45
+      
+    volumes:
+      - ./src/ai-service:/app
+      - python_logs:/app/logs
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - mailtrendz-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ================================
+  # NODE.JS API
+  # ================================
+  nodejs-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: mailtrendz-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Aplicação
+      NODE_ENV: development
+      PORT: 8000
+      API_VERSION: v1
+      
+      # MongoDB
+      MONGODB_URL: mongodb://admin:password123@mongodb:27017/mailtrendz?authSource=admin
+      MONGODB_DATABASE: mailtrendz
+      
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:-desenvolvimento_jwt_secret_2024}
+      JWT_EXPIRES_IN: 24h
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-desenvolvimento_refresh_secret_2024}
+      JWT_REFRESH_EXPIRES_IN: 7d
+      
+      # Python AI Service
+      PYTHON_AI_SERVICE_URL: http://python-ai:5000
+      PYTHON_AI_TIMEOUT: 45000
+      PYTHON_AI_RETRIES: 2
+      
+      # OpenRouter (IA) - usado como fallback
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_BASE_URL: https://openrouter.ai/api/v1
+      
+      # URLs
+      FRONTEND_URL: http://localhost:3000
+      BACKEND_URL: http://localhost:8000
+      
+      # CORS e Segurança
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001
+      RATE_LIMIT_WINDOW_MS: 900000
+      RATE_LIMIT_MAX_REQUESTS: 1000
+      
+      # Features
+      ENABLE_PYTHON_AI: true
+      ENABLE_LEGACY_AI: false
+      ENABLE_RATE_LIMITING: true
+      DEBUG: true
+      
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - nodejs_logs:/app/logs
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      python-ai:
+        condition: service_healthy
+    networks:
+      - mailtrendz-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ================================
+  # REDIS (opcional para cache)
+  # ================================
+  redis:
+    image: redis:7.2-alpine
+    container_name: mailtrendz-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass redis123
+    volumes:
+      - redis_data:/data
+    networks:
+      - mailtrendz-network
+    profiles:
+      - cache  # Profile opcional - ative com: docker-compose --profile cache up
+
+  # ================================
+  # NGINX (proxy reverso para produção)
+  # ================================
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: mailtrendz-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - nodejs-api
+      - python-ai
+    networks:
+      - mailtrendz-network
+    profiles:
+      - production  # Profile para produção - ative com: docker-compose --profile production up
+
+# ================================
+# VOLUMES
+# ================================
 volumes:
   mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+  python_logs:
+    driver: local
+  nodejs_logs:
+    driver: local
+
+# ================================
+# NETWORK
+# ================================
+networks:
+  mailtrendz-network:
+    driver: bridge
+
+# ================================
+# CONFIGURAÇÕES ADICIONAIS
+# ================================
+
+# Para desenvolvimento:
+# docker-compose up -d
+
+# Para produção com cache:
+# docker-compose --profile cache --profile production up -d
+
+# Para parar todos os serviços:
+# docker-compose down
+
+# Para rebuild:
+# docker-compose up --build
+
+# Para ver logs:
+# docker-compose logs -f [service-name]
+
+# Para acessar container:
+# docker-compose exec [service-name] sh
