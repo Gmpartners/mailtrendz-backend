@@ -1,0 +1,17 @@
+*.py
+*.pyc
+__pycache__/
+.env.local
+.env.backup
+logs/
+NVIDIA Corporation/
+.history/
+.git/
+node_modules/
+*.md
+test-*
+validate-*
+verify-*
+fix-*
+deploy-*
+detect-*
