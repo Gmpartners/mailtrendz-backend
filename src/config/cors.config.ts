@@ -1,8 +1,9 @@
 import { CorsOptions } from 'cors'
 
 const allowedOrigins = [
-  // URLs de produção
+  // URLs de produção - CORRIGIDAS
   'https://mailtrendz-frontend.onrender.com',
+  'https://mailtrendz-frontend-production.onrender.com',
   process.env.FRONTEND_URL,
   
   // URLs de desenvolvimento
@@ -10,11 +11,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'http://127.0.0.1:5173',
-  'http://127.0.0.1:3000',
-  
-  // URLs de staging/teste
-  'https://localhost:5173',
-  'https://127.0.0.1:5173'
+  'http://127.0.0.1:3000'
 ].filter(Boolean) // Remove valores undefined/null
 
 console.log('🌐 [CORS] URLs permitidas:', allowedOrigins)
@@ -51,9 +48,7 @@ export const corsOptions: CorsOptions = {
     'Pragma',
     'X-API-Key',
     'X-Request-ID',
-    'x-service', // ✅ ADICIONAR HEADER QUE ESTAVA CAUSANDO ERRO
-    'X-Service',
-    'User-Agent', // ✅ ADICIONAR User-Agent PARA EVITAR CONFLITOS
+    'User-Agent',
     'Accept-Encoding',
     'Accept-Language',
     'Connection',

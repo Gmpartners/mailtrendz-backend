@@ -41,7 +41,12 @@ class App {
   }
 
   private initializeMiddlewares(): void {
-    this.app.set('trust proxy', true)
+    // ✅ CORREÇÃO: Trust proxy seguro específico para Railway
+    if (process.env.NODE_ENV === 'production') {
+      this.app.set('trust proxy', 1) // Apenas o primeiro proxy (Railway)
+    } else {
+      this.app.set('trust proxy', false) // Desenvolvimento sem proxy
+    }
     
     this.app.use(morgan('combined', { stream: morganStream }))
     this.app.use(performanceLogger)
