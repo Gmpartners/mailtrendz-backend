@@ -5,16 +5,17 @@ import { authenticateToken } from '../middleware/auth.middleware'
 
 const router = Router()
 
-// Validações
+// Validações mais flexíveis
 const generateEmailValidation = [
-  body('prompt').trim().isLength({ min: 5, max: 2000 }).withMessage('Prompt deve ter entre 5 e 2000 caracteres'),
-  body('industry').optional().isIn(['saude', 'tecnologia', 'educacao', 'ecommerce', 'financas', 'geral']).withMessage('Indústria inválida'),
-  body('tone').optional().isIn(['professional', 'friendly', 'urgent', 'luxury', 'casual']).withMessage('Tom inválido'),
-  body('urgency').optional().isIn(['low', 'medium', 'high']).withMessage('Urgência inválida')
+  body('prompt').trim().isLength({ min: 1, max: 5000 }).withMessage('Prompt é obrigatório e deve ter até 5000 caracteres'),
+  body('industry').optional().isString().withMessage('Indústria deve ser uma string'),
+  body('tone').optional().isString().withMessage('Tom deve ser uma string'),
+  body('urgency').optional().isString().withMessage('Urgência deve ser uma string'),
+  body('context').optional().isObject().withMessage('Context deve ser um objeto'),
+  body('style_preferences').optional().isObject().withMessage('Style preferences deve ser um objeto')
 ]
 
 // ===== ROTAS PÚBLICAS (sem autenticação) =====
-// Rotas de status e monitoramento - devem ser públicas
 router.get('/health', AIController.getHealthStatus)
 router.get('/test-connection', AIController.testConnection)
 
@@ -25,7 +26,6 @@ router.get('/metrics', (req, res) => {
     data: {
       service: 'node-ai-service',
       status: 'operational',
-      pythonAIService: process.env.PYTHON_AI_SERVICE_URL || 'not-configured',
       endpoints: {
         generate: '/api/v1/ai/generate',
         health: '/api/v1/ai/health',
@@ -36,10 +36,9 @@ router.get('/metrics', (req, res) => {
 })
 
 // ===== ROTAS PROTEGIDAS (com autenticação) =====
-// Aplicar middleware de autenticação apenas nas rotas que precisam
 router.post('/generate', authenticateToken, generateEmailValidation, AIController.generateEmail)
 
-// Rotas stub para compatibilidade (retornam indicação para usar Python AI Service)
+// Rotas stub para compatibilidade
 router.post('/improve', authenticateToken, (req, res) => {
   res.json({
     success: false,

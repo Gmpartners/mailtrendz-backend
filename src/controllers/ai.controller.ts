@@ -187,12 +187,29 @@ Criado com MailTrendz - Plataforma de Email Marketing com IA`
 // Controller functions
 const generateEmail = async (req: Request, res: Response): Promise<void> => {
   try {
+    // ✅ LOG DETALHADO DO REQUEST
+    logger.info('📥 [AI] Request recebido:', {
+      body: JSON.stringify(req.body, null, 2),
+      headers: {
+        'content-type': req.headers['content-type'],
+        'authorization': req.headers.authorization ? 'Bearer ***' : 'not-provided'
+      },
+      userId: (req as any).user?.userId
+    })
+
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
+      logger.error('❌ [AI] Validation errors:', errors.array())
       res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
         message: 'Dados de entrada inválidos',
-        errors: errors.array()
+        errors: errors.array(),
+        receivedData: {
+          prompt: req.body.prompt,
+          industry: req.body.industry,
+          tone: req.body.tone,
+          urgency: req.body.urgency
+        }
       })
       return
     }
@@ -201,14 +218,22 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
     const userId = (req as any).user?.userId
 
     if (!prompt?.trim()) {
+      logger.error('❌ [AI] Prompt vazio ou inválido:', { prompt })
       res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
-        message: 'Prompt é obrigatório'
+        message: 'Prompt é obrigatório',
+        receivedPrompt: prompt
       })
       return
     }
 
-    logger.info(`🤖 Geração de email - User: ${userId}, Prompt: ${prompt.substring(0, 50)}...`)
+    logger.info(`🤖 [AI] Gerando email - User: ${userId}, Prompt: "${prompt.substring(0, 50)}..."`, {
+      industry,
+      tone,
+      urgency,
+      contextKeys: Object.keys(context),
+      stylePrefsKeys: style_preferences ? Object.keys(style_preferences) : []
+    })
 
     const startTime = Date.now()
     
@@ -226,6 +251,13 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
     })
 
     const processingTime = Date.now() - startTime
+
+    logger.info('✅ [AI] Email gerado com sucesso:', {
+      processingTime,
+      subjectLength: emailData.subject.length,
+      htmlLength: emailData.html.length,
+      userId
+    })
 
     res.status(HTTP_STATUS.OK).json({
       success: true,
@@ -255,12 +287,20 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
     })
 
   } catch (error: any) {
-    logger.error('Generate email error:', error.message)
+    logger.error('❌ [AI] Generate email error:', {
+      error: error.message,
+      stack: error.stack,
+      requestBody: req.body
+    })
     
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
       success: false,
       message: 'Erro na geração de email',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Serviço temporariamente indisponível'
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Serviço temporariamente indisponível',
+      debug: process.env.NODE_ENV === 'development' ? {
+        requestData: req.body,
+        errorDetails: error.message
+      } : undefined
     })
   }
 }
