@@ -50,7 +50,10 @@ export const corsOptions: CorsOptions = {
     'Cache-Control',
     'Pragma',
     'X-API-Key',
-    'X-Request-ID'
+    'X-Request-ID',
+    'X-Service',           // ✅ ADICIONADO - Header para AI Service
+    'User-Agent',          // ✅ ADICIONADO - Header usado pelo frontend
+    'X-Client-Version'     // ✅ ADICIONADO - Header adicional
   ],
   exposedHeaders: [
     'X-Total-Count',
