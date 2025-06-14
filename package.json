@@ -1,8 +1,12 @@
 {
   "name": "mailtrendz-backend",
   "version": "1.0.0",
-  "description": "Backend for MailTrendz - AI-powered email generation platform",
+  "description": "MailTrendz Node.js Backend API",
   "main": "dist/server.js",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
     "build": "tsc --noEmitOnError false --skipLibCheck true",
@@ -15,25 +19,16 @@
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "format": "prettier --write \"src/**/*.{ts,js}\"",
-    "validate": "ts-node scripts/validate-setup.ts",
-    "db:reset": "ts-node scripts/reset-database.ts",
-    "db:seed": "ts-node scripts/seed-database.ts",
-    "logs:clear": "rm -rf logs/*.log || del /q logs\\*.log",
-    "docker:build": "docker build -t mailtrendz-backend .",
-    "docker:run": "docker run -p 8000:8000 mailtrendz-backend",
-    "docker:dev": "docker-compose up --build",
-    "docker:dev:down": "docker-compose down",
-    "setup": "npm install && npm run validate && echo '\n🎉 Setup completed! Run npm run dev to start'",
-    "build:deploy": "tsc --project tsconfig.deploy.json",
-    "build:force": "tsc --project tsconfig.deploy.json --noEmitOnError false"
+    "railway:build": "npm ci && npm run build",
+    "railway:start": "node dist/server.js"
   },
   "keywords": [
-    "email",
-    "ai",
-    "marketing",
-    "automation",
-    "openrouter",
-    "mongodb"
+    "nodejs",
+    "express",
+    "typescript",
+    "backend",
+    "api",
+    "mailtrendz"
   ],
   "author": "Gabriel",
   "license": "MIT",
@@ -73,9 +68,5 @@
     "@typescript-eslint/parser": "^6.7.0",
     "eslint": "^8.50.0",
     "prettier": "^3.0.3"
-  },
-  "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=8.0.0"
   }
 }

@@ -1,6 +1,10 @@
 {
+  "build": {
+    "buildCommand": "npm run railway:build"
+  },
   "deploy": {
-    "startCommand": "npm start",
-    "healthcheckPath": "/health"
+    "startCommand": "npm run railway:start",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 100
   }
 }
