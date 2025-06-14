@@ -32,7 +32,8 @@ class App {
 
   constructor() {
     this.app = express()
-    this.port = parseInt(process.env.PORT || '8000')
+    // Railway fornece PORT automaticamente
+    this.port = parseInt(process.env.PORT || '3000')
     
     this.initializeMiddlewares()
     this.initializeRoutes()
@@ -89,10 +90,11 @@ class App {
     this.app.get('/', (req, res) => {
       res.json({
         success: true,
-        message: 'MailTrendz API v2.0 - Enhanced AI + Compatibility!',
+        message: 'MailTrendz API v2.0 - Backend Funcionando!',
         version: '2.0.0-enhanced',
         timestamp: new Date(),
         environment: process.env.NODE_ENV || 'development',
+        port: this.port,
         features: {
           enhancedAI: true,
           smartAnalysis: true,
@@ -107,34 +109,16 @@ class App {
         const dbHealth = await Database.healthCheck()
         const memoryUsage = process.memoryUsage()
         
-        let pythonAIHealth = { status: 'unknown', available: false }
-        try {
-          // Check Python AI Service
-          const pythonAIUrl = process.env.PYTHON_AI_SERVICE_URL
-          if (pythonAIUrl) {
-            const response = await fetch(`${pythonAIUrl}/health`, { 
-              method: 'GET',
-              headers: { 'Content-Type': 'application/json' },
-              signal: AbortSignal.timeout(5000)
-            })
-            if (response.ok) {
-              pythonAIHealth = { status: 'healthy', available: true }
-            }
-          }
-        } catch (error) {
-          pythonAIHealth = { status: 'error', available: false }
-        }
-        
         const health = {
           status: 'ok',
           timestamp: new Date(),
           uptime: process.uptime(),
           version: '2.0.0-enhanced',
           environment: process.env.NODE_ENV || 'development',
+          port: this.port,
           services: {
             database: dbHealth,
-            api: { status: 'ok' },
-            pythonAI: pythonAIHealth
+            api: { status: 'ok' }
           },
           memory: {
             used: Math.round(memoryUsage.heapUsed / 1024 / 1024 * 100) / 100,
@@ -156,6 +140,37 @@ class App {
       }
     })
 
+    // API Routes
+    this.app.use(`${API_PREFIX}/auth`, authRoutes)
+    this.app.use(`${API_PREFIX}/projects`, projectRoutes)
+    this.app.use(`${API_PREFIX}/chats`, chatRoutes)
+    this.app.use(`${API_PREFIX}/ai`, aiRoutes)
+    this.app.use(`${API_PREFIX}/users`, userRoutes)
+
+    // API Info endpoint
+    this.app.get(`${API_PREFIX}`, (req, res) => {
+      res.json({
+        success: true,
+        message: 'MailTrendz Enhanced API v2.0',
+        version: '2.0.0-enhanced',
+        endpoints: {
+          auth: `${API_PREFIX}/auth`,
+          projects: `${API_PREFIX}/projects`,
+          chats: `${API_PREFIX}/chats`,
+          ai: `${API_PREFIX}/ai`,
+          users: `${API_PREFIX}/users`,
+          health: `${API_PREFIX}/health`
+        },
+        features: {
+          login: `${API_PREFIX}/auth/login`,
+          register: `${API_PREFIX}/auth/register`,
+          aiGenerate: `${API_PREFIX}/ai/generate`
+        },
+        timestamp: new Date()
+      })
+    })
+
+    // API Health endpoint
     this.app.get(`${API_PREFIX}/health`, async (req, res) => {
       try {
         const dbHealth = await Database.healthCheck()
@@ -182,33 +197,6 @@ class App {
         })
       }
     })
-
-    this.app.use(`${API_PREFIX}/auth`, authRoutes)
-    this.app.use(`${API_PREFIX}/projects`, projectRoutes)
-    this.app.use(`${API_PREFIX}/chats`, chatRoutes)
-    this.app.use(`${API_PREFIX}/ai`, aiRoutes)
-    this.app.use(`${API_PREFIX}/users`, userRoutes)
-
-    this.app.get(`${API_PREFIX}`, (req, res) => {
-      res.json({
-        success: true,
-        message: 'MailTrendz Enhanced API v2.0',
-        version: '2.0.0-enhanced',
-        endpoints: {
-          auth: `${API_PREFIX}/auth`,
-          projects: `${API_PREFIX}/projects`,
-          chats: `${API_PREFIX}/chats`,
-          ai: `${API_PREFIX}/ai`,
-          users: `${API_PREFIX}/users`,
-          health: `${API_PREFIX}/health`
-        },
-        features: {
-          standardGeneration: `${API_PREFIX}/ai/generate`,
-          healthCheck: `${API_PREFIX}/ai/health`
-        },
-        timestamp: new Date()
-      })
-    })
   }
 
   private initializeErrorHandling(): void {
@@ -220,25 +208,20 @@ class App {
     try {
       await Database.connect()
       
-      console.log('🧠 [APP] Sistema com Enhanced AI + Compatibilidade!')
+      console.log('🧠 [APP] Sistema MailTrendz Enhanced iniciando...')
       
-      this.app.listen(this.port, () => {
-        logger.info(`🚀 MailTrendz Enhanced API running on port ${this.port}`, {
+      this.app.listen(this.port, '0.0.0.0', () => {
+        logger.info(`🚀 MailTrendz API rodando na porta ${this.port}`, {
           port: this.port,
           environment: process.env.NODE_ENV || 'development',
           version: '2.0.0-enhanced'
         })
         
-        logger.info('📡 Enhanced API endpoints available:', {
-          base: `http://localhost:${this.port}`,
-          api: `http://localhost:${this.port}${API_PREFIX}`,
-          ai: `http://localhost:${this.port}${API_PREFIX}/ai`,
-          health: `http://localhost:${this.port}/health`
-        })
-
-        console.log('✨ [APP] IA com Compatibilidade Total:')
-        console.log(`   📧 Geração Padrão: POST ${API_PREFIX}/ai/generate`)
-        console.log(`   ⚡ Health Check: GET ${API_PREFIX}/ai/health`)
+        console.log('✨ [APP] Servidor rodando:')
+        console.log(`   📧 API Base: ${API_PREFIX}`)
+        console.log(`   🔐 Auth: ${API_PREFIX}/auth/login`)
+        console.log(`   🤖 AI: ${API_PREFIX}/ai/generate`)
+        console.log(`   ⚡ Health: /health`)
       })
       
       process.on('SIGTERM', this.gracefulShutdown.bind(this))
@@ -255,7 +238,7 @@ class App {
     
     await Database.disconnect()
     
-    logger.info('Enhanced server shutdown complete')
+    logger.info('Server shutdown complete')
     process.exit(0)
   }
 }

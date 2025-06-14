@@ -51,9 +51,14 @@ export const corsOptions: CorsOptions = {
     'Pragma',
     'X-API-Key',
     'X-Request-ID',
-    'X-Service',           // ✅ ADICIONADO - Header para AI Service
-    'User-Agent',          // ✅ ADICIONADO - Header usado pelo frontend
-    'X-Client-Version'     // ✅ ADICIONADO - Header adicional
+    'x-service', // ✅ ADICIONAR HEADER QUE ESTAVA CAUSANDO ERRO
+    'X-Service',
+    'User-Agent', // ✅ ADICIONAR User-Agent PARA EVITAR CONFLITOS
+    'Accept-Encoding',
+    'Accept-Language',
+    'Connection',
+    'Host',
+    'Referer'
   ],
   exposedHeaders: [
     'X-Total-Count',
@@ -61,7 +66,8 @@ export const corsOptions: CorsOptions = {
     'X-Current-Page',
     'X-Rate-Limit-Limit',
     'X-Rate-Limit-Remaining',
-    'X-Rate-Limit-Reset'
+    'X-Rate-Limit-Reset',
+    'X-Response-Time'
   ],
   maxAge: 86400, // 24 hours
   optionsSuccessStatus: 200 // Para suporte a browsers legados
