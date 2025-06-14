@@ -20,7 +20,9 @@ class ChatController {
 
       const { projectId } = req.params
       const { content } = req.body
-      const userId = (req as any).user?.userId
+      const userId = (req as any).user?.id  // ✅ CORRIGIDO: user.id
+
+      logger.info(`📥 [CHAT] Send message - projectId: ${projectId}, userId: ${userId}`)
 
       const result = await ChatService.sendMessage(projectId, userId, { content })
 
@@ -31,7 +33,11 @@ class ChatController {
       })
 
     } catch (error: any) {
-      logger.error('Send message error:', error)
+      logger.error('❌ [CHAT] Send message error:', {
+        error: error.message,
+        projectId: req.params.projectId,
+        userId: (req as any).user?.id  // ✅ CORRIGIDO
+      })
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
         success: false,
         message: error.message || 'Erro interno do servidor'
@@ -41,10 +47,45 @@ class ChatController {
 
   async getConversationByProject(req: Request, res: Response): Promise<void> {
     try {
+      logger.info('📥 [CHAT] Get conversation by project request:', {
+        projectId: req.params.projectId,
+        userId: (req as any).user?.id,  // ✅ CORRIGIDO
+        headers: {
+          authorization: req.headers.authorization ? 'Bearer ***' : 'missing'
+        }
+      })
+
+      const errors = validationResult(req)
+      if (!errors.isEmpty()) {
+        logger.error('❌ [CHAT] Validation errors:', errors.array())
+        res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Project ID inválido',
+          errors: errors.array()
+        })
+        return
+      }
+
       const { projectId } = req.params
-      const userId = (req as any).user?.userId
+      const userId = (req as any).user?.id  // ✅ CORRIGIDO: user.id
+
+      if (!userId) {
+        logger.error('❌ [CHAT] User ID missing from request')
+        res.status(HTTP_STATUS.UNAUTHORIZED).json({
+          success: false,
+          message: 'Usuário não autenticado'
+        })
+        return
+      }
+
+      logger.info(`🔍 [CHAT] Getting conversation - projectId: ${projectId}, userId: ${userId}`)
 
       const result = await ChatService.getConversationByProject(projectId, userId)
+
+      logger.info('✅ [CHAT] Conversation retrieved successfully:', {
+        conversationId: result.conversation?.id,
+        messagesCount: result.conversation?.messages?.length || 0
+      })
 
       res.status(HTTP_STATUS.OK).json({
         success: true,
@@ -52,10 +93,17 @@ class ChatController {
       })
 
     } catch (error: any) {
-      logger.error('Get conversation error:', error)
+      logger.error('❌ [CHAT] Get conversation error:', {
+        error: error.message,
+        stack: error.stack,
+        projectId: req.params.projectId,
+        userId: (req as any).user?.id  // ✅ CORRIGIDO
+      })
+      
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
         success: false,
-        message: error.message || 'Erro interno do servidor'
+        message: 'Erro ao buscar conversa',
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Erro interno do servidor'
       })
     }
   }
@@ -63,7 +111,7 @@ class ChatController {
   async getConversationById(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params
-      const userId = (req as any).user?.userId
+      const userId = (req as any).user?.id  // ✅ CORRIGIDO
 
       const result = await ChatService.getConversationById(id, userId)
 
@@ -83,7 +131,7 @@ class ChatController {
 
   async getUserConversations(req: Request, res: Response): Promise<void> {
     try {
-      const userId = (req as any).user?.userId
+      const userId = (req as any).user?.id  // ✅ CORRIGIDO
 
       const conversations = await ChatService.getUserConversations(userId)
 
@@ -104,7 +152,7 @@ class ChatController {
   async updateConversation(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params
-      const userId = (req as any).user?.userId
+      const userId = (req as any).user?.id  // ✅ CORRIGIDO
       const updates = req.body
 
       const result = await ChatService.updateConversation(id, userId, updates)
@@ -134,7 +182,7 @@ class ChatController {
   async deleteConversation(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params
-      const userId = (req as any).user?.userId
+      const userId = (req as any).user?.id  // ✅ CORRIGIDO
 
       const deleted = await ChatService.deleteConversation(id, userId)
 
