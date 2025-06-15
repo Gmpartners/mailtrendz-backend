@@ -5,7 +5,6 @@ import { authenticateToken } from '../middleware/auth.middleware'
 
 const router = Router()
 
-// ✅ VALIDAÇÕES ATUALIZADAS PARA PYTHON AI SERVICE
 const generateEmailValidation = [
   body('prompt').trim().isLength({ min: 5, max: 2000 }).withMessage('Prompt é obrigatório e deve ter entre 5 e 2000 caracteres'),
   body('industry').optional().isString().withMessage('Indústria deve ser uma string'),
@@ -38,9 +37,10 @@ const chatProcessValidation = [
   body('project_id').optional().isString().withMessage('Project ID deve ser uma string')
 ]
 
-// ===== ROTAS PÚBLICAS (sem autenticação) =====
 router.get('/health', AIController.getHealthStatus)
 router.get('/test-connection', AIController.testConnection)
+
+router.post('/test-modify', modifyEmailValidation, AIController.modifyEmail)
 
 router.get('/metrics', (req, res) => {
   res.json({
@@ -53,6 +53,7 @@ router.get('/metrics', (req, res) => {
       endpoints: {
         generate: '/api/v1/ai/generate',
         modify: '/api/v1/ai/modify',
+        testModify: '/api/v1/ai/test-modify',
         optimize: '/api/v1/ai/optimize-css',
         validate: '/api/v1/ai/validate',
         chat: '/api/v1/ai/chat/process',
@@ -75,33 +76,16 @@ router.get('/metrics', (req, res) => {
   })
 })
 
-// ===== ROTAS PROTEGIDAS (com autenticação) =====
-
-// ✅ GERAÇÃO DE EMAIL VIA PYTHON AI SERVICE
 router.post('/generate', authenticateToken, generateEmailValidation, AIController.generateEmail)
-
-// ✅ MODIFICAÇÃO DE EMAIL VIA PYTHON AI SERVICE
 router.post('/modify', authenticateToken, modifyEmailValidation, AIController.modifyEmail)
-
-// ✅ OTIMIZAÇÃO CSS VIA PYTHON AI SERVICE
 router.post('/optimize-css', authenticateToken, optimizeCSSValidation, AIController.optimizeCSS)
-
-// ✅ VALIDAÇÃO HTML VIA PYTHON AI SERVICE
 router.post('/validate', authenticateToken, validateEmailValidation, AIController.validateEmail)
-
-// ✅ PROCESSAMENTO DE CHAT VIA PYTHON AI SERVICE
 router.post('/chat/process', authenticateToken, chatProcessValidation, AIController.processChat)
 
-// ===== ROTAS DE COMPATIBILIDADE (redirecionamentos) =====
-
-// Manter compatibilidade com implementação anterior
 router.post('/improve', authenticateToken, modifyEmailValidation, (req, res) => {
-  // Redirecionar improve para modify
   req.url = '/modify'
   AIController.modifyEmail(req, res)
 })
-
-// ===== ROTAS DE INFORMAÇÃO =====
 
 router.get('/status', (req, res) => {
   res.json({
