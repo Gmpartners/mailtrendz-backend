@@ -400,7 +400,7 @@ const modifyEmail = async (req: Request, res: Response): Promise<void> => {
       stack: error.stack
     })
     
-    let statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR
+    let statusCode: number = HTTP_STATUS.INTERNAL_SERVER_ERROR
     let errorMessage = 'Erro interno na modificação de email'
     
     if (error.code === 'ECONNREFUSED') {
