@@ -13,187 +13,72 @@ interface EmailGenerationRequest {
   urgency?: string
 }
 
-interface GeneratedEmail {
-  subject: string
-  previewText: string
-  html: string
-  text: string
-}
+// ✅ CONFIGURAÇÃO PARA CONECTAR AO PYTHON AI SERVICE
+const PYTHON_AI_SERVICE_URL = process.env.PYTHON_AI_SERVICE_URL || 'http://localhost:5000'
+const PYTHON_AI_TIMEOUT = parseInt(process.env.PYTHON_AI_TIMEOUT || '60000')
 
-// Função para gerar email usando OpenRouter (Claude)
-const generateEmailWithAI = async (request: EmailGenerationRequest): Promise<GeneratedEmail> => {
-  const openRouterApiKey = process.env.OPENROUTER_API_KEY
-  const openRouterBaseUrl = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1'
-
-  if (!openRouterApiKey) {
-    throw new Error('OpenRouter API key não configurada')
+// ✅ CLIENTE HTTP PARA PYTHON AI SERVICE
+const pythonAIClient = axios.create({
+  baseURL: PYTHON_AI_SERVICE_URL,
+  timeout: PYTHON_AI_TIMEOUT,
+  headers: {
+    'Content-Type': 'application/json',
+    'User-Agent': 'MailTrendz-Backend/2.0.0'
   }
+})
 
-  const prompt = `
-Você é um especialista em email marketing. Crie um email profissional baseado nas seguintes informações:
+// ✅ INTERCEPTOR PARA LOGS
+pythonAIClient.interceptors.request.use(
+  (config) => {
+    logger.info(`🐍 [PYTHON AI] ${config.method?.toUpperCase()} ${config.url}`, {
+      timeout: config.timeout,
+      dataSize: config.data ? JSON.stringify(config.data).length : 0
+    })
+    return config
+  },
+  (error) => {
+    logger.error('🐍 [PYTHON AI] Request error:', error.message)
+    return Promise.reject(error)
+  }
+)
 
-PROMPT: ${request.prompt}
-INDÚSTRIA: ${request.industry || 'geral'}
-TOM: ${request.tone || 'professional'}
-URGÊNCIA: ${request.urgency || 'medium'}
+pythonAIClient.interceptors.response.use(
+  (response) => {
+    logger.success(`🐍 [PYTHON AI] ${response.config.method?.toUpperCase()} ${response.config.url}`, {
+      status: response.status,
+      processingTime: response.headers['x-process-time'],
+      requestId: response.headers['x-request-id']
+    })
+    return response
+  },
+  (error) => {
+    logger.error(`🐍 [PYTHON AI] Response error:`, {
+      status: error.response?.status,
+      message: error.message,
+      url: error.config?.url
+    })
+    return Promise.reject(error)
+  }
+)
 
-INSTRUÇÕES:
-1. Crie um assunto atrativo (máximo 60 caracteres)
-2. Crie um preview text (máximo 90 caracteres)
-3. Crie o HTML do email (responsive, compatível com clientes de email)
-4. Crie a versão em texto simples
-
-FORMATO DE RESPOSTA:
-Responda APENAS com um JSON válido no seguinte formato:
-{
-  "subject": "Assunto do email",
-  "previewText": "Texto de preview",
-  "html": "<html>conteúdo HTML completo</html>",
-  "text": "Versão em texto simples"
-}
-`
-
+// ✅ FUNÇÃO PARA VERIFICAR SE PYTHON AI SERVICE ESTÁ DISPONÍVEL
+const checkPythonAIService = async (): Promise<boolean> => {
   try {
-    const response = await axios.post(
-      `${openRouterBaseUrl}/chat/completions`,
-      {
-        model: 'anthropic/claude-3.5-sonnet',
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.7,
-        max_tokens: 2500
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${openRouterApiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://mailtrendz.app',
-          'X-Title': 'MailTrendz'
-        },
-        timeout: 45000
-      }
-    )
-
-    const aiResponse = response.data.choices[0]?.message?.content
-    if (!aiResponse) {
-      throw new Error('Resposta vazia da IA')
-    }
-
-    // Tentar parsear JSON da resposta
-    let emailData: GeneratedEmail
-    try {
-      // Limpar possíveis marcadores de código
-      const cleanResponse = aiResponse.replace(/```json|```/g, '').trim()
-      emailData = JSON.parse(cleanResponse)
-    } catch (parseError) {
-      // Fallback se não conseguir parsear JSON
-      emailData = {
-        subject: 'Email Gerado com IA',
-        previewText: 'Confira este email criado especialmente para você',
-        html: `
-          <html>
-            <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Email MailTrendz</title>
-            </head>
-            <body style="margin: 0; padding: 20px; font-family: Arial, sans-serif; background-color: #f4f4f4;">
-              <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 8px;">
-                <h1 style="color: #2563eb; margin-bottom: 20px;">Email Gerado com IA</h1>
-                <div style="line-height: 1.6; color: #333;">
-                  ${aiResponse.replace(/\n/g, '<br>')}
-                </div>
-                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 12px;">
-                  Gerado com MailTrendz IA
-                </div>
-              </div>
-            </body>
-          </html>
-        `,
-        text: aiResponse.replace(/<[^>]*>/g, '').replace(/\n{2,}/g, '\n\n')
-      }
-    }
-
-    return emailData
-
-  } catch (error: any) {
-    logger.error('Erro na geração com OpenRouter:', error.message)
-    throw new Error(`Falha na geração de email: ${error.message}`)
+    await pythonAIClient.get('/health', { timeout: 10000 })
+    return true
+  } catch (error) {
+    logger.error('🐍 [PYTHON AI] Service não disponível:', error)
+    return false
   }
 }
 
-// Função para gerar email com fallback
-const generateEmailWithFallback = async (request: EmailGenerationRequest): Promise<GeneratedEmail> => {
-  try {
-    // Tentar gerar com IA
-    return await generateEmailWithAI(request)
-  } catch (aiError: any) {
-    logger.warn('IA indisponível, usando fallback:', aiError.message)
-    
-    // Fallback: email básico gerado pelo sistema
-    return {
-      subject: 'Email Profissional - MailTrendz',
-      previewText: 'Confira este email criado com MailTrendz',
-      html: `
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Email MailTrendz</title>
-          </head>
-          <body style="margin: 0; padding: 20px; font-family: Arial, sans-serif; background-color: #f4f4f4;">
-            <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-              <h1 style="color: #2563eb; margin-bottom: 20px; font-size: 24px;">Email Profissional</h1>
-              <div style="line-height: 1.6; color: #333; margin-bottom: 30px;">
-                <p style="margin-bottom: 15px;">Olá!</p>
-                <p style="margin-bottom: 15px;">Baseado no seu prompt: "<strong>${request.prompt}</strong>"</p>
-                <p style="margin-bottom: 15px;">Este é um email profissional criado para ${request.industry || 'sua área de atuação'} com tom ${request.tone || 'profissional'}.</p>
-                <p style="margin-bottom: 15px;">Personalize este conteúdo conforme suas necessidades específicas.</p>
-                <div style="margin-top: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 6px;">
-                  <p style="margin: 0; color: #2563eb; font-weight: bold;">Chame para ação</p>
-                  <p style="margin: 5px 0 0 0; color: #666;">Inclua aqui sua call-to-action principal</p>
-                </div>
-              </div>
-              <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 12px;">
-                Criado com MailTrendz - Plataforma de Email Marketing com IA
-              </div>
-            </div>
-          </body>
-        </html>
-      `,
-      text: `Email Profissional
-
-Olá!
-
-Baseado no seu prompt: "${request.prompt}"
-
-Este é um email profissional criado para ${request.industry || 'sua área de atuação'} com tom ${request.tone || 'profissional'}.
-
-Personalize este conteúdo conforme suas necessidades específicas.
-
-CHAME PARA AÇÃO
-Inclua aqui sua call-to-action principal
-
----
-Criado com MailTrendz - Plataforma de Email Marketing com IA`
-    }
-  }
-}
-
-// Controller functions
+// ✅ GERAÇÃO DE EMAIL VIA PYTHON AI SERVICE
 const generateEmail = async (req: Request, res: Response): Promise<void> => {
   try {
-    // ✅ LOG DETALHADO DO REQUEST
-    logger.info('📥 [AI] Request recebido:', {
-      body: JSON.stringify(req.body, null, 2),
-      headers: {
-        'content-type': req.headers['content-type'],
-        'authorization': req.headers.authorization ? 'Bearer ***' : 'not-provided'
-      },
+    logger.info('📥 [AI] Request recebido para geração de email:', {
+      prompt: req.body.prompt?.substring(0, 50) + '...',
+      industry: req.body.industry,
+      tone: req.body.tone,
       userId: (req as any).user?.userId
     })
 
@@ -203,13 +88,7 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
       res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
         message: 'Dados de entrada inválidos',
-        errors: errors.array(),
-        receivedData: {
-          prompt: req.body.prompt,
-          industry: req.body.industry,
-          tone: req.body.tone,
-          urgency: req.body.urgency
-        }
+        errors: errors.array()
       })
       return
     }
@@ -218,26 +97,28 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
     const userId = (req as any).user?.userId
 
     if (!prompt?.trim()) {
-      logger.error('❌ [AI] Prompt vazio ou inválido:', { prompt })
+      logger.error('❌ [AI] Prompt vazio ou inválido')
       res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
-        message: 'Prompt é obrigatório',
-        receivedPrompt: prompt
+        message: 'Prompt é obrigatório'
       })
       return
     }
 
-    logger.info(`🤖 [AI] Gerando email - User: ${userId}, Prompt: "${prompt.substring(0, 50)}..."`, {
-      industry,
-      tone,
-      urgency,
-      contextKeys: Object.keys(context),
-      stylePrefsKeys: style_preferences ? Object.keys(style_preferences) : []
-    })
+    // ✅ VERIFICAR SE PYTHON AI SERVICE ESTÁ DISPONÍVEL
+    const pythonAvailable = await checkPythonAIService()
+    if (!pythonAvailable) {
+      logger.error('❌ [AI] Python AI Service indisponível')
+      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+        success: false,
+        message: 'Serviço de IA temporariamente indisponível',
+        error: 'Python AI Service não está respondendo'
+      })
+      return
+    }
 
-    const startTime = Date.now()
-    
-    const emailData = await generateEmailWithFallback({
+    // ✅ PREPARAR DADOS PARA PYTHON AI SERVICE
+    const pythonRequest = {
       prompt,
       context: {
         ...context,
@@ -248,97 +129,277 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
       industry,
       tone,
       urgency
+    }
+
+    logger.info(`🐍 [PYTHON AI] Enviando requisição para geração`, {
+      promptLength: prompt.length,
+      industry,
+      tone,
+      urgency
     })
 
+    const startTime = Date.now()
+
+    // ✅ CHAMAR PYTHON AI SERVICE
+    const pythonResponse = await pythonAIClient.post('/generate', pythonRequest)
+    
     const processingTime = Date.now() - startTime
 
-    logger.info('✅ [AI] Email gerado com sucesso:', {
+    logger.success('✅ [PYTHON AI] Email gerado com sucesso', {
       processingTime,
-      subjectLength: emailData.subject.length,
-      htmlLength: emailData.html.length,
-      userId
+      success: pythonResponse.data.success,
+      aiProcessingTime: pythonResponse.data.processing_time
     })
 
+    // ✅ RETORNAR RESPOSTA DO PYTHON AI SERVICE
     res.status(HTTP_STATUS.OK).json({
       success: true,
-      message: 'Email gerado com sucesso',
-      data: {
-        subject: emailData.subject,
-        preview_text: emailData.previewText,
-        html: emailData.html,
-        text: emailData.text,
-        css: '', // CSS inline já incluído no HTML
-        components: {
-          header: true,
-          footer: true,
-          cta: true
-        }
-      },
+      message: 'Email gerado com sucesso via Python AI Service',
+      data: pythonResponse.data.data,
       metadata: {
-        processing_time: processingTime,
-        ai_model: 'claude-3.5-sonnet',
-        quality_score: 0.9,
-        confidence: 0.85,
-        features_applied: ['ai-generation', 'responsive-design', 'email-optimization'],
-        service: 'mailtrendz-ai-enhanced',
-        userId,
-        timestamp: new Date()
+        ...pythonResponse.data.metadata,
+        proxy_processing_time: processingTime,
+        service: 'python-ai-service',
+        proxy: 'nodejs-backend'
       }
     })
 
   } catch (error: any) {
-    logger.error('❌ [AI] Generate email error:', {
+    logger.error('❌ [AI] Erro na geração de email:', {
       error: error.message,
-      stack: error.stack,
-      requestBody: req.body
+      status: error.response?.status,
+      pythonResponse: error.response?.data
     })
     
+    // ✅ TRATAMENTO DE ERRO ESPECÍFICO DO PYTHON
+    if (error.response?.status === 503) {
+      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+        success: false,
+        message: 'Serviço de IA temporariamente indisponível',
+        error: 'Python AI Service retornou erro 503'
+      })
+      return
+    }
+
+    if (error.response?.status === 400) {
+      res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: 'Dados inválidos para o serviço de IA',
+        error: error.response.data?.detail || error.message
+      })
+      return
+    }
+
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
       success: false,
       message: 'Erro na geração de email',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Serviço temporariamente indisponível',
-      debug: process.env.NODE_ENV === 'development' ? {
-        requestData: req.body,
-        errorDetails: error.message
-      } : undefined
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Serviço temporariamente indisponível'
     })
   }
 }
 
+// ✅ MODIFICAÇÃO DE EMAIL VIA PYTHON AI SERVICE
+const modifyEmail = async (req: Request, res: Response): Promise<void> => {
+  try {
+    logger.info('🔧 [AI] Request para modificação de email:', {
+      projectId: req.body.project_id,
+      instructions: req.body.instructions?.substring(0, 50) + '...',
+      userId: (req as any).user?.userId
+    })
+
+    const pythonAvailable = await checkPythonAIService()
+    if (!pythonAvailable) {
+      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+        success: false,
+        message: 'Serviço de IA temporariamente indisponível'
+      })
+      return
+    }
+
+    const pythonRequest = {
+      project_id: req.body.project_id,
+      user_id: (req as any).user?.userId,
+      instructions: req.body.instructions,
+      preserve_structure: req.body.preserve_structure !== false
+    }
+
+    const pythonResponse = await pythonAIClient.post('/modify', pythonRequest)
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: 'Email modificado com sucesso via Python AI Service',
+      data: pythonResponse.data.data,
+      metadata: pythonResponse.data.metadata
+    })
+
+  } catch (error: any) {
+    logger.error('❌ [AI] Erro na modificação de email:', error.message)
+    
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: 'Erro na modificação de email',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Serviço temporariamente indisponível'
+    })
+  }
+}
+
+// ✅ OTIMIZAÇÃO CSS VIA PYTHON AI SERVICE
+const optimizeCSS = async (req: Request, res: Response): Promise<void> => {
+  try {
+    logger.info('🎨 [AI] Request para otimização CSS')
+
+    const pythonAvailable = await checkPythonAIService()
+    if (!pythonAvailable) {
+      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+        success: false,
+        message: 'Serviço de IA temporariamente indisponível'
+      })
+      return
+    }
+
+    const pythonResponse = await pythonAIClient.post('/optimize-css', req.body)
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: 'CSS otimizado com sucesso via Python AI Service',
+      data: pythonResponse.data.data,
+      metadata: pythonResponse.data.metadata
+    })
+
+  } catch (error: any) {
+    logger.error('❌ [AI] Erro na otimização CSS:', error.message)
+    
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: 'Erro na otimização CSS',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Serviço temporariamente indisponível'
+    })
+  }
+}
+
+// ✅ VALIDAÇÃO HTML VIA PYTHON AI SERVICE
+const validateEmail = async (req: Request, res: Response): Promise<void> => {
+  try {
+    logger.info('✅ [AI] Request para validação HTML')
+
+    const pythonAvailable = await checkPythonAIService()
+    if (!pythonAvailable) {
+      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+        success: false,
+        message: 'Serviço de IA temporariamente indisponível'
+      })
+      return
+    }
+
+    const pythonResponse = await pythonAIClient.post('/validate', { html: req.body.html })
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: 'HTML validado com sucesso via Python AI Service',
+      data: pythonResponse.data
+    })
+
+  } catch (error: any) {
+    logger.error('❌ [AI] Erro na validação HTML:', error.message)
+    
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: 'Erro na validação HTML',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Serviço temporariamente indisponível'
+    })
+  }
+}
+
+// ✅ PROCESSAMENTO DE CHAT VIA PYTHON AI SERVICE
+const processChat = async (req: Request, res: Response): Promise<void> => {
+  try {
+    logger.info('💬 [AI] Request para processamento de chat:', {
+      chatId: req.body.chat_id,
+      message: req.body.message?.substring(0, 50) + '...',
+      userId: (req as any).user?.userId
+    })
+
+    const pythonAvailable = await checkPythonAIService()
+    if (!pythonAvailable) {
+      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+        success: false,
+        message: 'Serviço de IA temporariamente indisponível'
+      })
+      return
+    }
+
+    const pythonRequest = {
+      message: req.body.message,
+      chat_id: req.body.chat_id,
+      user_id: (req as any).user?.userId,
+      project_id: req.body.project_id
+    }
+
+    const pythonResponse = await pythonAIClient.post('/chat/process', pythonRequest)
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: 'Chat processado com sucesso via Python AI Service',
+      data: pythonResponse.data.data,
+      metadata: pythonResponse.data.metadata
+    })
+
+  } catch (error: any) {
+    logger.error('❌ [AI] Erro no processamento de chat:', error.message)
+    
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: 'Erro no processamento de chat',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Serviço temporariamente indisponível'
+    })
+  }
+}
+
+// ✅ HEALTH CHECK COMBINADO (NODE.JS + PYTHON AI)
 const getHealthStatus = async (req: Request, res: Response): Promise<void> => {
   try {
-    const openRouterConfigured = !!process.env.OPENROUTER_API_KEY
-    
-    const healthData = {
+    const nodeHealth = {
       status: 'healthy',
-      service: 'mailtrendz-ai-service',
+      service: 'mailtrendz-nodejs-proxy',
       uptime: Math.round(process.uptime()),
       memory: {
         used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
         total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024)
-      },
-      ai_service: {
-        provider: 'OpenRouter + Claude 3.5 Sonnet',
-        configured: openRouterConfigured,
-        status: openRouterConfigured ? 'available' : 'not-configured'
-      },
-      capabilities: [
-        'email-generation',
-        'responsive-design',
-        'fallback-generation',
-        'html-and-text-output'
-      ],
-      timestamp: new Date().toISOString()
+      }
     }
+
+    let pythonHealth = null
+    let pythonAvailable = false
+
+    try {
+      const pythonResponse = await pythonAIClient.get('/health', { timeout: 10000 })
+      pythonHealth = pythonResponse.data
+      pythonAvailable = pythonHealth.status === 'healthy'
+    } catch (error) {
+      pythonHealth = {
+        status: 'unhealthy',
+        error: 'Não foi possível conectar ao Python AI Service',
+        url: PYTHON_AI_SERVICE_URL
+      }
+    }
+
+    const overallStatus = pythonAvailable ? 'healthy' : 'degraded'
 
     res.status(HTTP_STATUS.OK).json({
       success: true,
-      message: 'AI Service Health Check',
-      data: healthData,
+      message: 'Health Check - Node.js Proxy + Python AI Service',
+      data: {
+        overall_status: overallStatus,
+        services: {
+          nodejs_proxy: nodeHealth,
+          python_ai_service: pythonHealth
+        },
+        python_ai_url: PYTHON_AI_SERVICE_URL,
+        python_available: pythonAvailable
+      },
       metadata: {
         timestamp: new Date().toISOString(),
-        requestId: req.headers['x-request-id'] || 'unknown',
-        public: true
+        version: '2.0.0-python-integration'
       }
     })
 
@@ -349,74 +410,35 @@ const getHealthStatus = async (req: Request, res: Response): Promise<void> => {
       success: false,
       message: 'Health check com problemas',
       data: {
-        service: 'mailtrendz-ai-service',
-        status: 'degraded',
+        overall_status: 'unhealthy',
         error: error.message
-      },
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Service degraded'
+      }
     })
   }
 }
 
+// ✅ TESTE DE CONECTIVIDADE COM PYTHON AI SERVICE
 const testConnection = async (req: Request, res: Response): Promise<void> => {
   try {
-    const openRouterApiKey = process.env.OPENROUTER_API_KEY
-    const openRouterBaseUrl = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1'
-    
-    if (!openRouterApiKey) {
-      res.status(HTTP_STATUS.OK).json({
-        success: false,
-        message: 'OpenRouter API não configurada',
-        data: {
-          connected: false,
-          reason: 'API key não encontrada',
-          testTimestamp: new Date().toISOString()
-        }
-      })
-      return
-    }
-
-    logger.info(`🔗 Testando conectividade com OpenRouter: ${openRouterBaseUrl}`)
+    logger.info(`🔗 Testando conectividade com Python AI Service: ${PYTHON_AI_SERVICE_URL}`)
 
     const startTime = Date.now()
     
-    const response = await axios.post(
-      `${openRouterBaseUrl}/chat/completions`,
-      {
-        model: 'anthropic/claude-3.5-sonnet',
-        messages: [
-          {
-            role: 'user',
-            content: 'Responda apenas: "Conexão OK"'
-          }
-        ],
-        max_tokens: 10
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${openRouterApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000
-      }
-    )
-
+    const pythonResponse = await pythonAIClient.get('/', { timeout: 15000 })
+    
     const responseTime = Date.now() - startTime
-    const isConnected = response.status === 200
+    const isConnected = pythonResponse.status === 200
 
     res.status(HTTP_STATUS.OK).json({
       success: isConnected,
-      message: isConnected ? 'Conectividade OK com OpenRouter' : 'Falha na conectividade',
+      message: isConnected ? 'Conectividade OK com Python AI Service' : 'Falha na conectividade',
       data: {
         connected: isConnected,
         responseTime,
-        status: response.status,
-        provider: 'OpenRouter + Claude 3.5 Sonnet',
+        status: pythonResponse.status,
+        python_service_info: pythonResponse.data,
+        url: PYTHON_AI_SERVICE_URL,
         testTimestamp: new Date().toISOString()
-      },
-      metadata: {
-        public: true,
-        requestId: req.headers['x-request-id'] || 'unknown'
       }
     })
 
@@ -425,20 +447,30 @@ const testConnection = async (req: Request, res: Response): Promise<void> => {
     
     res.status(HTTP_STATUS.OK).json({
       success: false,
-      message: 'Erro no teste de conectividade',
+      message: 'Erro no teste de conectividade com Python AI Service',
       error: error.message,
       data: {
         connected: false,
-        provider: 'OpenRouter + Claude 3.5 Sonnet',
-        testTimestamp: new Date().toISOString()
+        url: PYTHON_AI_SERVICE_URL,
+        testTimestamp: new Date().toISOString(),
+        troubleshooting: {
+          checkUrl: 'Verifique se PYTHON_AI_SERVICE_URL está correto',
+          checkService: 'Verifique se o Python AI Service está rodando',
+          checkPort: 'Verifique se a porta 5000 está disponível',
+          startCommand: 'cd src/ai-service && python app.py'
+        }
       }
     })
   }
 }
 
-// Exportar as funções diretamente
+// ✅ EXPORTAR CONTROLLER
 const AIController = {
   generateEmail,
+  modifyEmail,
+  optimizeCSS,
+  validateEmail,
+  processChat,
   getHealthStatus,
   testConnection
 }

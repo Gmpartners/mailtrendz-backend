@@ -1,17 +1,37 @@
-*.py
-*.pyc
-__pycache__/
-.env.local
-.env.backup
-logs/
-NVIDIA Corporation/
-.history/
-.git/
+# Arquivos e diretórios ignorados no deploy Railway
+
+# Dependências
 node_modules/
-*.md
-test-*
-validate-*
-verify-*
-fix-*
-deploy-*
-detect-*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build
+dist/
+
+# Logs
+logs/
+*.log
+
+# Ambiente local
+.env.local
+.env.development
+.env.test
+
+# Cache
+.npm
+.eslintcache
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporários
+*.tmp
+*.temp
