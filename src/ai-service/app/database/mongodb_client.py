@@ -19,8 +19,8 @@ class MongoDBClient:
         self.database: Optional[AsyncIOMotorDatabase] = None
         self.collections: Dict[str, AsyncIOMotorCollection] = {}
         
-        # Configurações de conexão
-        self.mongodb_url = os.getenv("MONGODB_URL")
+        # ✅ CONFIGURAÇÕES DE CONEXÃO - SUPORTE PARA MONGODB_URI E MONGODB_URL
+        self.mongodb_url = os.getenv("MONGODB_URL") or os.getenv("MONGODB_URI")
         self.database_name = os.getenv("MONGODB_DATABASE", "mailtrendz")
         
         # Collections do MailTrendz
@@ -33,7 +33,7 @@ class MongoDBClient:
         }
         
         if not self.mongodb_url:
-            logger.warning("⚠️ MONGODB_URL não configurada - modo offline")
+            logger.warning("⚠️ MONGODB_URL/MONGODB_URI não configurada - modo offline")
         else:
             logger.info(f"🔗 MongoDB Client configurado - Database: {self.database_name}")
     
@@ -41,7 +41,7 @@ class MongoDBClient:
         """Conecta ao MongoDB"""
         
         if not self.mongodb_url:
-            logger.error("❌ MONGODB_URL não configurada")
+            logger.error("❌ MONGODB_URL/MONGODB_URI não configurada")
             return False
         
         try:
@@ -89,7 +89,8 @@ class MongoDBClient:
         if not self.client or not self.database:
             return {
                 "status": "disconnected",
-                "error": "Client not connected"
+                "error": "Client not connected",
+                "mongodb_url_configured": bool(self.mongodb_url)
             }
         
         try:
@@ -118,6 +119,7 @@ class MongoDBClient:
                 "response_time": response_time,
                 "database": self.database_name,
                 "collections": collection_status,
+                "mongodb_url_configured": bool(self.mongodb_url),
                 "timestamp": datetime.now()
             }
             
@@ -125,6 +127,7 @@ class MongoDBClient:
             return {
                 "status": "error",
                 "error": str(e),
+                "mongodb_url_configured": bool(self.mongodb_url),
                 "timestamp": datetime.now()
             }
     
@@ -136,6 +139,7 @@ class MongoDBClient:
         """Busca projeto por ID e usuário"""
         
         if not self.collections.get("projects"):
+            logger.warning("⚠️ Collections não configuradas - modo offline")
             return None
         
         try:
@@ -171,6 +175,7 @@ class MongoDBClient:
         """Atualiza conteúdo do projeto"""
         
         if not self.collections.get("projects"):
+            logger.warning("⚠️ Collections não configuradas - modo offline")
             return False
         
         try:
@@ -207,7 +212,7 @@ class MongoDBClient:
             )
             
             if result.modified_count > 0:
-                logger.success(f"✅ Projeto {project_id} atualizado com sucesso")
+                logger.info(f"✅ Projeto {project_id} atualizado com sucesso")
                 return True
             else:
                 logger.warning(f"⚠️ Nenhuma modificação feita no projeto {project_id}")
