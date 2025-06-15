@@ -48,12 +48,17 @@ export const corsOptions: CorsOptions = {
     'Pragma',
     'X-API-Key',
     'X-Request-ID',
+    'X-Service', // ✅ ADICIONADO: Header que estava causando o erro CORS
+    'x-service', // ✅ ADICIONADO: Versão lowercase
     'User-Agent',
     'Accept-Encoding',
     'Accept-Language',
     'Connection',
     'Host',
-    'Referer'
+    'Referer',
+    'X-Client-Version', // Headers adicionais que podem ser úteis
+    'X-App-Version',
+    'X-Platform'
   ],
   exposedHeaders: [
     'X-Total-Count',
