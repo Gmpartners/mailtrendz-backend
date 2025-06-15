@@ -20,7 +20,7 @@ class ChatController {
 
       const { projectId } = req.params
       const { content } = req.body
-      const userId = (req as any).user?.id  // ✅ CORRIGIDO: user.id
+      const userId = (req as any).user?.id
 
       logger.info(`📥 [CHAT] Send message - projectId: ${projectId}, userId: ${userId}`)
 
@@ -36,7 +36,7 @@ class ChatController {
       logger.error('❌ [CHAT] Send message error:', {
         error: error.message,
         projectId: req.params.projectId,
-        userId: (req as any).user?.id  // ✅ CORRIGIDO
+        userId: (req as any).user?.id
       })
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
         success: false,
@@ -45,11 +45,12 @@ class ChatController {
     }
   }
 
+  // ✅ CORRIGIDO: Ajustar formato para compatibilidade com frontend
   async getConversationByProject(req: Request, res: Response): Promise<void> {
     try {
       logger.info('📥 [CHAT] Get conversation by project request:', {
         projectId: req.params.projectId,
-        userId: (req as any).user?.id,  // ✅ CORRIGIDO
+        userId: (req as any).user?.id,
         headers: {
           authorization: req.headers.authorization ? 'Bearer ***' : 'missing'
         }
@@ -67,7 +68,7 @@ class ChatController {
       }
 
       const { projectId } = req.params
-      const userId = (req as any).user?.id  // ✅ CORRIGIDO: user.id
+      const userId = (req as any).user?.id
 
       if (!userId) {
         logger.error('❌ [CHAT] User ID missing from request')
@@ -87,9 +88,40 @@ class ChatController {
         messagesCount: result.conversation?.messages?.length || 0
       })
 
+      // ✅ TRANSFORMAR para formato esperado pelo frontend
+      const transformedData = {
+        chat: {
+          id: result.conversation.id,
+          _id: result.conversation.id,
+          userId: result.conversation.userId,
+          projectId: result.conversation.projectId,
+          title: result.conversation.title,
+          isActive: result.conversation.isActive,
+          metadata: {
+            totalMessages: result.stats?.totalMessages || result.conversation.messages?.length || 0,
+            lastActivity: result.conversation.lastActivity || result.conversation.updatedAt,
+            emailUpdates: result.stats?.emailModifications || 0,
+            lastUpdateSuccess: true,
+            enhancedMode: true,
+            enhancedAIEnabled: true
+          },
+          createdAt: result.conversation.createdAt,
+          updatedAt: result.conversation.updatedAt
+        },
+        messages: result.conversation.messages || [],
+        project: result.project,
+        stats: result.stats
+      }
+
+      logger.info('🔄 [CHAT] Data transformed for frontend compatibility:', {
+        chatId: transformedData.chat.id,
+        messagesCount: transformedData.messages.length,
+        hasProject: !!transformedData.project
+      })
+
       res.status(HTTP_STATUS.OK).json({
         success: true,
-        data: result
+        data: transformedData
       })
 
     } catch (error: any) {
@@ -97,7 +129,7 @@ class ChatController {
         error: error.message,
         stack: error.stack,
         projectId: req.params.projectId,
-        userId: (req as any).user?.id  // ✅ CORRIGIDO
+        userId: (req as any).user?.id
       })
       
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
@@ -111,13 +143,38 @@ class ChatController {
   async getConversationById(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params
-      const userId = (req as any).user?.id  // ✅ CORRIGIDO
+      const userId = (req as any).user?.id
 
       const result = await ChatService.getConversationById(id, userId)
 
+      // ✅ TRANSFORMAR para formato esperado pelo frontend
+      const transformedData = {
+        chat: {
+          id: result.conversation.id,
+          _id: result.conversation.id,
+          userId: result.conversation.userId,
+          projectId: result.conversation.projectId,
+          title: result.conversation.title,
+          isActive: result.conversation.isActive,
+          metadata: {
+            totalMessages: result.stats?.totalMessages || result.conversation.messages?.length || 0,
+            lastActivity: result.conversation.lastActivity || result.conversation.updatedAt,
+            emailUpdates: result.stats?.emailModifications || 0,
+            lastUpdateSuccess: true,
+            enhancedMode: true,
+            enhancedAIEnabled: true
+          },
+          createdAt: result.conversation.createdAt,
+          updatedAt: result.conversation.updatedAt
+        },
+        messages: result.conversation.messages || [],
+        project: result.project,
+        stats: result.stats
+      }
+
       res.status(HTTP_STATUS.OK).json({
         success: true,
-        data: result
+        data: transformedData
       })
 
     } catch (error: any) {
@@ -131,13 +188,39 @@ class ChatController {
 
   async getUserConversations(req: Request, res: Response): Promise<void> {
     try {
-      const userId = (req as any).user?.id  // ✅ CORRIGIDO
+      const userId = (req as any).user?.id
 
       const conversations = await ChatService.getUserConversations(userId)
 
+      // ✅ TRANSFORMAR lista de conversations para formato esperado
+      const transformedData = {
+        chats: conversations.map(conv => ({
+          id: conv.id,
+          _id: conv.id,
+          userId: conv.userId,
+          projectId: conv.projectId,
+          title: conv.title,
+          isActive: conv.isActive,
+          metadata: {
+            totalMessages: conv.messages?.length || 0,
+            lastActivity: conv.lastActivity || conv.updatedAt,
+            emailUpdates: 0,
+            enhancedMode: true,
+            enhancedAIEnabled: true
+          },
+          createdAt: conv.createdAt,
+          updatedAt: conv.updatedAt
+        })),
+        pagination: {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: conversations.length
+        }
+      }
+
       res.status(HTTP_STATUS.OK).json({
         success: true,
-        data: conversations
+        data: transformedData
       })
 
     } catch (error: any) {
@@ -152,7 +235,7 @@ class ChatController {
   async updateConversation(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params
-      const userId = (req as any).user?.id  // ✅ CORRIGIDO
+      const userId = (req as any).user?.id
       const updates = req.body
 
       const result = await ChatService.updateConversation(id, userId, updates)
@@ -165,9 +248,30 @@ class ChatController {
         return
       }
 
+      // ✅ TRANSFORMAR para formato esperado pelo frontend
+      const transformedData = {
+        chat: {
+          id: result.id,
+          _id: result.id,
+          userId: result.userId,
+          projectId: result.projectId,
+          title: result.title,
+          isActive: result.isActive,
+          metadata: {
+            totalMessages: result.messages?.length || 0,
+            lastActivity: result.lastActivity || result.updatedAt,
+            emailUpdates: 0,
+            enhancedMode: true,
+            enhancedAIEnabled: true
+          },
+          createdAt: result.createdAt,
+          updatedAt: result.updatedAt
+        }
+      }
+
       res.status(HTTP_STATUS.OK).json({
         success: true,
-        data: result
+        data: transformedData
       })
 
     } catch (error: any) {
@@ -182,7 +286,7 @@ class ChatController {
   async deleteConversation(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params
-      const userId = (req as any).user?.id  // ✅ CORRIGIDO
+      const userId = (req as any).user?.id
 
       const deleted = await ChatService.deleteConversation(id, userId)
 
