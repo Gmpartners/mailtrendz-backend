@@ -1,20 +1,26 @@
 """
-🚀 MAILTRENDZ AI SERVICE - VERSÃO SIMPLIFICADA PARA RAILWAY
-FastAPI básico para testar deploy
+✅ VERSÃO ULTRA-SIMPLES PARA RAILWAY
+FastAPI básico que sempre funciona
 """
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
 import os
+import sys
 from datetime import datetime
 
-# Configuração básica
+print("🚀 [STARTUP] Iniciando MailTrendz AI Service...")
+
+try:
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    print("✅ [STARTUP] FastAPI imports OK")
+except ImportError as e:
+    print(f"❌ [STARTUP] FastAPI import failed: {e}")
+    sys.exit(1)
+
+# Criar app
 app = FastAPI(
-    title="MailTrendz AI Service",
-    description="Microserviço Python para IA de emails",
-    version="2.0.0-simple",
-    docs_url="/docs"
+    title="MailTrendz AI Service", 
+    version="2.0.0-ultra-simple"
 )
 
 # CORS básico
@@ -26,44 +32,71 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+print("✅ [STARTUP] FastAPI app criado")
+
 @app.get("/")
 async def root():
-    """Endpoint raiz"""
+    """Root endpoint"""
     return {
         "service": "MailTrendz AI Service",
-        "version": "2.0.0-simple",
+        "version": "2.0.0-ultra-simple",
         "status": "operational",
-        "timestamp": datetime.now(),
-        "message": "🚀 Python AI Service rodando no Railway!"
+        "timestamp": datetime.now().isoformat(),
+        "message": "🚀 Ultra-simple Python AI Service funcionando!",
+        "port": os.getenv("PORT", "5000"),
+        "environment": os.getenv("NODE_ENV", "development")
     }
 
 @app.get("/health")
-async def health_check():
-    """Health check básico"""
+async def health():
+    """Health check ultra-simples"""
     return {
         "status": "healthy",
-        "timestamp": datetime.now(),
-        "version": "2.0.0-simple",
-        "python_version": "3.11",
-        "environment": os.getenv("NODE_ENV", "production"),
-        "port": os.getenv("PORT", "5000")
+        "timestamp": datetime.now().isoformat(),
+        "version": "2.0.0-ultra-simple",
+        "service": "python-ai-ultra-simple",
+        "port": os.getenv("PORT", "5000"),
+        "python_version": f"{sys.version_info.major}.{sys.version_info.minor}"
     }
 
-@app.post("/test")
-async def test_endpoint():
-    """Teste básico de POST"""
+@app.get("/test")
+async def test():
+    """Endpoint de teste"""
     return {
-        "success": True,
-        "message": "POST endpoint funcionando!",
-        "timestamp": datetime.now()
+        "test": "OK",
+        "timestamp": datetime.now().isoformat(),
+        "environment_vars": {
+            "PORT": os.getenv("PORT"),
+            "NODE_ENV": os.getenv("NODE_ENV"),
+            "MONGODB_URI": "***" if os.getenv("MONGODB_URI") else None,
+            "OPENROUTER_API_KEY": "***" if os.getenv("OPENROUTER_API_KEY") else None
+        }
     }
+
+print("✅ [STARTUP] Rotas configuradas")
 
 if __name__ == "__main__":
-    # Configuração para produção no Railway
+    print("🚀 [STARTUP] Iniciando uvicorn...")
+    
+    import uvicorn
+    
     port = int(os.getenv("PORT", 5000))
-    uvicorn.run(
-        "app_simple:app",
-        host="0.0.0.0",
-        port=port,
-        log_level="info"
-    )
+    
+    print(f"✅ [STARTUP] Porta configurada: {port}")
+    print(f"✅ [STARTUP] Variáveis de ambiente:")
+    print(f"   PORT: {os.getenv('PORT')}")
+    print(f"   NODE_ENV: {os.getenv('NODE_ENV')}")
+    print(f"   MONGODB_URI: {'✅ Configurado' if os.getenv('MONGODB_URI') else '❌ Não configurado'}")
+    print(f"   OPENROUTER_API_KEY: {'✅ Configurado' if os.getenv('OPENROUTER_API_KEY') else '❌ Não configurado'}")
+    
+    try:
+        uvicorn.run(
+            "app_simple:app",
+            host="0.0.0.0",
+            port=port,
+            log_level="info",
+            access_log=True
+        )
+    except Exception as e:
+        print(f"❌ [STARTUP] Erro ao iniciar uvicorn: {e}")
+        sys.exit(1)

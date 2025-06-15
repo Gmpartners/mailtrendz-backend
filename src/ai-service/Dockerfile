@@ -1,28 +1,29 @@
-# ✅ DOCKERFILE PARA PYTHON AI SERVICE - RAILWAY
+# ✅ DOCKERFILE OTIMIZADO PARA RAILWAY
 FROM python:3.11-slim
 
-# Definir diretório de trabalho
+# Otimizações para Railway
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PORT=5000
+
 WORKDIR /app
 
-# Instalar dependências do sistema
-RUN apt-get update && apt-get install -y \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copiar requirements primeiro (para cache do Docker)
+# Instalar apenas o essencial
 COPY requirements.txt .
-
-# Instalar dependências Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar código da aplicação
+# Copiar aplicação
 COPY . .
 
-# Criar diretório de logs
+# Criar logs directory
 RUN mkdir -p logs
+
+# Health check simples
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD python -c "import requests; requests.get('http://localhost:5000/health', timeout=5)"
 
 # Expor porta
 EXPOSE 5000
 
-# Comando para iniciar a aplicação
-CMD ["python", "app.py"]
+# Comando otimizado
+CMD ["python", "app_simple.py"]

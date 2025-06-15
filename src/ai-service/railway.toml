@@ -1,9 +1,9 @@
-# ✅ RAILWAY CONFIGURATION - PYTHON AI SERVICE
+# ✅ RAILWAY CONFIGURATION - ULTRA SIMPLE
 [build]
 builder = "DOCKERFILE"
 
 [deploy]
-startCommand = "python app.py"
+startCommand = "python app_simple.py"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
@@ -13,17 +13,7 @@ restartPolicyMaxRetries = 3
 PORT = "5000"
 PYTHON_VERSION = "3.11"
 NODE_ENV = "production"
-DEBUG = "false"
 
-# Configurações de IA
-AI_MAX_TOKENS = "2500"
-AI_TEMPERATURE = "0.7"
-AI_CACHE_ENABLED = "true"
-AI_CACHE_TTL = "300"
-
-# Configurações de logs
-LOG_LEVEL = "info"
-LOG_FILE = "logs/ai-service.log"
-
-# Performance
-PERFORMANCE_MONITORING = "true"
+# Configurações otimizadas para startup rápido
+PYTHONUNBUFFERED = "1"
+PYTHONDONTWRITEBYTECODE = "1"
