@@ -44,7 +44,7 @@ pythonAIClient.interceptors.request.use(
 
 pythonAIClient.interceptors.response.use(
   (response) => {
-    logger.success(`🐍 [PYTHON AI] ${response.config.method?.toUpperCase()} ${response.config.url}`, {
+    logger.info(`🐍 [PYTHON AI] ${response.config.method?.toUpperCase()} ${response.config.url} - SUCCESS`, {
       status: response.status,
       processingTime: response.headers['x-process-time'],
       requestId: response.headers['x-request-id']
@@ -145,7 +145,7 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
     
     const processingTime = Date.now() - startTime
 
-    logger.success('✅ [PYTHON AI] Email gerado com sucesso', {
+    logger.info('✅ [PYTHON AI] Email gerado com sucesso', {
       processingTime,
       success: pythonResponse.data.success,
       aiProcessingTime: pythonResponse.data.processing_time
@@ -456,8 +456,7 @@ const testConnection = async (req: Request, res: Response): Promise<void> => {
         troubleshooting: {
           checkUrl: 'Verifique se PYTHON_AI_SERVICE_URL está correto',
           checkService: 'Verifique se o Python AI Service está rodando',
-          checkPort: 'Verifique se a porta 5000 está disponível',
-          startCommand: 'cd src/ai-service && python app.py'
+          currentUrl: PYTHON_AI_SERVICE_URL
         }
       }
     })
