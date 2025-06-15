@@ -13,19 +13,28 @@ interface EmailGenerationRequest {
   urgency?: string
 }
 
-// ✅ CONFIGURAÇÃO PARA CONECTAR AO PYTHON AI SERVICE
 const PYTHON_AI_SERVICE_URL = process.env.PYTHON_AI_SERVICE_URL || 'DISABLED'
 const PYTHON_AI_TIMEOUT = parseInt(process.env.PYTHON_AI_TIMEOUT || '60000')
 
-// ✅ VERIFICAR SE PYTHON AI SERVICE ESTÁ HABILITADO
 const isPythonAIEnabled = (): boolean => {
-  return PYTHON_AI_SERVICE_URL !== 'DISABLED' && 
-         PYTHON_AI_SERVICE_URL !== 'disabled' && 
-         PYTHON_AI_SERVICE_URL !== '' &&
-         !PYTHON_AI_SERVICE_URL.includes('localhost')
+  const url = PYTHON_AI_SERVICE_URL
+  const isDisabled = url === 'DISABLED' || url === 'disabled' || url === ''
+  
+  if (isDisabled) {
+    logger.info('🐍 [PYTHON AI] Service desabilitado na configuração')
+    return false
+  }
+  
+  try {
+    new URL(url)
+    logger.info(`🐍 [PYTHON AI] Service habilitado: ${url}`)
+    return true
+  } catch (error) {
+    logger.error(`🐍 [PYTHON AI] URL inválida: ${url}`)
+    return false
+  }
 }
 
-// ✅ CLIENTE HTTP PARA PYTHON AI SERVICE (só se habilitado)
 let pythonAIClient: any = null
 
 if (isPythonAIEnabled()) {
@@ -34,16 +43,17 @@ if (isPythonAIEnabled()) {
     timeout: PYTHON_AI_TIMEOUT,
     headers: {
       'Content-Type': 'application/json',
-      'User-Agent': 'MailTrendz-Backend/2.0.0'
+      'User-Agent': 'MailTrendz-Backend/2.0.0-fixed',
+      'Accept': 'application/json'
     }
   })
 
-  // ✅ INTERCEPTOR PARA LOGS
   pythonAIClient.interceptors.request.use(
     (config) => {
-      logger.info(`🐍 [PYTHON AI] ${config.method?.toUpperCase()} ${config.url}`, {
+      logger.info(`🐍 [PYTHON AI] REQUEST: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`, {
         timeout: config.timeout,
-        dataSize: config.data ? JSON.stringify(config.data).length : 0
+        dataSize: config.data ? JSON.stringify(config.data).length : 0,
+        headers: config.headers
       })
       return config
     },
@@ -55,25 +65,27 @@ if (isPythonAIEnabled()) {
 
   pythonAIClient.interceptors.response.use(
     (response) => {
-      logger.info(`🐍 [PYTHON AI] ${response.config.method?.toUpperCase()} ${response.config.url} - SUCCESS`, {
+      logger.info(`🐍 [PYTHON AI] RESPONSE: ${response.config.method?.toUpperCase()} ${response.config.url} - SUCCESS`, {
         status: response.status,
         processingTime: response.headers['x-process-time'],
-        requestId: response.headers['x-request-id']
+        requestId: response.headers['x-request-id'],
+        contentLength: JSON.stringify(response.data).length
       })
       return response
     },
     (error) => {
       logger.error(`🐍 [PYTHON AI] Response error:`, {
         status: error.response?.status,
+        statusText: error.response?.statusText,
         message: error.message,
-        url: error.config?.url
+        url: error.config?.url,
+        responseData: error.response?.data
       })
       return Promise.reject(error)
     }
   )
 }
 
-// ✅ FUNÇÃO PARA VERIFICAR SE PYTHON AI SERVICE ESTÁ DISPONÍVEL
 const checkPythonAIService = async (): Promise<boolean> => {
   if (!isPythonAIEnabled()) {
     logger.info('🐍 [PYTHON AI] Service desabilitado na configuração')
@@ -81,15 +93,30 @@ const checkPythonAIService = async (): Promise<boolean> => {
   }
 
   try {
-    await pythonAIClient.get('/health', { timeout: 10000 })
-    return true
-  } catch (error) {
-    logger.error('🐍 [PYTHON AI] Service não disponível:', error)
+    logger.info('🐍 [PYTHON AI] Verificando saúde do serviço...')
+    const healthResponse = await pythonAIClient.get('/health', { timeout: 15000 })
+    
+    const isHealthy = healthResponse.status === 200 && 
+                     healthResponse.data && 
+                     (healthResponse.data.status === 'healthy' || healthResponse.data.status === 'ok')
+    
+    logger.info('🐍 [PYTHON AI] Health check result:', {
+      status: healthResponse.status,
+      healthy: isHealthy,
+      serviceData: healthResponse.data
+    })
+    
+    return isHealthy
+  } catch (error: any) {
+    logger.error('🐍 [PYTHON AI] Health check failed:', {
+      error: error.message,
+      status: error.response?.status,
+      url: PYTHON_AI_SERVICE_URL
+    })
     return false
   }
 }
 
-// ✅ GERAÇÃO DE EMAIL - RESPOSTA ESTRUTURADA PARA DESENVOLVIMENTO
 const generateEmail = async (req: Request, res: Response): Promise<void> => {
   try {
     logger.info('📥 [AI] Request recebido para geração de email:', {
@@ -122,13 +149,11 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
       return
     }
 
-    // ✅ VERIFICAR SE PYTHON AI SERVICE ESTÁ DISPONÍVEL
     const pythonAvailable = await checkPythonAIService()
     
     if (!pythonAvailable) {
       logger.info('⚠️ [AI] Python AI Service indisponível, retornando resposta de desenvolvimento')
       
-      // ✅ RESPOSTA ESTRUTURADA PARA DESENVOLVIMENTO/TESTE
       const mockEmailData = {
         id: `mock_${Date.now()}`,
         name: `Email ${industry} - ${new Date().toLocaleDateString('pt-BR')}`,
@@ -191,7 +216,6 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
       return
     }
 
-    // ✅ SE PYTHON AI DISPONÍVEL, USAR O SERVIÇO PYTHON
     const pythonRequest = {
       prompt,
       context: {
@@ -253,57 +277,161 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
   }
 }
 
-// ✅ MODIFICAÇÃO DE EMAIL VIA PYTHON AI SERVICE
 const modifyEmail = async (req: Request, res: Response): Promise<void> => {
   try {
-    logger.info('🔧 [AI] Request para modificação de email')
+    logger.info('🔧 [AI] Request para modificação de email', {
+      project_id: req.body.project_id,
+      instructions: req.body.instructions?.substring(0, 50) + '...',
+      userId: (req as any).user?.userId,
+      preserve_structure: req.body.preserve_structure
+    })
 
-    if (!isPythonAIEnabled()) {
-      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+    const errors = validationResult(req)
+    if (!errors.isEmpty()) {
+      logger.error('❌ [AI] Validation errors:', errors.array())
+      res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
-        message: 'Funcionalidade de modificação requer Python AI Service',
-        error: 'Python AI Service não configurado'
+        message: 'Dados de entrada inválidos',
+        errors: errors.array()
       })
       return
     }
 
-    const pythonAvailable = await checkPythonAIService()
-    if (!pythonAvailable) {
+    if (!isPythonAIEnabled()) {
+      logger.error('❌ [AI] Python AI Service não configurado')
       res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
         success: false,
-        message: 'Serviço de IA temporariamente indisponível'
+        message: 'Funcionalidade de modificação requer Python AI Service',
+        error: 'Python AI Service não configurado',
+        debug: {
+          PYTHON_AI_SERVICE_URL: PYTHON_AI_SERVICE_URL,
+          enabled: false,
+          timestamp: new Date().toISOString()
+        }
+      })
+      return
+    }
+
+    logger.info('🔍 [AI] Verificando disponibilidade do Python AI Service...')
+    const pythonAvailable = await checkPythonAIService()
+    
+    if (!pythonAvailable) {
+      logger.error('❌ [AI] Python AI Service não disponível')
+      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+        success: false,
+        message: 'Serviço de IA temporariamente indisponível',
+        error: 'Python AI Service não responde',
+        debug: {
+          python_url: PYTHON_AI_SERVICE_URL,
+          health_check: 'failed',
+          timestamp: new Date().toISOString()
+        }
       })
       return
     }
 
     const pythonRequest = {
       project_id: req.body.project_id,
-      user_id: (req as any).user?.userId,
+      user_id: (req as any).user?.userId || 'anonymous',
       instructions: req.body.instructions,
-      preserve_structure: req.body.preserve_structure !== false
+      preserve_structure: req.body.preserve_structure !== false,
+      timestamp: new Date().toISOString(),
+      source: 'nodejs-backend'
     }
 
-    const pythonResponse = await pythonAIClient.post('/modify', pythonRequest)
+    logger.info('🐍 [AI] Enviando requisição para Python AI Service:', {
+      url: `${PYTHON_AI_SERVICE_URL}/modify`,
+      project_id: pythonRequest.project_id,
+      user_id: pythonRequest.user_id,
+      instructions_length: pythonRequest.instructions?.length || 0
+    })
+
+    const startTime = Date.now()
+    const pythonResponse = await pythonAIClient.post('/modify', pythonRequest, {
+      timeout: PYTHON_AI_TIMEOUT,
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'MailTrendz-Backend/2.0.0-fixed',
+        'X-Request-Source': 'nodejs-backend',
+        'X-Request-ID': `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      }
+    })
+    const processingTime = Date.now() - startTime
+
+    logger.info('✅ [AI] Python AI Response recebida com sucesso:', {
+      status: pythonResponse.status,
+      success: pythonResponse.data.success,
+      processing_time: processingTime,
+      python_processing_time: pythonResponse.data.metadata?.processing_time
+    })
+
+    if (!pythonResponse.data || pythonResponse.data.success !== true) {
+      logger.error('❌ [AI] Resposta inválida do Python AI:', pythonResponse.data)
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Resposta inválida do serviço de IA',
+        error: 'Python AI retornou resposta inválida'
+      })
+      return
+    }
 
     res.status(HTTP_STATUS.OK).json({
       success: true,
       message: 'Email modificado com sucesso via Python AI Service',
       data: pythonResponse.data.data,
-      metadata: pythonResponse.data.metadata
+      metadata: {
+        ...pythonResponse.data.metadata,
+        proxy_processing_time: processingTime,
+        total_processing_time: processingTime,
+        service: 'python-ai-service',
+        proxy: 'nodejs-backend',
+        timestamp: new Date().toISOString()
+      }
     })
 
   } catch (error: any) {
-    logger.error('❌ [AI] Erro na modificação de email:', error.message)
+    logger.error('❌ [AI] Erro na modificação de email:', {
+      error: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      python_response: error.response?.data,
+      python_url: PYTHON_AI_SERVICE_URL,
+      timeout: PYTHON_AI_TIMEOUT,
+      stack: error.stack
+    })
     
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+    let statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR
+    let errorMessage = 'Erro interno na modificação de email'
+    
+    if (error.code === 'ECONNREFUSED') {
+      statusCode = HTTP_STATUS.SERVICE_UNAVAILABLE
+      errorMessage = 'Não foi possível conectar ao serviço de IA'
+    } else if (error.code === 'ETIMEDOUT' || error.message.includes('timeout')) {
+      statusCode = HTTP_STATUS.REQUEST_TIMEOUT
+      errorMessage = 'Timeout na comunicação com o serviço de IA'
+    } else if (error.response?.status === 404) {
+      statusCode = HTTP_STATUS.SERVICE_UNAVAILABLE
+      errorMessage = 'Endpoint de modificação não encontrado no serviço de IA'
+    } else if (error.response?.status >= 400 && error.response?.status < 500) {
+      statusCode = error.response.status
+      errorMessage = 'Erro na requisição para o serviço de IA'
+    }
+    
+    res.status(statusCode).json({
       success: false,
-      message: 'Erro na modificação de email',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Serviço temporariamente indisponível'
+      message: errorMessage,
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Serviço temporariamente indisponível',
+      debug: {
+        python_ai_enabled: isPythonAIEnabled(),
+        python_ai_url: PYTHON_AI_SERVICE_URL,
+        error_type: error.code || 'unknown',
+        error_status: error.response?.status,
+        timestamp: new Date().toISOString()
+      }
     })
   }
 }
 
-// ✅ OTIMIZAÇÃO CSS VIA PYTHON AI SERVICE
 const optimizeCSS = async (req: Request, res: Response): Promise<void> => {
   try {
     logger.info('🎨 [AI] Request para otimização CSS')
@@ -346,13 +474,11 @@ const optimizeCSS = async (req: Request, res: Response): Promise<void> => {
   }
 }
 
-// ✅ VALIDAÇÃO HTML VIA PYTHON AI SERVICE
 const validateEmail = async (req: Request, res: Response): Promise<void> => {
   try {
     logger.info('✅ [AI] Request para validação HTML')
 
     if (!isPythonAIEnabled()) {
-      // ✅ VALIDAÇÃO SIMPLES SEM PYTHON AI
       const htmlContent = req.body.html
       const validation = {
         valid: true,
@@ -405,7 +531,6 @@ const validateEmail = async (req: Request, res: Response): Promise<void> => {
   }
 }
 
-// ✅ PROCESSAMENTO DE CHAT VIA PYTHON AI SERVICE
 const processChat = async (req: Request, res: Response): Promise<void> => {
   try {
     logger.info('💬 [AI] Request para processamento de chat')
@@ -455,7 +580,6 @@ const processChat = async (req: Request, res: Response): Promise<void> => {
   }
 }
 
-// ✅ HEALTH CHECK COMBINADO (NODE.JS + PYTHON AI)
 const getHealthStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     const nodeHealth = {
@@ -473,14 +597,18 @@ const getHealthStatus = async (req: Request, res: Response): Promise<void> => {
 
     if (isPythonAIEnabled()) {
       try {
-        const pythonResponse = await pythonAIClient.get('/health', { timeout: 10000 })
+        logger.info('🔍 [HEALTH] Verificando Python AI Service...')
+        const pythonResponse = await pythonAIClient.get('/health', { timeout: 15000 })
         pythonHealth = pythonResponse.data
-        pythonAvailable = pythonHealth.status === 'healthy'
-      } catch (error) {
+        pythonAvailable = pythonHealth.status === 'healthy' || pythonHealth.status === 'ok'
+        logger.info('✅ [HEALTH] Python AI Service respondeu:', { status: pythonHealth.status })
+      } catch (error: any) {
+        logger.error('❌ [HEALTH] Python AI Service falhou:', error.message)
         pythonHealth = {
           status: 'unhealthy',
           error: 'Não foi possível conectar ao Python AI Service',
-          url: PYTHON_AI_SERVICE_URL
+          url: PYTHON_AI_SERVICE_URL,
+          details: error.message
         }
       }
     } else {
@@ -504,7 +632,11 @@ const getHealthStatus = async (req: Request, res: Response): Promise<void> => {
         },
         python_ai_enabled: isPythonAIEnabled(),
         python_ai_url: PYTHON_AI_SERVICE_URL,
-        python_available: pythonAvailable
+        python_available: pythonAvailable,
+        configuration: {
+          timeout: PYTHON_AI_TIMEOUT,
+          environment: process.env.NODE_ENV || 'development'
+        }
       },
       metadata: {
         timestamp: new Date().toISOString(),
@@ -526,7 +658,6 @@ const getHealthStatus = async (req: Request, res: Response): Promise<void> => {
   }
 }
 
-// ✅ TESTE DE CONECTIVIDADE COM PYTHON AI SERVICE
 const testConnection = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!isPythonAIEnabled()) {
@@ -548,10 +679,45 @@ const testConnection = async (req: Request, res: Response): Promise<void> => {
 
     const startTime = Date.now()
     
-    const pythonResponse = await pythonAIClient.get('/', { timeout: 15000 })
+    const tests = []
+    
+    try {
+      const rootTest = await pythonAIClient.get('/', { timeout: 15000 })
+      tests.push({
+        endpoint: '/',
+        status: rootTest.status,
+        success: true,
+        response: rootTest.data
+      })
+    } catch (error: any) {
+      tests.push({
+        endpoint: '/',
+        status: error.response?.status || 0,
+        success: false,
+        error: error.message
+      })
+    }
+    
+    try {
+      const healthTest = await pythonAIClient.get('/health', { timeout: 15000 })
+      tests.push({
+        endpoint: '/health',
+        status: healthTest.status,
+        success: true,
+        response: healthTest.data
+      })
+    } catch (error: any) {
+      tests.push({
+        endpoint: '/health',
+        status: error.response?.status || 0,
+        success: false,
+        error: error.message
+      })
+    }
     
     const responseTime = Date.now() - startTime
-    const isConnected = pythonResponse.status === 200
+    const successfulTests = tests.filter(t => t.success).length
+    const isConnected = successfulTests > 0
 
     res.status(HTTP_STATUS.OK).json({
       success: isConnected,
@@ -560,8 +726,9 @@ const testConnection = async (req: Request, res: Response): Promise<void> => {
         connected: isConnected,
         enabled: true,
         responseTime,
-        status: pythonResponse.status,
-        python_service_info: pythonResponse.data,
+        successful_tests: successfulTests,
+        total_tests: tests.length,
+        tests,
         url: PYTHON_AI_SERVICE_URL,
         testTimestamp: new Date().toISOString()
       }
@@ -583,14 +750,13 @@ const testConnection = async (req: Request, res: Response): Promise<void> => {
           checkUrl: 'Verifique se PYTHON_AI_SERVICE_URL está correto',
           checkService: 'Verifique se o Python AI Service está rodando',
           currentUrl: PYTHON_AI_SERVICE_URL,
-          allEndpointsReturned404: 'Todos os endpoints testados retornaram 404'
+          timeout: PYTHON_AI_TIMEOUT
         }
       }
     })
   }
 }
 
-// ✅ EXPORTAR CONTROLLER
 const AIController = {
   generateEmail,
   modifyEmail,
