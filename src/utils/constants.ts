@@ -46,42 +46,42 @@ export const MESSAGE_TYPES = {
 // API Limits
 export const API_LIMITS = {
   [SUBSCRIPTION_TYPES.FREE]: {
-    MONTHLY_PROJECTS: 100,
-    MONTHLY_AI_REQUESTS: 500,
-    MONTHLY_CHAT_MESSAGES: 1000,
-    MAX_PROJECTS: 50
+    MONTHLY_PROJECTS: 1000,     // ✅ AUMENTADO de 100 para 1000
+    MONTHLY_AI_REQUESTS: 5000,  // ✅ AUMENTADO de 500 para 5000
+    MONTHLY_CHAT_MESSAGES: 10000, // ✅ AUMENTADO de 1000 para 10000
+    MAX_PROJECTS: 500           // ✅ AUMENTADO de 50 para 500
   },
   [SUBSCRIPTION_TYPES.PRO]: {
-    MONTHLY_PROJECTS: 1000,
-    MONTHLY_AI_REQUESTS: 5000,
-    MONTHLY_CHAT_MESSAGES: 10000,
-    MAX_PROJECTS: 500
+    MONTHLY_PROJECTS: 10000,    // ✅ AUMENTADO de 1000 para 10000
+    MONTHLY_AI_REQUESTS: 50000, // ✅ AUMENTADO de 5000 para 50000
+    MONTHLY_CHAT_MESSAGES: 100000, // ✅ AUMENTADO de 10000 para 100000
+    MAX_PROJECTS: 5000          // ✅ AUMENTADO de 500 para 5000
   },
   [SUBSCRIPTION_TYPES.ENTERPRISE]: {
-    MONTHLY_PROJECTS: 10000,
-    MONTHLY_AI_REQUESTS: 50000,
-    MONTHLY_CHAT_MESSAGES: 100000,
-    MAX_PROJECTS: 5000
+    MONTHLY_PROJECTS: 100000,   // ✅ AUMENTADO de 10000 para 100000
+    MONTHLY_AI_REQUESTS: 500000, // ✅ AUMENTADO de 50000 para 500000
+    MONTHLY_CHAT_MESSAGES: 1000000, // ✅ AUMENTADO de 100000 para 1000000
+    MAX_PROJECTS: 50000         // ✅ AUMENTADO de 5000 para 50000
   }
 } as const
 
-// Rate Limiting
+// ✅ RATE LIMITING MUITO MAIS GENEROSO
 export const RATE_LIMITS = {
   GENERAL: {
-    WINDOW_MS: 15 * 60 * 1000,
-    MAX_REQUESTS: 10000
+    WINDOW_MS: 15 * 60 * 1000,  // 15 minutos
+    MAX_REQUESTS: 50000         // ✅ AUMENTADO de 10000 para 50000
   },
   AUTH: {
-    WINDOW_MS: 15 * 60 * 1000,
-    MAX_REQUESTS: 500
+    WINDOW_MS: 15 * 60 * 1000,  // 15 minutos
+    MAX_REQUESTS: 1000          // ✅ AUMENTADO de 500 para 1000
   },
   AI: {
-    WINDOW_MS: 60 * 1000,
-    MAX_REQUESTS: 500
+    WINDOW_MS: 60 * 1000,       // 1 minuto
+    MAX_REQUESTS: 2000          // ✅ AUMENTADO de 500 para 2000
   },
   PROJECTS: {
-    WINDOW_MS: 60 * 1000,
-    MAX_REQUESTS: 1000
+    WINDOW_MS: 60 * 1000,       // 1 minuto
+    MAX_REQUESTS: 5000          // ✅ AUMENTADO de 1000 para 5000
   }
 } as const
 
@@ -127,7 +127,7 @@ export const VALIDATION = {
     NAME_MIN_LENGTH: 3,
     NAME_MAX_LENGTH: 100,
     DESCRIPTION_MAX_LENGTH: 500,
-    PROMPT_MIN_LENGTH: 10,
+    PROMPT_MIN_LENGTH: 5,        // ✅ REDUZIDO de 10 para 5
     PROMPT_MAX_LENGTH: 2000
   },
   CONVERSATION: {
@@ -165,6 +165,10 @@ export const ERROR_CODES = {
   TOKEN_INVALID: 'TOKEN_INVALID',
   ACCOUNT_DISABLED: 'ACCOUNT_DISABLED',
   EMAIL_NOT_VERIFIED: 'EMAIL_NOT_VERIFIED',
+  
+  // Users
+  USER_NOT_FOUND: 'USER_NOT_FOUND',
+  USER_ALREADY_EXISTS: 'USER_ALREADY_EXISTS',
   
   // Authorization
   INSUFFICIENT_PERMISSIONS: 'INSUFFICIENT_PERMISSIONS',
@@ -233,35 +237,39 @@ export const EMAIL_CONFIG = {
   RECOMMENDED_PREVIEW_LENGTH: 90
 } as const
 
-// Feature Rate Limits
+// ✅ FEATURE RATE LIMITS MUITO MAIS GENEROSOS
 export const FEATURE_RATE_LIMITS = {
   PROJECT_CREATION: {
-    FREE_PER_MINUTE: 50,
-    PRO_PER_MINUTE: 150,
-    ENTERPRISE_PER_MINUTE: 500,
-    COOLDOWN_SECONDS: 1,
-    BURST_LIMIT: 10
+    FREE_PER_MINUTE: 500,        // ✅ AUMENTADO de 50 para 500
+    PRO_PER_MINUTE: 1500,        // ✅ AUMENTADO de 150 para 1500
+    ENTERPRISE_PER_MINUTE: 5000, // ✅ AUMENTADO de 500 para 5000
+    COOLDOWN_SECONDS: 0.1,       // ✅ REDUZIDO de 1 para 0.1
+    BURST_LIMIT: 100             // ✅ AUMENTADO de 10 para 100
   },
   AI_CONVERSATION: {
-    FREE_PER_MINUTE: 100,
-    PRO_PER_MINUTE: 300,
-    ENTERPRISE_PER_MINUTE: 1000,
-    COOLDOWN_SECONDS: 0.5
+    FREE_PER_MINUTE: 1000,       // ✅ AUMENTADO de 100 para 1000
+    PRO_PER_MINUTE: 3000,        // ✅ AUMENTADO de 300 para 3000
+    ENTERPRISE_PER_MINUTE: 10000, // ✅ AUMENTADO de 1000 para 10000
+    COOLDOWN_SECONDS: 0.1        // ✅ REDUZIDO de 0.5 para 0.1
   },
   PROJECT_IMPROVEMENT: {
-    FREE_PER_MINUTE: 30,
-    PRO_PER_MINUTE: 100,
-    ENTERPRISE_PER_MINUTE: 300,
-    COOLDOWN_SECONDS: 2
+    FREE_PER_MINUTE: 300,        // ✅ AUMENTADO de 30 para 300
+    PRO_PER_MINUTE: 1000,        // ✅ AUMENTADO de 100 para 1000
+    ENTERPRISE_PER_MINUTE: 3000, // ✅ AUMENTADO de 300 para 3000
+    COOLDOWN_SECONDS: 0.2        // ✅ REDUZIDO de 2 para 0.2
   }
 } as const
 
-// Error Messages
+// ✅ ERROR MESSAGES MAIS AMIGÁVEIS
 export const ERROR_MESSAGES = {
   RATE_LIMIT: {
     DEFAULT: 'Você está fazendo muitas requisições. Por favor, aguarde um momento.',
     PROJECT_CREATION: 'Muitas criações de projeto. Aguarde alguns segundos antes de criar outro.',
-    WITH_TIME: (seconds: number) => `Por favor, aguarde ${seconds} segundos antes de tentar novamente.`
+    WITH_TIME: (seconds: number) => {
+      if (seconds <= 1) return 'Por favor, aguarde um momento antes de tentar novamente.'
+      if (seconds <= 5) return `Por favor, aguarde ${seconds} segundos antes de tentar novamente.`
+      return `Por favor, aguarde ${Math.ceil(seconds/5)*5} segundos antes de tentar novamente.`
+    }
   },
   AI_SERVICE: {
     UNAVAILABLE: 'O serviço de IA está temporariamente indisponível. Tente novamente em alguns minutos.',

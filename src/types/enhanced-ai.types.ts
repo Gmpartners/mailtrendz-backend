@@ -1,4 +1,4 @@
-import { EmailContent, ProjectContext } from './ai.types'
+import { ProjectContext } from './ai.types'
 
 export interface EnhancedEmailContent {
   subject: string

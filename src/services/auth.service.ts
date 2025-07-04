@@ -1,390 +1,364 @@
-import jwt from 'jsonwebtoken'
-import crypto from 'crypto'
-import { User } from '../models/User.model'
-import { LoginDto, RegisterDto, AuthResponse, UserProfile, JwtTokenPayload } from '../types/auth.types'
-import { SECURITY } from '../utils/constants'
-import { logger, loggerHelpers } from '../utils/logger'
-import { 
-  createUnauthorizedError, 
-  createConflictError, 
-  createNotFoundError,
-  AppError 
-} from '../middleware/error.middleware'
+import { supabase, supabaseAdmin } from '../config/supabase.config'
+import { Database } from '../database/types'
+import { RegisterDto, LoginDto } from '../types/auth.types'
+import { HTTP_STATUS, ERROR_CODES } from '../utils/constants'
+import { logger } from '../utils/logger'
+import { ApiError } from '../utils/api-error'
+
+type Profile = Database['public']['Tables']['profiles']['Row']
 
 class AuthService {
-  // Registro de novo usuário
-  async register(userData: RegisterDto, ip: string): Promise<AuthResponse> {
+  async register(userData: RegisterDto, ip: string) {
     try {
-      // Verificar se email já existe
-      const existingUser = await User.findOne({ email: userData.email })
-      if (existingUser) {
-        throw createConflictError('Email já está em uso')
-      }
-
-      // Criar usuário
-      const user = new User({
-        name: userData.name,
+      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email: userData.email,
         password: userData.password,
-        emailVerificationToken: this.generateVerificationToken()
+        email_confirm: false,
+        user_metadata: {
+          name: userData.name
+        }
       })
 
-      await user.save()
+      if (authError) {
+        if (authError.message.includes('already registered')) {
+          throw new ApiError('Email já cadastrado', HTTP_STATUS.CONFLICT, ERROR_CODES.USER_ALREADY_EXISTS)
+        }
+        throw authError
+      }
 
-      // Gerar tokens
-      const { accessToken, refreshToken } = this.generateTokens(user._id.toString(), user.email, user.subscription)
+      if (!authData.user) {
+        throw new ApiError('Erro ao criar usuário', HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      }
 
-      // Log da ação
-      loggerHelpers.auth.register(user._id.toString(), user.email, ip)
+      const { data: sessionData, error: sessionError } = await supabase.auth.signInWithPassword({
+        email: userData.email,
+        password: userData.password
+      })
+
+      if (sessionError) {
+        logger.error('Error creating session after registration:', sessionError)
+        throw sessionError
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authData.user.id)
+        .single()
+
+      if (profileError) {
+        logger.error('Error fetching profile after registration:', profileError)
+      }
+
+      logger.info(`New user registered: ${userData.email} from IP: ${ip}`)
 
       return {
         success: true,
-        message: 'Usuário criado com sucesso!',
+        message: 'Usuário criado com sucesso',
         data: {
-          user: user.fullProfile,
-          accessToken,
-          refreshToken
+          user: profile,
+          accessToken: sessionData.session?.access_token,
+          refreshToken: sessionData.session?.refresh_token
         }
       }
     } catch (error) {
-      logger.error('Registration failed:', error)
-      throw error
+      logger.error('Registration error:', error)
+      if (error instanceof ApiError) throw error
+      throw new ApiError('Erro ao criar usuário', HTTP_STATUS.INTERNAL_SERVER_ERROR)
     }
   }
 
-  // Login de usuário
-  async login(credentials: LoginDto, ip: string): Promise<AuthResponse> {
+  async login(credentials: LoginDto, ip: string) {
     try {
-      // Buscar usuário com senha
-      const user = await User.findOne({ email: credentials.email }).select('+password')
-      
-      if (!user) {
-        loggerHelpers.auth.failed(credentials.email, ip, 'user_not_found')
-        throw createUnauthorizedError('Credenciais inválidas')
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: credentials.email,
+        password: credentials.password
+      })
+
+      if (authError) {
+        if (authError.message.includes('Invalid login credentials')) {
+          throw new ApiError('Email ou senha inválidos', HTTP_STATUS.UNAUTHORIZED, ERROR_CODES.INVALID_CREDENTIALS)
+        }
+        throw authError
       }
 
-      // Verificar senha
-      const isPasswordValid = await user.comparePassword(credentials.password)
-      if (!isPasswordValid) {
-        loggerHelpers.auth.failed(credentials.email, ip, 'invalid_password')
-        throw createUnauthorizedError('Credenciais inválidas')
+      if (!authData.user || !authData.session) {
+        throw new ApiError('Erro ao fazer login', HTTP_STATUS.INTERNAL_SERVER_ERROR)
       }
 
-      // Atualizar último login
-      user.lastLoginAt = new Date()
-      await user.save()
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authData.user.id)
+        .single()
 
-      // Gerar tokens
-      const { accessToken, refreshToken } = this.generateTokens(user._id.toString(), user.email, user.subscription)
+      if (profileError || !profile) {
+        throw new ApiError('Perfil não encontrado', HTTP_STATUS.NOT_FOUND)
+      }
 
-      // Log da ação
-      loggerHelpers.auth.login(user._id.toString(), user.email, ip)
+      logger.info(`User logged in: ${credentials.email} from IP: ${ip}`)
 
       return {
         success: true,
-        message: 'Login realizado com sucesso!',
+        message: 'Login realizado com sucesso',
         data: {
-          user: user.fullProfile,
-          accessToken,
-          refreshToken
+          user: profile,
+          accessToken: authData.session.access_token,
+          refreshToken: authData.session.refresh_token
         }
       }
     } catch (error) {
-      logger.error('Login failed:', error)
-      throw error
+      logger.error('Login error:', error)
+      if (error instanceof ApiError) throw error
+      throw new ApiError('Erro ao fazer login', HTTP_STATUS.INTERNAL_SERVER_ERROR)
     }
   }
 
-  // Refresh token
-  async refreshToken(refreshToken: string): Promise<AuthResponse> {
+  async refreshToken(refreshToken: string) {
     try {
-      // Verificar refresh token
-      const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET!) as any
-      
-      // Buscar usuário
-      const user = await User.findById(decoded.userId)
-      if (!user) {
-        throw createUnauthorizedError('Token inválido')
+      const { data: sessionData, error } = await supabase.auth.refreshSession({
+        refresh_token: refreshToken
+      })
+
+      if (error || !sessionData.session) {
+        throw new ApiError('Token inválido ou expirado', HTTP_STATUS.UNAUTHORIZED, ERROR_CODES.TOKEN_INVALID)
       }
 
-      // Gerar novos tokens
-      const tokens = this.generateTokens(user._id.toString(), user.email, user.subscription)
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', sessionData.user!.id)
+        .single()
 
       return {
         success: true,
-        message: 'Token renovado com sucesso!',
+        message: 'Token renovado com sucesso',
         data: {
-          user: user.fullProfile,
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken
+          user: profile,
+          accessToken: sessionData.session.access_token,
+          refreshToken: sessionData.session.refresh_token
         }
       }
     } catch (error) {
-      logger.error('Token refresh failed:', error)
-      throw createUnauthorizedError('Token inválido ou expirado')
+      logger.error('Token refresh error:', error)
+      if (error instanceof ApiError) throw error
+      throw new ApiError('Erro ao renovar token', HTTP_STATUS.INTERNAL_SERVER_ERROR)
     }
   }
 
-  // Logout
-  async logout(userId: string): Promise<void> {
+  async logout(userId: string) {
     try {
-      const user = await User.findById(userId)
-      if (user) {
-        loggerHelpers.auth.logout(userId, user.email)
-      }
-      // Em implementação futura: invalidar refresh tokens no Redis
+      await supabase.auth.signOut()
+      logger.info(`User logged out: ${userId}`)
+      return { success: true }
     } catch (error) {
-      logger.error('Logout failed:', error)
-      throw error
+      logger.error('Logout error:', error)
+      throw new ApiError('Erro ao fazer logout', HTTP_STATUS.INTERNAL_SERVER_ERROR)
     }
   }
 
-  // Obter perfil do usuário
-  async getUserProfile(userId: string): Promise<UserProfile> {
+  async getUserProfile(userId: string): Promise<Profile> {
     try {
-      const user = await User.findById(userId)
-      if (!user) {
-        throw createNotFoundError('Usuário')
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+
+      if (error || !profile) {
+        throw new ApiError('Usuário não encontrado', HTTP_STATUS.NOT_FOUND, ERROR_CODES.USER_NOT_FOUND)
       }
 
-      // Buscar estatísticas do usuário (implementar depois)
-      const stats = {
-        totalProjects: 0,
-        totalEmails: 0,
-        thisMonth: 0
-      }
-
-      return {
-        id: user._id.toString(),
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar,
-        subscription: user.subscription,
-        apiUsage: {
-          currentMonth: user.apiUsage.currentMonth,
-          limit: user.apiUsage.limit,
-          percentage: user.getAPIUsagePercentage(),
-          resetDate: user.apiUsage.resetDate
-        },
-        preferences: user.preferences,
-        stats,
-        createdAt: user.createdAt
-      }
+      return profile
     } catch (error) {
-      logger.error('Get user profile failed:', error)
-      throw error
+      logger.error('Get profile error:', error)
+      if (error instanceof ApiError) throw error
+      throw new ApiError('Erro ao buscar perfil', HTTP_STATUS.INTERNAL_SERVER_ERROR)
     }
   }
 
-  // Atualizar perfil
-  async updateProfile(userId: string, updates: any): Promise<UserProfile> {
+  async updateProfile(userId: string, updates: Partial<Profile>) {
     try {
-      const user = await User.findById(userId)
-      if (!user) {
-        throw createNotFoundError('Usuário')
+      const allowedUpdates = ['name', 'avatar', 'preferences']
+      const filteredUpdates: any = {}
+
+      for (const key of allowedUpdates) {
+        if (key in updates) {
+          filteredUpdates[key] = updates[key as keyof Profile]
+        }
       }
 
-      // Atualizar campos permitidos
-      if (updates.name) user.name = updates.name
-      if (updates.avatar) user.avatar = updates.avatar
-      if (updates.preferences) {
-        user.preferences = { ...user.preferences, ...updates.preferences }
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .update(filteredUpdates)
+        .eq('id', userId)
+        .select()
+        .single()
+
+      if (error || !profile) {
+        throw new ApiError('Erro ao atualizar perfil', HTTP_STATUS.BAD_REQUEST)
       }
 
-      await user.save()
-
-      return this.getUserProfile(userId)
+      return profile
     } catch (error) {
-      logger.error('Update profile failed:', error)
-      throw error
+      logger.error('Update profile error:', error)
+      if (error instanceof ApiError) throw error
+      throw new ApiError('Erro ao atualizar perfil', HTTP_STATUS.INTERNAL_SERVER_ERROR)
     }
   }
 
-  // Solicitação de reset de senha
-  async requestPasswordReset(email: string): Promise<void> {
+  async requestPasswordReset(email: string) {
     try {
-      const user = await User.findOne({ email })
-      if (!user) {
-        // Não revelar se o email existe por segurança
-        return
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${process.env.FRONTEND_URL}/reset-password`
+      })
+
+      if (error) {
+        logger.error('Password reset request error:', error)
       }
 
-      const resetToken = this.generatePasswordResetToken()
-      user.passwordResetToken = resetToken
-      user.passwordResetExpires = new Date(Date.now() + SECURITY.PASSWORD_RESET_TIMEOUT)
+      return { success: true }
+    } catch (error) {
+      logger.error('Password reset error:', error)
+      return { success: true }
+    }
+  }
+
+  async resetPassword(token: string, newPassword: string) {
+    try {
+      // Primeiro, verificar o token
+      const { data: sessionData, error: verifyError } = await supabase.auth.verifyOtp({
+        token_hash: token,
+        type: 'recovery'
+      })
+
+      if (verifyError || !sessionData.session) {
+        throw new ApiError('Token inválido ou expirado', HTTP_STATUS.BAD_REQUEST, ERROR_CODES.TOKEN_INVALID)
+      }
+
+      // Se o token for válido, atualizar a senha
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword
+      })
+
+      if (updateError) {
+        throw new ApiError('Erro ao atualizar senha', HTTP_STATUS.BAD_REQUEST)
+      }
+
+      logger.info(`Password reset successful for user: ${sessionData.user?.email}`)
+
+      return { success: true }
+    } catch (error) {
+      logger.error('Reset password error:', error)
+      if (error instanceof ApiError) throw error
+      throw new ApiError('Erro ao redefinir senha', HTTP_STATUS.INTERNAL_SERVER_ERROR)
+    }
+  }
+
+  async verifyEmail(token: string) {
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        token_hash: token,
+        type: 'email'
+      })
+
+      if (error) {
+        throw new ApiError('Token inválido ou expirado', HTTP_STATUS.BAD_REQUEST, ERROR_CODES.TOKEN_INVALID)
+      }
+
+      return { success: true }
+    } catch (error) {
+      logger.error('Email verification error:', error)
+      if (error instanceof ApiError) throw error
+      throw new ApiError('Erro ao verificar email', HTTP_STATUS.INTERNAL_SERVER_ERROR)
+    }
+  }
+
+  async resendEmailVerification(userId: string) {
+    try {
+      const { data: user } = await supabaseAdmin.auth.admin.getUserById(userId)
       
-      await user.save()
-
-      // TODO: Enviar email com o token
-      logger.info('Password reset requested', { userId: user._id, email })
-    } catch (error) {
-      logger.error('Password reset request failed:', error)
-      throw error
-    }
-  }
-
-  // Reset de senha
-  async resetPassword(token: string, newPassword: string): Promise<void> {
-    try {
-      const user = await User.findOne({
-        passwordResetToken: token,
-        passwordResetExpires: { $gt: new Date() }
-      }).select('+passwordResetToken +passwordResetExpires')
-
-      if (!user) {
-        throw createUnauthorizedError('Token inválido ou expirado')
+      if (!user.user) {
+        throw new ApiError('Usuário não encontrado', HTTP_STATUS.NOT_FOUND)
       }
 
-      user.password = newPassword
-      user.passwordResetToken = undefined
-      user.passwordResetExpires = undefined
-      
-      await user.save()
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: user.user.email!
+      })
 
-      logger.info('Password reset completed', { userId: user._id })
-    } catch (error) {
-      logger.error('Password reset failed:', error)
-      throw error
-    }
-  }
-
-  // Verificação de email
-  async verifyEmail(token: string): Promise<void> {
-    try {
-      const user = await User.findOne({ emailVerificationToken: token })
-        .select('+emailVerificationToken')
-
-      if (!user) {
-        throw createUnauthorizedError('Token de verificação inválido')
+      if (error) {
+        logger.error('Resend verification error:', error)
       }
 
-      user.isEmailVerified = true
-      user.emailVerificationToken = undefined
-      
-      await user.save()
-
-      logger.info('Email verified', { userId: user._id, email: user.email })
+      return { success: true }
     } catch (error) {
-      logger.error('Email verification failed:', error)
-      throw error
+      logger.error('Resend email error:', error)
+      if (error instanceof ApiError) throw error
+      throw new ApiError('Erro ao reenviar email', HTTP_STATUS.INTERNAL_SERVER_ERROR)
     }
   }
 
-  // Reenviar verificação de email
-  async resendEmailVerification(userId: string): Promise<void> {
-    try {
-      const user = await User.findById(userId)
-      if (!user) {
-        throw createNotFoundError('Usuário')
-      }
-
-      if (user.isEmailVerified) {
-        throw new AppError('Email já verificado', 400)
-      }
-
-      user.emailVerificationToken = this.generateVerificationToken()
-      await user.save()
-
-      // TODO: Enviar email de verificação
-      logger.info('Email verification resent', { userId, email: user.email })
-    } catch (error) {
-      logger.error('Resend email verification failed:', error)
-      throw error
-    }
-  }
-
-  // Gerar tokens JWT - SIMPLIFICADO
-  private generateTokens(userId: string, email: string, subscription: string) {
-    try {
-      // Access token - método mais simples
-      const accessPayload = { userId, email, subscription }
-      const accessToken = jwt.sign(
-        accessPayload,
-        process.env.JWT_SECRET as string,
-        { expiresIn: '24h' }
-      )
-
-      // Refresh token - método mais simples
-      const refreshPayload = { userId, tokenVersion: 1 }
-      const refreshToken = jwt.sign(
-        refreshPayload,
-        process.env.JWT_REFRESH_SECRET as string,
-        { expiresIn: '7d' }
-      )
-
-      return { accessToken, refreshToken }
-    } catch (error) {
-      logger.error('Generate tokens failed:', error)
-      throw new Error('Falha ao gerar tokens de autenticação')
-    }
-  }
-
-  // Gerar token de verificação
-  private generateVerificationToken(): string {
-    return crypto.randomBytes(32).toString('hex')
-  }
-
-  // Gerar token de reset de senha
-  private generatePasswordResetToken(): string {
-    return crypto.randomBytes(32).toString('hex')
-  }
-
-  // Validar força da senha
-  static validatePasswordStrength(password: string): { isValid: boolean; errors: string[] } {
-    const errors: string[] = []
-
-    if (password.length < 8) {
-      errors.push('Senha deve ter pelo menos 8 caracteres')
-    }
-
-    if (!/(?=.*[a-z])/.test(password)) {
-      errors.push('Senha deve conter pelo menos uma letra minúscula')
-    }
-
-    if (!/(?=.*[A-Z])/.test(password)) {
-      errors.push('Senha deve conter pelo menos uma letra maiúscula')
-    }
-
-    if (!/(?=.*\d)/.test(password)) {
-      errors.push('Senha deve conter pelo menos um número')
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors
-    }
-  }
-
-  // Estatísticas de usuários (admin)
   async getUserStats() {
     try {
-      const totalUsers = await User.countDocuments()
-      const thisMonth = await User.countDocuments({
-        createdAt: { 
-          $gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) 
+      const { data: profiles, error } = await supabase
+        .from('profiles')
+        .select('subscription')
+
+      if (error) {
+        throw error
+      }
+
+      const counts = {
+        total: profiles.length,
+        free: 0,
+        pro: 0,
+        enterprise: 0
+      }
+
+      profiles.forEach(profile => {
+        const subscription = profile.subscription as keyof typeof counts
+        if (subscription in counts && subscription !== 'total') {
+          counts[subscription]++
         }
       })
 
-      const bySubscription = await User.aggregate([
-        {
-          $group: {
-            _id: '$subscription',
-            count: { $sum: 1 },
-            avgAPIUsage: { $avg: '$apiUsage.currentMonth' }
-          }
-        }
-      ])
-
-      return {
-        total: totalUsers,
-        thisMonth,
-        bySubscription
-      }
+      return counts
     } catch (error) {
-      logger.error('Get user stats failed:', error)
-      throw error
+      logger.error('Get user stats error:', error)
+      throw new ApiError('Erro ao buscar estatísticas', HTTP_STATUS.INTERNAL_SERVER_ERROR)
     }
+  }
+
+  static validatePasswordStrength(password: string) {
+    const minLength = 8
+    const hasUpperCase = /[A-Z]/.test(password)
+    const hasLowerCase = /[a-z]/.test(password)
+    const hasNumbers = /\d/.test(password)
+    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password)
+
+    const strength = {
+      isValid: password.length >= minLength && hasUpperCase && hasLowerCase && hasNumbers,
+      score: 0,
+      feedback: [] as string[]
+    }
+
+    if (password.length >= minLength) strength.score += 25
+    else strength.feedback.push('Mínimo 8 caracteres')
+
+    if (hasUpperCase && hasLowerCase) strength.score += 25
+    else strength.feedback.push('Use maiúsculas e minúsculas')
+
+    if (hasNumbers) strength.score += 25
+    else strength.feedback.push('Adicione números')
+
+    if (hasSpecialChar) strength.score += 25
+    else strength.feedback.push('Adicione caracteres especiais')
+
+    return strength
   }
 }
 
+// Export both the class and the instance
+export { AuthService }
 export default new AuthService()

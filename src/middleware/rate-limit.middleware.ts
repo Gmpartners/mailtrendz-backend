@@ -3,10 +3,13 @@ import { Request, Response } from 'express'
 import { RATE_LIMITS, HTTP_STATUS, ERROR_CODES } from '../utils/constants'
 import { logger } from '../utils/logger'
 
-// Rate limiter geral - MUITO MAIS GENEROSO
+// ✅ DETECÇÃO DE AMBIENTE DE DESENVOLVIMENTO
+const isDevelopment = process.env.NODE_ENV !== 'production'
+
+// ✅ Rate limiter geral - EXTREMAMENTE GENEROSO
 export const generalLimiter = rateLimit({
   windowMs: RATE_LIMITS.GENERAL.WINDOW_MS,
-  max: RATE_LIMITS.GENERAL.MAX_REQUESTS,
+  max: isDevelopment ? 100000 : RATE_LIMITS.GENERAL.MAX_REQUESTS, // ✅ 100k em dev
   message: {
     success: false,
     message: 'Muitas requisições. Tente novamente em alguns minutos.',
@@ -21,8 +24,9 @@ export const generalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
-    // Pular rate limit para health checks
-    return req.path === '/health' || req.path === '/api/v1/health'
+    // ✅ Pular rate limit para health checks e desenvolvimento
+    const isHealthCheck = req.path === '/health' || req.path === '/api/v1/health'
+    return isHealthCheck || isDevelopment
   },
   handler: (req: Request, res: Response) => {
     logger.warn('Rate limit exceeded', {
@@ -49,10 +53,10 @@ export const generalLimiter = rateLimit({
   }
 })
 
-// Rate limiter para autenticação - MAIS GENEROSO
+// ✅ Rate limiter para autenticação - MAIS GENEROSO
 export const authLimiter = rateLimit({
   windowMs: RATE_LIMITS.AUTH.WINDOW_MS,
-  max: RATE_LIMITS.AUTH.MAX_REQUESTS,
+  max: isDevelopment ? 10000 : RATE_LIMITS.AUTH.MAX_REQUESTS, // ✅ 10k em dev
   skipSuccessfulRequests: true,
   message: {
     success: false,
@@ -67,6 +71,7 @@ export const authLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => isDevelopment, // ✅ Pular em desenvolvimento
   handler: (req: Request, res: Response) => {
     logger.warn('Auth rate limit exceeded', {
       ip: req.ip,
@@ -91,10 +96,10 @@ export const authLimiter = rateLimit({
   }
 })
 
-// Rate limiter para IA - MUITO MAIS GENEROSO
+// ✅ Rate limiter para IA - EXTREMAMENTE GENEROSO
 export const aiLimiter = rateLimit({
   windowMs: RATE_LIMITS.AI.WINDOW_MS,
-  max: RATE_LIMITS.AI.MAX_REQUESTS,
+  max: isDevelopment ? 50000 : RATE_LIMITS.AI.MAX_REQUESTS, // ✅ 50k em dev
   message: {
     success: false,
     message: 'Muitas requisições para IA. Aguarde um momento.',
@@ -112,8 +117,9 @@ export const aiLimiter = rateLimit({
     return (req as any).user?.id || req.ip
   },
   skip: (req) => {
-    // Pular rate limit para health checks de IA
-    return req.path.includes('/health')
+    // ✅ Pular rate limit para health checks de IA e desenvolvimento
+    const isHealthCheck = req.path.includes('/health')
+    return isHealthCheck || isDevelopment
   },
   handler: (req: Request, res: Response) => {
     logger.warn('AI rate limit exceeded', {
@@ -122,7 +128,8 @@ export const aiLimiter = rateLimit({
       path: req.path
     })
     
-    res.setHeader('Retry-After', Math.ceil(RATE_LIMITS.AI.WINDOW_MS / 1000))
+    const retryAfter = Math.min(10, Math.ceil(RATE_LIMITS.AI.WINDOW_MS / 1000)) // ✅ Máximo 10s
+    res.setHeader('Retry-After', retryAfter)
     
     res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
       success: false,
@@ -132,17 +139,17 @@ export const aiLimiter = rateLimit({
         details: {
           limit: RATE_LIMITS.AI.MAX_REQUESTS,
           windowMs: RATE_LIMITS.AI.WINDOW_MS,
-          retryAfter: Math.ceil(RATE_LIMITS.AI.WINDOW_MS / 1000)
+          retryAfter
         }
       }
     })
   }
 })
 
-// Rate limiter para projetos - MUITO MAIS GENEROSO
+// ✅ Rate limiter para projetos - EXTREMAMENTE GENEROSO
 export const projectLimiter = rateLimit({
   windowMs: RATE_LIMITS.PROJECTS.WINDOW_MS,
-  max: RATE_LIMITS.PROJECTS.MAX_REQUESTS,
+  max: isDevelopment ? 50000 : RATE_LIMITS.PROJECTS.MAX_REQUESTS, // ✅ 50k em dev
   message: {
     success: false,
     message: 'Muitas operações em projetos. Aguarde um momento.',
@@ -159,6 +166,7 @@ export const projectLimiter = rateLimit({
   keyGenerator: (req: Request) => {
     return (req as any).user?.id || req.ip
   },
+  skip: () => isDevelopment, // ✅ Pular em desenvolvimento
   handler: (req: Request, res: Response) => {
     logger.warn('Project rate limit exceeded', {
       userId: (req as any).user?.id,
@@ -167,7 +175,8 @@ export const projectLimiter = rateLimit({
       method: req.method
     })
     
-    res.setHeader('Retry-After', Math.ceil(RATE_LIMITS.PROJECTS.WINDOW_MS / 1000))
+    const retryAfter = Math.min(5, Math.ceil(RATE_LIMITS.PROJECTS.WINDOW_MS / 1000)) // ✅ Máximo 5s
+    res.setHeader('Retry-After', retryAfter)
     
     res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
       success: false,
@@ -177,14 +186,14 @@ export const projectLimiter = rateLimit({
         details: {
           limit: RATE_LIMITS.PROJECTS.MAX_REQUESTS,
           windowMs: RATE_LIMITS.PROJECTS.WINDOW_MS,
-          retryAfter: Math.ceil(RATE_LIMITS.PROJECTS.WINDOW_MS / 1000)
+          retryAfter
         }
       }
     })
   }
 })
 
-// Rate limiter customizado para diferentes planos - MAIS GENEROSO
+// ✅ Rate limiter customizado para diferentes planos - MUITO MAIS GENEROSO
 export const createUserBasedLimiter = (
   freeLimit: number,
   proLimit: number,
@@ -194,6 +203,8 @@ export const createUserBasedLimiter = (
   return rateLimit({
     windowMs,
     max: (req: Request) => {
+      if (isDevelopment) return 100000 // ✅ 100k em desenvolvimento
+      
       const subscription = (req as any).user?.subscription || 'free'
       
       switch (subscription) {
@@ -226,13 +237,14 @@ export const createUserBasedLimiter = (
             currentPlan: subscription,
             limit: limits[subscription as keyof typeof limits],
             windowMs,
-            retryAfter: Math.ceil(windowMs / 1000)
+            retryAfter: Math.min(10, Math.ceil(windowMs / 1000)) // ✅ Máximo 10s
           }
         }
       }
     },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: () => isDevelopment, // ✅ Pular em desenvolvimento
     handler: (req: Request, res: Response) => {
       const subscription = (req as any).user?.subscription || 'free'
       
@@ -249,7 +261,8 @@ export const createUserBasedLimiter = (
         enterprise: enterpriseLimit
       }
       
-      res.setHeader('Retry-After', Math.ceil(windowMs / 1000))
+      const retryAfter = Math.min(10, Math.ceil(windowMs / 1000)) // ✅ Máximo 10s
+      res.setHeader('Retry-After', retryAfter)
       
       res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
         success: false,
@@ -260,7 +273,7 @@ export const createUserBasedLimiter = (
             currentPlan: subscription,
             limit: limits[subscription as keyof typeof limits],
             windowMs,
-            retryAfter: Math.ceil(windowMs / 1000),
+            retryAfter,
             upgradeMessage: subscription === 'free' ? 
               'Faça upgrade para o plano Pro para limites maiores' : 
               undefined
@@ -271,26 +284,26 @@ export const createUserBasedLimiter = (
   })
 }
 
-// Rate limiter MUITO GENEROSO para criação de projetos
+// ✅ Rate limiter EXTREMAMENTE GENEROSO para criação de projetos
 export const projectCreationLimiter = createUserBasedLimiter(
-  100,  // Free: 100 projetos por minuto (era 50)
-  300,  // Pro: 300 projetos por minuto (era 150) 
-  1000, // Enterprise: 1000 projetos por minuto (era 500)
+  1000, // Free: 1000 projetos por minuto (era 100)
+  3000, // Pro: 3000 projetos por minuto (era 300) 
+  10000, // Enterprise: 10000 projetos por minuto (era 1000)
   60000 // 1 minuto
 )
 
-// Rate limiter MUITO GENEROSO para chat com IA
+// ✅ Rate limiter EXTREMAMENTE GENEROSO para chat com IA
 export const aiChatLimiter = createUserBasedLimiter(
-  200,  // Free: 200 mensagens por minuto (era 50)
-  500,  // Pro: 500 mensagens por minuto (era 200)
-  2000, // Enterprise: 2000 mensagens por minuto (era 1000)
+  2000, // Free: 2000 mensagens por minuto (era 200)
+  5000, // Pro: 5000 mensagens por minuto (era 500)
+  20000, // Enterprise: 20000 mensagens por minuto (era 2000)
   60000 // 1 minuto
 )
 
-// Rate limiter super leve para desenvolvimento
+// ✅ Rate limiter super leve para desenvolvimento
 export const developmentLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minuto
-  max: 5000, // 5000 requisições por minuto
+  max: 100000, // ✅ 100k requisições por minuto em desenvolvimento
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => {
@@ -299,10 +312,23 @@ export const developmentLimiter = rateLimit({
   }
 })
 
+// ✅ BYPASS COMPLETO PARA DESENVOLVIMENTO
+export const createDevelopmentBypassLimiter = () => {
+  return rateLimit({
+    windowMs: 1000, // 1 segundo
+    max: 10000, // 10k por segundo
+    skip: () => true, // ✅ SEMPRE PULAR
+    standardHeaders: false,
+    legacyHeaders: false
+  })
+}
+
 // Aliases para manter compatibilidade com imports antigos
-export const rateLimitAI = aiLimiter
-export const rateLimitChat = aiChatLimiter
+export const rateLimitAI = isDevelopment ? createDevelopmentBypassLimiter() : aiLimiter
+export const rateLimitChat = isDevelopment ? createDevelopmentBypassLimiter() : aiChatLimiter
 export const rateLimitMiddleware = (type: string) => {
+  if (isDevelopment) return createDevelopmentBypassLimiter()
+  
   switch (type.toUpperCase()) {
     case 'AI':
       return aiLimiter
@@ -317,6 +343,13 @@ export const rateLimitMiddleware = (type: string) => {
   }
 }
 
+// ✅ LOG DE CONFIGURAÇÃO
+if (isDevelopment) {
+  console.log('🚀 [RATE LIMIT] Modo desenvolvimento ativado - Rate limiting extremamente relaxado')
+} else {
+  console.log('⚡ [RATE LIMIT] Modo produção - Rate limiting generoso mas ativo')
+}
+
 export default {
   generalLimiter,
   authLimiter,
@@ -326,6 +359,7 @@ export default {
   aiChatLimiter,
   developmentLimiter,
   createUserBasedLimiter,
+  createDevelopmentBypassLimiter,
   rateLimitAI,
   rateLimitChat,
   rateLimitMiddleware

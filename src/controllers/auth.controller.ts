@@ -1,79 +1,138 @@
-import { Response, NextFunction } from 'express'
-import { AuthRequest, LoginDto, RegisterDto } from '../types/auth.types'
-import AuthService from '../services/auth.service'
+import { Response } from 'express'
+import { LoginDto, RegisterDto } from '../types/auth.types'
+import AuthService, { AuthService as AuthServiceClass } from '../services/auth.service'
 import { HTTP_STATUS } from '../utils/constants'
-import { logger } from '../utils/logger'
 import { asyncHandler } from '../middleware/error.middleware'
+import { supabase } from '../config/supabase.config'
+import { logger } from '../utils/logger'
 
 class AuthController {
-  // Registro de usuário
   register = asyncHandler(async (req: any, res: Response) => {
     const userData: RegisterDto = req.body
     const ip = req.ip || req.connection?.remoteAddress || 'unknown'
 
     const result = await AuthService.register(userData, ip)
 
-    // Configurar cookies para refresh token (opcional)
-    if (result.data?.refreshToken) {
-      res.cookie('refreshToken', result.data.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dias
-      })
-    }
-
     res.status(HTTP_STATUS.CREATED).json(result)
   })
 
-  // Login de usuário
   login = asyncHandler(async (req: any, res: Response) => {
     const credentials: LoginDto = req.body
     const ip = req.ip || req.connection?.remoteAddress || 'unknown'
 
     const result = await AuthService.login(credentials, ip)
 
-    // Configurar cookies para refresh token
-    if (result.data?.refreshToken) {
-      res.cookie('refreshToken', result.data.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dias
-      })
-    }
-
     res.json(result)
   })
 
-  // Refresh token
+  socialLogin = asyncHandler(async (req: any, res: Response) => {
+    const { supabaseUserId, email, name, avatar, provider } = req.body
+
+    logger.info('Social login attempt:', { supabaseUserId, email, provider })
+
+    // Verificar se já existe perfil
+    let { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', supabaseUserId)
+      .single()
+
+    if (profileError && profileError.code !== 'PGRST116') {
+      // PGRST116 significa "não encontrado", que é esperado para novos usuários
+      logger.error('Error checking profile:', profileError)
+      throw new Error('Erro ao verificar perfil')
+    }
+
+    if (!profile) {
+      // Criar novo perfil para usuário social
+      logger.info('Creating new profile for social user:', { supabaseUserId, email })
+      
+      const { data: newProfile, error: insertError } = await supabase
+        .from('profiles')
+        .insert({
+          id: supabaseUserId,
+          name: name || email.split('@')[0],
+          email,
+          avatar,
+          subscription: 'free',
+          preferences: {
+            defaultIndustry: null,
+            defaultTone: 'profissional',
+            emailSignature: null
+          }
+        })
+        .select()
+        .single()
+      
+      if (insertError) {
+        logger.error('Error creating profile:', insertError)
+        throw new Error('Erro ao criar perfil')
+      }
+      
+      profile = newProfile
+    } else {
+      // Atualizar avatar se mudou
+      if (avatar && avatar !== profile.avatar) {
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({ avatar })
+          .eq('id', supabaseUserId)
+        
+        if (!updateError) {
+          profile.avatar = avatar
+        }
+      }
+    }
+
+    logger.info('Social login successful:', { userId: profile.id, provider })
+
+    // NÃO gerar tokens customizados - o Supabase já tem os tokens!
+    res.json({
+      success: true,
+      message: `Login com ${provider} realizado com sucesso`,
+      data: {
+        user: {
+          id: profile.id,
+          name: profile.name,
+          email: profile.email,
+          avatar: profile.avatar,
+          subscription: profile.subscription,
+          apiUsage: {
+            currentMonth: 0,
+            limit: profile.subscription === 'free' ? 50 : profile.subscription === 'pro' ? 500 : 5000,
+            percentage: 0,
+            resetDate: new Date(new Date().setMonth(new Date().getMonth() + 1, 1)).toISOString()
+          },
+          preferences: profile.preferences || {
+            defaultIndustry: null,
+            defaultTone: 'profissional',
+            emailSignature: null
+          },
+          isEmailVerified: true, // Usuários social já são verificados
+          lastLoginAt: new Date().toISOString(),
+          createdAt: profile.created_at,
+          updatedAt: profile.updated_at
+        }
+      }
+    })
+  })
+
   refreshToken = asyncHandler(async (req: any, res: Response) => {
-    // Tentar pegar refresh token do cookie ou body
-    const refreshToken = req.cookies?.refreshToken || req.body.refreshToken
+    const refreshToken = req.body.refreshToken
 
     if (!refreshToken) {
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+      res.status(HTTP_STATUS.UNAUTHORIZED).json({
         success: false,
         message: 'Refresh token requerido'
       })
+      return
     }
 
     const result = await AuthService.refreshToken(refreshToken)
 
-    // Atualizar cookie
-    if (result.data?.refreshToken) {
-      res.cookie('refreshToken', result.data.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000
-      })
-    }
-
     res.json(result)
   })
 
-  // Logout
   logout = asyncHandler(async (req: any, res: Response) => {
     const userId = req.user?.id
 
@@ -81,50 +140,31 @@ class AuthController {
       await AuthService.logout(userId)
     }
 
-    // Limpar cookie
-    res.clearCookie('refreshToken')
-
     res.json({
       success: true,
       message: 'Logout realizado com sucesso'
     })
   })
 
-  // Obter perfil do usuário atual
   getProfile = asyncHandler(async (req: any, res: Response) => {
-    console.log('=== DEBUG CONTROLLER getProfile ===')
-    console.log('req.user recebido:', JSON.stringify(req.user, null, 2))
-    
     const userId = req.user?.id
-    console.log('userId extraído:', userId)
 
     if (!userId) {
-      console.log('ERRO: userId está vazio ou undefined')
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+      res.status(HTTP_STATUS.UNAUTHORIZED).json({
         success: false,
         message: 'ID do usuário não encontrado'
       })
+      return
     }
 
-    try {
-      const profile = await AuthService.getUserProfile(userId)
-      console.log('Profile retornado do service:', JSON.stringify(profile, null, 2))
+    const profile = await AuthService.getUserProfile(userId)
 
-      const response = {
-        success: true,
-        data: { user: profile }
-      }
-      console.log('Resposta final:', JSON.stringify(response, null, 2))
-      console.log('=== FIM DEBUG CONTROLLER getProfile ===')
-
-      res.json(response)
-    } catch (error) {
-      console.log('ERRO no getUserProfile:', error)
-      throw error
-    }
+    res.json({
+      success: true,
+      data: { user: profile }
+    })
   })
 
-  // Atualizar perfil
   updateProfile = asyncHandler(async (req: any, res: Response) => {
     const userId = req.user?.id
     const updates = req.body
@@ -138,7 +178,6 @@ class AuthController {
     })
   })
 
-  // Solicitar reset de senha
   requestPasswordReset = asyncHandler(async (req: any, res: Response) => {
     const { email } = req.body
 
@@ -150,7 +189,6 @@ class AuthController {
     })
   })
 
-  // Reset de senha
   resetPassword = asyncHandler(async (req: any, res: Response) => {
     const { token, newPassword } = req.body
 
@@ -162,7 +200,6 @@ class AuthController {
     })
   })
 
-  // Verificar email
   verifyEmail = asyncHandler(async (req: any, res: Response) => {
     const { token } = req.params
 
@@ -174,7 +211,6 @@ class AuthController {
     })
   })
 
-  // Reenviar verificação de email
   resendEmailVerification = asyncHandler(async (req: any, res: Response) => {
     const userId = req.user?.id
 
@@ -186,12 +222,8 @@ class AuthController {
     })
   })
 
-  // Verificar status de autenticação
   checkAuth = asyncHandler(async (req: any, res: Response) => {
-    console.log('=== DEBUG CONTROLLER checkAuth ===')
-    console.log('req.user:', JSON.stringify(req.user, null, 2))
-    
-    const response = {
+    res.json({
       success: true,
       message: 'Token válido',
       data: {
@@ -201,26 +233,20 @@ class AuthController {
           subscription: req.user?.subscription
         }
       }
-    }
-    console.log('checkAuth response:', JSON.stringify(response, null, 2))
-    console.log('=== FIM DEBUG CONTROLLER checkAuth ===')
-
-    res.json(response)
+    })
   })
 
-  // Validar força da senha (endpoint público)
   validatePassword = asyncHandler(async (req: any, res: Response) => {
     const { password } = req.body
 
     if (!password) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+      res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
         message: 'Senha é obrigatória'
       })
+      return
     }
 
-    // Use método estático da classe AuthService
-    const AuthServiceClass = require('../services/auth.service').default
     const validation = AuthServiceClass.validatePasswordStrength(password)
 
     res.json({
@@ -229,9 +255,7 @@ class AuthController {
     })
   })
 
-  // Estatísticas de usuários (admin apenas)
-  getUserStats = asyncHandler(async (req: any, res: Response) => {
-    // Verificação de admin pode ser feita via middleware
+  getUserStats = asyncHandler(async (_req: any, res: Response) => {
     const stats = await AuthService.getUserStats()
 
     res.json({
@@ -240,8 +264,7 @@ class AuthController {
     })
   })
 
-  // Health check do serviço de auth
-  healthCheck = asyncHandler(async (req: any, res: Response) => {
+  healthCheck = asyncHandler(async (_req: any, res: Response) => {
     const health = {
       status: 'ok',
       timestamp: new Date(),

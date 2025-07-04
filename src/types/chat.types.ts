@@ -1,13 +1,10 @@
-import { Types } from 'mongoose'
-
-// ✅ Interfaces principais de chat
 export interface IChat {
-  _id: Types.ObjectId
+  _id: string
   id: string
   userId: string
   projectId?: string
   title: string
-  messages: Types.ObjectId[]
+  messages: string[]
   isActive: boolean
   metadata: {
     totalMessages: number
@@ -21,13 +18,14 @@ export interface IChat {
 }
 
 export interface IMessage {
-  _id: Types.ObjectId
+  _id: string
   id: string
   chatId: string
   type: 'user' | 'ai' | 'system'
   content: string
   timestamp?: string
   createdAt: Date | string
+  images?: MessageImage[]
   metadata?: {
     emailUpdated?: boolean
     suggestions?: string[]
@@ -42,6 +40,8 @@ export interface IMessage {
     analysisData?: any
     originalPrompt?: string
     modifications?: any[]
+    hasImages?: boolean
+    imageAnalysis?: ImageAnalysis[]
     performance?: {
       processingTime?: number
       modelUsed?: string
@@ -54,18 +54,47 @@ export interface IMessage {
   }
 }
 
-// ✅ DTOs para criação e manipulação
+export interface MessageImage {
+  id: string
+  url: string
+  path: string
+  originalName: string
+  size: number
+  mimeType: string
+  uploadedAt: string
+  analysis?: ImageAnalysis
+}
+
+export interface ImageAnalysis {
+  description: string
+  objects: string[]
+  colors: string[]
+  confidence: number
+  tags: string[]
+  isEmailRelevant: boolean
+  suggestedPlacement: 'header' | 'content' | 'footer' | 'background'
+  altText: string
+}
+
 export interface CreateChatDto {
   title?: string
   projectId?: string
+  context?: any
 }
 
 export interface SendMessageDto {
   content: string
   type?: 'user' | 'ai' | 'system'
+  images?: MessageImage[]
 }
 
-// ✅ CORREÇÃO: UpdateChatDto alinhado com o modelo do Chat
+export interface CreateMessageDto {
+  chatId: string
+  content: string
+  type?: 'user' | 'ai' | 'system'
+  images?: MessageImage[]
+}
+
 export interface UpdateChatDto {
   title?: string
   isActive?: boolean
@@ -78,7 +107,6 @@ export interface UpdateChatDto {
   }
 }
 
-// ✅ Filtros e paginação
 export interface ChatFilters {
   userId: string
   projectId?: string
@@ -96,7 +124,6 @@ export interface ChatFilters {
   }
 }
 
-// ✅ Respostas da API
 export interface ChatResponse {
   chat: IChat
   messages?: IMessage[]
@@ -154,7 +181,6 @@ export interface ChatHistoryResponse {
   }
 }
 
-// ✅ Analytics
 export interface ChatAnalytics {
   chatId: string
   projectName: string
@@ -175,12 +201,12 @@ export interface ChatAnalytics {
   }
 }
 
-// ✅ Tipos específicos de Enhanced AI
 export interface EnhancedChatRequest {
   message: string
   chatHistory: IMessage[]
   projectContext: ProjectContext
   userHistory?: UserHistory
+  images?: MessageImage[]
 }
 
 export interface EnhancedChatResponse {
@@ -189,16 +215,27 @@ export interface EnhancedChatResponse {
   analysis: PromptAnalysis
   suggestions: string[]
   enhancedContent?: any
+  processedImages?: ProcessedImage[]
   metadata: {
     model: string
     tokens: number
     confidence: number
     enhancedFeatures: string[]
     processingTime: number
+    hasImageAnalysis: boolean
   }
 }
 
-// ✅ Contexto de projeto melhorado
+export interface ProcessedImage {
+  originalImage: MessageImage
+  analysis: ImageAnalysis
+  emailIntegration: {
+    htmlCode: string
+    placement: string
+    styling: string
+  }
+}
+
 export interface ProjectContext {
   userId?: string
   projectName: string
@@ -217,7 +254,6 @@ export interface ProjectContext {
   originalPrompt?: string
 }
 
-// ✅ Análise de prompt
 export interface PromptAnalysis {
   intentions: Array<{
     action: string
@@ -250,6 +286,12 @@ export interface PromptAnalysis {
       color: string
       action: string
     }
+    images?: {
+      required: boolean
+      placement: string[]
+      style: string
+      purpose: string
+    }
   }
   contentRequirements: {
     tone: string
@@ -260,12 +302,17 @@ export interface PromptAnalysis {
     industry?: string
     targetAudience?: string
   }
+  imageAnalysis?: {
+    relevantImages: number
+    suggestedPlacements: string[]
+    colorExtraction: string[]
+    contentAlignment: number
+  }
   confidence: number
   processingTime: number
   originalPrompt: string
 }
 
-// ✅ Histórico do usuário
 export interface UserHistory {
   previousProjects?: Array<{
     id: string
@@ -278,22 +325,22 @@ export interface UserHistory {
   successPatterns?: any[]
 }
 
-// ✅ Smart Email Request
 export interface SmartEmailRequest {
   prompt: string
   projectContext: ProjectContext
   userHistory?: UserHistory
   useEnhanced: boolean
+  images?: MessageImage[]
 }
 
-// ✅ Enhanced Email Content
 export interface EnhancedEmailContent {
   subject: string
   previewText: string
   html: string
-  text: string  // ✅ PROPRIEDADE ADICIONADA
+  text: string
   css?: string
   components?: any[]
+  images?: EmailImage[]
   analysis?: PromptAnalysis
   metadata: {
     version: string
@@ -307,10 +354,26 @@ export interface EnhancedEmailContent {
     supportedClients: string[]
     enhancedFeatures: string[]
     processingTime: number
+    hasImages: boolean
+    imageCount: number
   }
 }
 
-// ✅ Estatísticas e métricas
+export interface EmailImage {
+  id: string
+  url: string
+  altText: string
+  placement: 'header' | 'content' | 'footer' | 'background'
+  styling: {
+    width?: string
+    height?: string
+    borderRadius?: string
+    margin?: string
+    display?: string
+  }
+  htmlCode: string
+}
+
 export interface ChatMetrics {
   totalChats: number
   activeChats: number
@@ -319,6 +382,7 @@ export interface ChatMetrics {
   emailUpdatesCount: number
   enhancedMessagesCount: number
   averageResponseTime: number
+  imagesUploadedCount: number
   modelUsageStats: {
     [model: string]: {
       count: number
@@ -339,9 +403,10 @@ export interface MessageMetrics {
   enhancedFeatures: string[]
   projectContextUsed: boolean
   modificationsApplied: number
+  hasImages: boolean
+  imageCount: number
 }
 
-// ✅ Enums
 export enum MessageType {
   USER = 'user',
   AI = 'ai',
@@ -365,20 +430,20 @@ export enum IntentionAction {
   REDESIGN = 'redesign'
 }
 
-// ✅ Eventos de chat
 export interface ChatEvent {
-  type: 'message_sent' | 'message_received' | 'email_updated' | 'chat_created'
+  type: 'message_sent' | 'message_received' | 'email_updated' | 'chat_created' | 'image_uploaded'
   chatId: string
   userId: string
   timestamp: Date
   data?: any
 }
 
-// ✅ Configurações de chat
 export interface ChatSettings {
   enhancedAIEnabled: boolean
   autoUpdateEmail: boolean
   suggestionLevel: 'basic' | 'advanced'
   responseLength: 'short' | 'medium' | 'long'
   confidenceThreshold: number
+  imageAnalysisEnabled: boolean
+  autoImagePlacement: boolean
 }

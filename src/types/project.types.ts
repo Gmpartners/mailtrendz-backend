@@ -1,58 +1,53 @@
-import { Types } from 'mongoose'
-
 export interface IProject {
-  _id: Types.ObjectId
-  id?: string // ADICIONADO PARA COMPATIBILIDADE - será sempre o _id.toString()
-  userId: Types.ObjectId
+  id: string
+  userId: string
   name: string
-  description: string
-  type: 'welcome' | 'newsletter' | 'campaign' | 'promotional' | 'announcement' | 'follow-up'
-  status: 'draft' | 'active' | 'completed'
-  content: {
-    html: string
-    text: string
-    subject: string
-    previewText?: string
-  }
-  metadata: {
-    industry: string
-    targetAudience?: string
-    tone?: string
-    originalPrompt: string
-    version?: number
-    lastImprovement?: {
-      feedback: string
-      timestamp: Date
-      version: number
-    }
-  }
-  stats: {
-    opens: number
-    clicks: number
-    uses: number
-    views: number
-  }
+  description?: string
+  type: string
+  status: string
+  content: any
+  structure: any
+  metadata: any
   tags: string[]
   color: string
   isPublic: boolean
-  chatId?: Types.ObjectId
-  createdAt: Date
-  updatedAt: Date
+  chatId?: string | null
+  createdAt: string
+  updatedAt: string
+  opens?: number
+  clicks?: number
+  uses?: number
+  views?: number
+  conversionRate?: number
 }
 
+// ✅ CORREÇÃO: Tornar 'name' opcional no CreateProjectDto
 export interface CreateProjectDto {
-  prompt: string
-  type?: 'welcome' | 'newsletter' | 'campaign' | 'promotional' | 'announcement' | 'follow-up'
+  name?: string // ✅ AGORA É OPCIONAL - será gerado automaticamente se não fornecido
+  description?: string
+  type?: 'campaign' | 'newsletter' | 'transactional' | 'notification' | 'other'
   industry?: string
   targetAudience?: string
   tone?: string
+  prompt?: string
+  html?: string // ✅ TORNAR OPCIONAL TAMBÉM
+  text?: string // ✅ TORNAR OPCIONAL TAMBÉM
+  subject?: string // ✅ TORNAR OPCIONAL TAMBÉM
+  previewText?: string
+  tags?: string[]
+  chatId?: string
+  images?: Array<{
+    uploadUrl?: string
+    url?: string
+    intent?: 'analyze' | 'include'
+  }> // ✅ ADICIONADO CAMPO IMAGES
 }
 
 export interface UpdateProjectDto {
   name?: string
   description?: string
-  type?: 'welcome' | 'newsletter' | 'campaign' | 'promotional' | 'announcement' | 'follow-up'
-  status?: 'draft' | 'active' | 'completed'
+  type?: 'campaign' | 'newsletter' | 'transactional' | 'notification' | 'other'
+  status?: 'draft' | 'active' | 'archived'
   content?: {
     html?: string
     text?: string
@@ -63,82 +58,119 @@ export interface UpdateProjectDto {
     industry?: string
     targetAudience?: string
     tone?: string
-    version?: number
     lastImprovement?: {
       feedback: string
-      timestamp: Date
+      timestamp: string
       version: number
     }
   }
   tags?: string[]
-  color?: string
   isPublic?: boolean
 }
 
-export interface ProjectFilters {
-  userId: string
+export interface ProjectQuery {
   search?: string
   type?: string
-  category?: string
   status?: string
   tags?: string[]
-  pagination: {
+  sortBy?: string
+  order?: 'asc' | 'desc'
+  page?: number
+  limit?: number
+}
+
+export interface ProjectStats {
+  total: number
+  byType: Record<string, {
+    count: number
+    avgOpens: number
+    avgClicks: number
+  }>
+  totalOpens: number
+  totalClicks: number
+  totalUses: number
+  avgConversionRate: number
+}
+
+export interface ProjectWithStats {
+  id: string
+  user_id: string
+  name: string
+  description: string
+  type: string
+  status: string
+  content: any
+  structure: any
+  metadata: any
+  tags: string[]
+  color: string
+  is_public: boolean
+  chat_id: string | null
+  created_at: string
+  updated_at: string
+  opens: number
+  clicks: number
+  uses: number
+  views: number
+  conversion_rate: number
+}
+
+export interface ProjectFilters {
+  userId?: string
+  search?: string
+  type?: string
+  status?: string
+  tags?: string[]
+  dateFrom?: Date
+  dateTo?: Date
+  isPublic?: boolean
+  pagination?: {
     page: number
     limit: number
   }
-  sort: {
+  sort?: {
     field: string
     order: 'asc' | 'desc'
   }
 }
 
 export interface ProjectResponse {
-  projects: IProject[]
-  pagination: {
-    currentPage: number
-    totalPages: number
-    totalItems: number
-    hasNext: boolean
-    hasPrev: boolean
-  }
-  stats: {
-    total: number
-    drafts: number
-    completed: number
-    recent: number
-  }
-}
-
-export interface ProjectAnalytics {
-  projectId: string
-  name: string
-  type: string
-  createdAt: Date
-  stats: {
+  project: IProject
+  stats?: {
     opens: number
     clicks: number
     uses: number
     views: number
     conversionRate: number
   }
-  timeline: {
-    date: Date
+}
+
+export interface ProjectAnalytics {
+  projectId: string
+  period: string
+  metrics: {
     opens: number
     clicks: number
     uses: number
-  }[]
-  improvements: {
-    date: Date
-    feedback: string
-    version: number
-  }[]
-  performance: {
-    openRate: number
-    clickRate: number
-    engagement: number
-    trend: 'up' | 'down' | 'stable'
+    views: number
+    conversionRate: number
   }
+  timeline: Array<{
+    date: string
+    opens: number
+    clicks: number
+    uses: number
+    views: number
+  }>
+  topReferrers: Array<{
+    source: string
+    count: number
+    percentage: number
+  }>
 }
 
-// Corrigir DuplicateProjectResponse para ser igual a IProject
-export type DuplicateProjectResponse = IProject
+export interface DuplicateProjectResponse {
+  original: IProject
+  duplicate: IProject
+  message: string
+}

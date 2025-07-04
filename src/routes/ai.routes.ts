@@ -15,16 +15,9 @@ const generateEmailValidation = [
 ]
 
 const modifyEmailValidation = [
-  body('project_id').trim().isLength({ min: 1 }).withMessage('Project ID é obrigatório'),
   body('instructions').trim().isLength({ min: 3 }).withMessage('Instruções são obrigatórias'),
-  body('preserve_structure').optional().isBoolean().withMessage('Preserve structure deve ser boolean')
-]
-
-const optimizeCSSValidation = [
-  body('html').trim().isLength({ min: 10 }).withMessage('HTML é obrigatório'),
-  body('target_clients').optional().isArray().withMessage('Target clients deve ser um array'),
-  body('enable_dark_mode').optional().isBoolean().withMessage('Enable dark mode deve ser boolean'),
-  body('mobile_first').optional().isBoolean().withMessage('Mobile first deve ser boolean')
+  body('html').optional().isString().withMessage('HTML deve ser uma string'),
+  body('project_id').optional().isString().withMessage('Project ID deve ser uma string')
 ]
 
 const validateEmailValidation = [
@@ -37,75 +30,81 @@ const chatProcessValidation = [
   body('project_id').optional().isString().withMessage('Project ID deve ser uma string')
 ]
 
+// Endpoints sem autenticação para teste
 router.get('/health', AIController.getHealthStatus)
 router.get('/test-connection', AIController.testConnection)
 
+// ✅ ENDPOINT DE TESTE SEM AUTENTICAÇÃO
+router.post('/test-generate', generateEmailValidation, AIController.generateEmail)
 router.post('/test-modify', modifyEmailValidation, AIController.modifyEmail)
+router.post('/test-validate', validateEmailValidation, AIController.validateEmail)
 
-router.get('/metrics', (req, res) => {
+router.get('/metrics', (_req, res) => {
   res.json({
     success: true,
-    message: 'MailTrendz Python AI Service Integration',
+    message: 'MailTrendz IA Service v4.0.0 - Integrated',
     data: {
-      service: 'python-ai-proxy',
+      service: 'integrated-ia-service',
       status: 'operational',
-      version: '2.0.0-python-integration',
+      version: '4.0.0-ia-integrated',
       endpoints: {
         generate: '/api/v1/ai/generate',
+        testGenerate: '/api/v1/ai/test-generate',
         modify: '/api/v1/ai/modify',
         testModify: '/api/v1/ai/test-modify',
-        optimize: '/api/v1/ai/optimize-css',
         validate: '/api/v1/ai/validate',
+        testValidate: '/api/v1/ai/test-validate',
         chat: '/api/v1/ai/chat/process',
         health: '/api/v1/ai/health',
         testConnection: '/api/v1/ai/test-connection'
       },
-      python_ai_service: process.env.PYTHON_AI_SERVICE_URL || 'http://localhost:5000',
+      ia_service: 'openrouter-integrated',
+      model: process.env.OPENROUTER_MODEL || 'anthropic/claude-sonnet-4',
       features: [
-        'ultra-modern-email-generation',
+        'direct-ia-integration',
+        'html-generation-with-inline-css',
         'intelligent-email-modification',
-        'advanced-css-optimization',
         'html-validation',
         'smart-chat-processing',
-        'mongodb-integration',
-        'multi-client-compatibility',
-        'dark-mode-support'
+        'concurrent-user-support',
+        'fallback-system'
       ]
     },
     timestamp: new Date()
   })
 })
 
+// Endpoints com autenticação
 router.post('/generate', authenticateToken, generateEmailValidation, AIController.generateEmail)
 router.post('/modify', authenticateToken, modifyEmailValidation, AIController.modifyEmail)
-router.post('/optimize-css', authenticateToken, optimizeCSSValidation, AIController.optimizeCSS)
 router.post('/validate', authenticateToken, validateEmailValidation, AIController.validateEmail)
 router.post('/chat/process', authenticateToken, chatProcessValidation, AIController.processChat)
 
-router.post('/improve', authenticateToken, modifyEmailValidation, (req, res) => {
+router.post('/improve', authenticateToken, modifyEmailValidation, (req: any, res: any) => {
   req.url = '/modify'
   AIController.modifyEmail(req, res)
 })
 
-router.get('/status', (req, res) => {
+router.get('/status', (_req, res) => {
   res.json({
     success: true,
-    message: 'MailTrendz Python AI Service Integration Status',
+    message: 'MailTrendz IA Service v4.0.0 Status',
     data: {
       integration: 'active',
-      service: 'python-ai-service',
+      service: 'integrated-ia-service',
       proxy: 'nodejs-backend',
-      version: '2.0.0-python-integration',
+      version: '4.0.0-ia-integrated',
       features: {
-        emailGeneration: 'python-ai-service',
-        emailModification: 'python-ai-service',
-        cssOptimization: 'python-ai-service',
-        htmlValidation: 'python-ai-service',
-        chatProcessing: 'python-ai-service'
+        emailGeneration: 'openrouter-claude-sonnet-4',
+        emailModification: 'openrouter-claude-sonnet-4',
+        htmlValidation: 'nodejs-native',
+        chatProcessing: 'openrouter-claude-sonnet-4',
+        cssInlining: 'cheerio-native',
+        concurrency: 'nodejs-native'
       },
       endpoints: {
-        python_service: process.env.PYTHON_AI_SERVICE_URL || 'http://localhost:5000',
-        nodejs_proxy: '/api/v1/ai'
+        openrouter_service: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+        nodejs_backend: '/api/v1/ai'
       }
     },
     timestamp: new Date()

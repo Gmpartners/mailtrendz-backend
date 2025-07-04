@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import UserController from '../controllers/user.controller'
-import { authenticateToken, adminOnly } from '../middleware/auth.middleware'
+import { authenticateToken } from '../middleware/auth.middleware'
 import { generalLimiter } from '../middleware/rate-limit.middleware'
 import { validateObjectId } from '../middleware/validation.middleware'
 

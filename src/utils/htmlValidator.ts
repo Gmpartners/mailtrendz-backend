@@ -1,23 +1,26 @@
 // ✅ Utilitário para validação e formatação de HTML de emails
 export class EmailHTMLValidator {
-  private static readonly ALLOWED_TAGS = [
-    'html', 'head', 'body', 'title', 'meta', 'style', 'link',
-    'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th',
-    'div', 'span', 'p', 'br', 'hr', 'img', 'a',
-    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-    'strong', 'b', 'em', 'i', 'u', 'small',
-    'ul', 'ol', 'li', 'center', 'font'
-  ]
+  // Removidas as propriedades estáticas não utilizadas para evitar erros de compilação
+  // Mantidas como comentários para referência futura
+  
+  // private static readonly ALLOWED_TAGS = [
+  //   'html', 'head', 'body', 'title', 'meta', 'style', 'link',
+  //   'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th',
+  //   'div', 'span', 'p', 'br', 'hr', 'img', 'a',
+  //   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  //   'strong', 'b', 'em', 'i', 'u', 'small',
+  //   'ul', 'ol', 'li', 'center', 'font'
+  // ]
 
   private static readonly DANGEROUS_ATTRIBUTES = [
     'onclick', 'onload', 'onerror', 'onmouseover', 'onmouseout',
     'onfocus', 'onblur', 'onchange', 'onsubmit', 'onreset'
   ]
 
-  private static readonly REQUIRED_META_TAGS = [
-    '<meta charset="UTF-8">',
-    '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
-  ]
+  // private static readonly REQUIRED_META_TAGS = [
+  //   '<meta charset="UTF-8">',
+  //   '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+  // ]
 
   /**
    * Valida e sanitiza HTML para emails

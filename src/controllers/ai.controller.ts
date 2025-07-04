@@ -2,133 +2,218 @@ import { Request, Response } from 'express'
 import { validationResult } from 'express-validator'
 import { HTTP_STATUS } from '../utils/constants'
 import { logger } from '../utils/logger'
-import axios from 'axios'
+import { supabase } from '../config/supabase.config'
+import iaService from '../services/iaservice'
 
-interface EmailGenerationRequest {
-  prompt: string
-  context?: any
-  style_preferences?: any
-  industry?: string
-  tone?: string
-  urgency?: string
-}
-
-const PYTHON_AI_SERVICE_URL = process.env.PYTHON_AI_SERVICE_URL || 'DISABLED'
-const PYTHON_AI_TIMEOUT = parseInt(process.env.PYTHON_AI_TIMEOUT || '60000')
-
-const isPythonAIEnabled = (): boolean => {
-  const url = PYTHON_AI_SERVICE_URL
-  const isDisabled = url === 'DISABLED' || url === 'disabled' || url === ''
+const generateFallbackHTML = (prompt: string) => {
+  logger.info('🧪 [FALLBACK] Gerando HTML de exemplo para prompt:', prompt.substring(0, 50))
   
-  if (isDisabled) {
-    logger.info('🐍 [PYTHON AI] Service desabilitado na configuração')
-    return false
+  const promptLower = prompt.toLowerCase()
+  let html = ''
+  let subject = 'Email Personalizado'
+  let emailType = 'generic'
+  
+  if (promptLower.includes('promocional') || promptLower.includes('produto') || 
+      promptLower.includes('emagrecimento') || promptLower.includes('oferta')) {
+    emailType = 'promotional'
+    subject = 'Oferta Especial - Produto de Emagrecimento'
+    html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${subject}</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #f5f5f5; font-family: Arial, sans-serif; font-size: 18px; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header { background: linear-gradient(135deg, #fef3c7 0%, #f59e0b 100%); padding: 30px; text-align: center; border-radius: 12px 12px 0 0; }
+        .header h1 { color: #dc2626; font-size: 32px; margin: 0; font-weight: bold; }
+        .content { padding: 40px 30px; }
+        .highlight { background: #d1fae5; padding: 15px; border-radius: 8px; text-align: center; font-size: 24px; color: #059669; font-weight: bold; margin: 20px 0; }
+        .cta { text-align: center; margin: 30px 0; }
+        .btn { background: #dc2626; color: white; padding: 16px 32px; border-radius: 25px; text-decoration: none; font-weight: bold; font-size: 18px; display: inline-block; box-shadow: 0 6px 20px rgba(220, 38, 38, 0.4); }
+        .guarantee { text-align: center; font-size: 14px; color: #6b7280; line-height: 1.8; margin: 20px 0; }
+        .footer { background: #6b7280; color: white; padding: 15px; text-align: center; font-size: 12px; }
+        p { font-size: 18px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔥 Transforme Seu Corpo em 30 Dias!</h1>
+        </div>
+        <div class="content">
+            <p style="font-size: 18px; text-align: center; color: #374151; line-height: 1.6; margin-bottom: 25px;">
+                O produto de emagrecimento que está revolucionando vidas! Acelera o metabolismo, reduz a fome e queima gordura localizada de forma natural.
+            </p>
+            
+            <div class="highlight">
+                De R$ 197,00 por apenas<br>
+                <span style="font-size: 28px;">R$ 97,00</span>
+            </div>
+            
+            <div class="cta">
+                <a href="#" class="btn">🛒 Comprar Agora</a>
+            </div>
+            
+            <div class="guarantee">
+                ✅ Garantia de 30 dias<br>
+                🚚 Frete grátis para todo Brasil<br>
+                🔒 Pagamento 100% seguro
+            </div>
+        </div>
+        <div class="footer">
+            <p style="margin: 0;">© 2025 MailTrendz - Sistema Simplificado</p>
+        </div>
+    </div>
+</body>
+</html>`
+  } else if (promptLower.includes('newsletter') || promptLower.includes('novidades') || 
+             promptLower.includes('semanal')) {
+    emailType = 'newsletter'
+    subject = 'Newsletter Semanal'
+    html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${subject}</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #f5f5f5; font-family: Arial, sans-serif; font-size: 18px; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header { background: #f3f4f6; padding: 25px; text-align: center; border-radius: 8px; margin-bottom: 25px; }
+        .content { padding: 40px 30px; }
+        .highlight { background: #eff6ff; padding: 20px; border-radius: 8px; border-left: 4px solid #3b82f6; margin: 20px 0; }
+        .cta { text-align: center; margin: 20px 0; }
+        .btn { background: #3b82f6; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block; }
+        .footer { background: #6b7280; color: white; padding: 15px; text-align: center; font-size: 12px; }
+        p { font-size: 18px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="content">
+            <div class="header">
+                <h1 style="color: #1f2937; font-size: 28px; margin: 0;">📧 Newsletter Semanal</h1>
+            </div>
+            
+            <p style="font-size: 16px; color: #374151; line-height: 1.6;">
+                Olá! Esta é nossa newsletter com as principais novidades e destaques da semana para você ficar por dentro de tudo.
+            </p>
+            
+            <div class="highlight">
+                <h3 style="color: #1f2937; margin-top: 0;">🚀 Destaque da Semana</h3>
+                <p style="color: #374151; margin-bottom: 0;">
+                    Lançamos uma nova funcionalidade incrível que vai revolucionar sua experiência. Confira todos os detalhes!
+                </p>
+            </div>
+            
+            <div class="cta">
+                <a href="#" class="btn">Ver Novidades</a>
+            </div>
+        </div>
+        <div class="footer">
+            <p style="margin: 0;">© 2025 MailTrendz - Newsletter</p>
+        </div>
+    </div>
+</body>
+</html>`
+  } else {
+    emailType = 'generic'
+    subject = 'Email Personalizado'
+    html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${subject}</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #f5f5f5; font-family: Arial, sans-serif; font-size: 18px; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header { background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%); padding: 25px; text-align: center; border-radius: 12px; margin-bottom: 25px; }
+        .content { padding: 40px 30px; }
+        .cta { text-align: center; margin: 20px 0; }
+        .btn { background: #6366f1; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block; }
+        .footer { background: #6b7280; color: white; padding: 15px; text-align: center; font-size: 12px; }
+        p { font-size: 18px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="content">
+            <div class="header">
+                <h1 style="color: #7c3aed; font-size: 28px; margin: 0;">✨ Email Personalizado</h1>
+            </div>
+            
+            <p style="font-size: 16px; color: #374151; line-height: 1.6;">
+                Email baseado em: "<strong>${prompt}</strong>"
+            </p>
+            
+            <p style="font-size: 16px; color: #374151; line-height: 1.6;">
+                Este email foi gerado automaticamente com HTML limpo e responsivo. Você pode editá-lo completamente no editor de código ou pedir modificações via chat.
+            </p>
+            
+            <div class="cta">
+                <a href="#" class="btn">Saiba Mais</a>
+            </div>
+        </div>
+        <div class="footer">
+            <p style="margin: 0;">© 2025 MailTrendz - Editor Simplificado</p>
+        </div>
+    </div>
+</body>
+</html>`
+  }
+
+  return {
+    html,
+    subject,
+    response: `HTML gerado com sucesso! Você pode editá-lo diretamente no editor ou pedir modificações aqui.`,
+    metadata: {
+      emailType,
+      generatedAt: new Date().toISOString(),
+      originalPrompt: prompt,
+      isGenerated: true,
+      isFallback: true,
+      service: 'mailtrendz-fallback-html'
+    }
+  }
+}
+
+const processImages = (images: any[]) => {
+  const imageUrls: string[] = []
+  const imageIntents: Array<{ url: string; intent: 'analyze' | 'include' }> = []
+  
+  if (Array.isArray(images)) {
+    images.forEach(image => {
+      if (typeof image === 'string') {
+        imageUrls.push(image)
+        imageIntents.push({ url: image, intent: 'include' })
+      } else if (image && typeof image === 'object') {
+        if (image.uploadUrl) {
+          imageUrls.push(image.uploadUrl)
+          imageIntents.push({ 
+            url: image.uploadUrl, 
+            intent: image.intent || 'include' 
+          })
+        } else if (image.url) {
+          imageUrls.push(image.url)
+          imageIntents.push({ 
+            url: image.url, 
+            intent: image.intent || 'include' 
+          })
+        }
+      }
+    })
   }
   
-  try {
-    new URL(url)
-    logger.info(`🐍 [PYTHON AI] Service habilitado: ${url}`)
-    return true
-  } catch (error) {
-    logger.error(`🐍 [PYTHON AI] URL inválida: ${url}`)
-    return false
-  }
-}
-
-let pythonAIClient: any = null
-
-if (isPythonAIEnabled()) {
-  pythonAIClient = axios.create({
-    baseURL: PYTHON_AI_SERVICE_URL,
-    timeout: PYTHON_AI_TIMEOUT,
-    headers: {
-      'Content-Type': 'application/json',
-      'User-Agent': 'MailTrendz-Backend/2.0.0-fixed',
-      'Accept': 'application/json'
-    }
-  })
-
-  pythonAIClient.interceptors.request.use(
-    (config) => {
-      logger.info(`🐍 [PYTHON AI] REQUEST: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`, {
-        timeout: config.timeout,
-        dataSize: config.data ? JSON.stringify(config.data).length : 0,
-        headers: config.headers
-      })
-      return config
-    },
-    (error) => {
-      logger.error('🐍 [PYTHON AI] Request error:', error.message)
-      return Promise.reject(error)
-    }
-  )
-
-  pythonAIClient.interceptors.response.use(
-    (response) => {
-      logger.info(`🐍 [PYTHON AI] RESPONSE: ${response.config.method?.toUpperCase()} ${response.config.url} - SUCCESS`, {
-        status: response.status,
-        processingTime: response.headers['x-process-time'],
-        requestId: response.headers['x-request-id'],
-        contentLength: JSON.stringify(response.data).length
-      })
-      return response
-    },
-    (error) => {
-      logger.error(`🐍 [PYTHON AI] Response error:`, {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        message: error.message,
-        url: error.config?.url,
-        responseData: error.response?.data
-      })
-      return Promise.reject(error)
-    }
-  )
-}
-
-const checkPythonAIService = async (): Promise<boolean> => {
-  if (!isPythonAIEnabled()) {
-    logger.info('🐍 [PYTHON AI] Service desabilitado na configuração')
-    return false
-  }
-
-  try {
-    logger.info('🐍 [PYTHON AI] Verificando saúde do serviço...')
-    const healthResponse = await pythonAIClient.get('/health', { timeout: 15000 })
-    
-    const isHealthy = healthResponse.status === 200 && 
-                     healthResponse.data && 
-                     (healthResponse.data.status === 'healthy' || healthResponse.data.status === 'ok')
-    
-    logger.info('🐍 [PYTHON AI] Health check result:', {
-      status: healthResponse.status,
-      healthy: isHealthy,
-      serviceData: healthResponse.data
-    })
-    
-    return isHealthy
-  } catch (error: any) {
-    logger.error('🐍 [PYTHON AI] Health check failed:', {
-      error: error.message,
-      status: error.response?.status,
-      url: PYTHON_AI_SERVICE_URL
-    })
-    return false
-  }
+  return { imageUrls, imageIntents }
 }
 
 const generateEmail = async (req: Request, res: Response): Promise<void> => {
   try {
-    logger.info('📥 [AI] Request recebido para geração de email:', {
-      prompt: req.body.prompt?.substring(0, 50) + '...',
-      industry: req.body.industry,
-      tone: req.body.tone,
-      userId: (req as any).user?.userId
-    })
-
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
-      logger.error('❌ [AI] Validation errors:', errors.array())
       res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
         message: 'Dados de entrada inválidos',
@@ -137,11 +222,19 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
       return
     }
 
-    const { prompt, context = {}, style_preferences, industry = 'geral', tone = 'professional', urgency = 'medium' } = req.body
-    const userId = (req as any).user?.userId
+    const { 
+      prompt, 
+      context = {}, 
+      industry = 'geral', 
+      tone = 'professional', 
+      urgency = 'medium', 
+      images = [],
+      imageUrls = [] 
+    } = req.body
+    
+    const userId = (req as any).user?.id
 
     if (!prompt?.trim()) {
-      logger.error('❌ [AI] Prompt vazio ou inválido')
       res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
         message: 'Prompt é obrigatório'
@@ -149,146 +242,143 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
       return
     }
 
-    const pythonAvailable = await checkPythonAIService()
+    const processedImages = processImages(images.length > 0 ? images : imageUrls)
+    const finalImageUrls = processedImages.imageUrls
+    const imageIntents = processedImages.imageIntents
+
+    const iaAvailable = iaService.isEnabled()
     
-    if (!pythonAvailable) {
-      logger.info('⚠️ [AI] Python AI Service indisponível, retornando resposta de desenvolvimento')
+    if (!iaAvailable) {
+      logger.info('IA Service unavailable, using HTML fallback')
       
-      const mockEmailData = {
-        id: `mock_${Date.now()}`,
-        name: `Email ${industry} - ${new Date().toLocaleDateString('pt-BR')}`,
-        content: {
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-              <h1 style="color: #2563eb; margin-bottom: 20px;">
-                ${industry === 'tecnologia' ? '🚀 Tecnologia' : industry === 'marketing' ? '📈 Marketing' : '📧 Newsletter'}
-              </h1>
-              <p style="color: #374151; line-height: 1.6; margin-bottom: 20px;">
-                ${prompt}
-              </p>
-              <div style="background: #f8fafc; padding: 20px; margin: 20px 0; border-radius: 8px;">
-                <h2 style="color: #1f2937; margin-bottom: 15px;">Conteúdo Principal</h2>
-                <p>Este é um email gerado para demonstração da API MailTrendz.</p>
-                <ul style="color: #374151;">
-                  <li>Design responsivo</li>
-                  <li>Compatível com email clients</li>
-                  <li>Call-to-action otimizado</li>
-                </ul>
-              </div>
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="#" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-                  Ação Principal
-                </a>
-              </div>
-              <p style="color: #6b7280; font-size: 14px; text-align: center;">
-                © 2025 MailTrendz - API Funcionando ✅
-              </p>
-            </div>
-          `,
-          text: `${industry === 'tecnologia' ? 'Tecnologia' : industry === 'marketing' ? 'Marketing' : 'Newsletter'}\n\n${prompt}\n\nConteúdo Principal\nEste é um email gerado para demonstração da API MailTrendz.\n\n- Design responsivo\n- Compatível com email clients\n- Call-to-action otimizado\n\nAção Principal: [Link]\n\n© 2025 MailTrendz - API Funcionando`,
-          subject: `${industry === 'tecnologia' ? '🚀 Inovações Tecnológicas' : industry === 'marketing' ? '📈 Estratégias de Marketing' : '📧 Newsletter Personalizada'}`,
-          previewText: prompt.substring(0, 150) + '...'
-        },
-        metadata: {
-          industry,
-          targetAudience: context.target_audience || 'Público geral',
-          tone,
-          originalPrompt: prompt,
-          version: 1,
-          service: 'mailtrendz-development-mode',
-          python_ai_status: 'unavailable',
-          processing_time: '< 100ms'
-        }
+      const fallbackResult = generateFallbackHTML(prompt)
+
+      if (userId) {
+        await supabase.rpc('increment_api_usage', {
+          p_user_id: userId,
+          p_endpoint: '/ai/generate',
+          p_tokens: 0,
+          p_cost: 0
+        })
       }
 
       res.status(HTTP_STATUS.OK).json({
         success: true,
-        message: 'Email gerado com sucesso (modo desenvolvimento)',
-        data: mockEmailData,
+        message: 'HTML gerado com sucesso (modo fallback)',
+        data: {
+          id: `fallback_${Date.now()}`,
+          name: `Email ${industry} - ${new Date().toLocaleDateString('pt-BR')}`,
+          ...fallbackResult
+        },
         metadata: {
-          service: 'mailtrendz-development',
-          python_ai_enabled: isPythonAIEnabled(),
-          python_ai_url: PYTHON_AI_SERVICE_URL,
+          service: 'mailtrendz-fallback-html',
           fallback_mode: true,
-          processing_time: '< 100ms'
+          processing_time: '< 100ms',
+          system_type: 'html_direct',
+          model: 'fallback'
         }
       })
       return
     }
 
-    const pythonRequest = {
-      prompt,
-      context: {
-        ...context,
-        userId,
-        timestamp: new Date().toISOString()
-      },
-      style_preferences,
-      industry,
-      tone,
-      urgency
+    try {
+      const iaRequest = {
+        userInput: prompt,
+        imageUrls: finalImageUrls,
+        imageIntents: imageIntents,
+        context: {
+          ...context,
+          userId,
+          timestamp: new Date().toISOString(),
+          industry,
+          tone,
+          urgency
+        },
+        userId
+      }
+
+      const startTime = Date.now()
+      const iaResponse = await iaService.generateHTML(iaRequest)
+      const processingTime = Date.now() - startTime
+
+      const estimatedTokens = Math.ceil(iaResponse.html.length / 4)
+      const estimatedCost = estimatedTokens * 0.000003
+
+      if (userId) {
+        await supabase.rpc('increment_api_usage', {
+          p_user_id: userId,
+          p_endpoint: '/ai/generate',
+          p_tokens: estimatedTokens,
+          p_cost: estimatedCost
+        })
+      }
+
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: (iaResponse.metadata.imagesAnalyzed ?? 0) > 0 
+          ? `HTML gerado com sucesso! ${iaResponse.metadata.imagesAnalyzed} imagem(ns) analisada(s) e integrada(s).`
+          : 'HTML gerado com sucesso via IA Service',
+        data: {
+          id: `ai_${Date.now()}`,
+          name: `Email ${industry} - ${new Date().toLocaleDateString('pt-BR')}`,
+          ...iaResponse
+        },
+        metadata: {
+          ...iaResponse.metadata,
+          proxy_processing_time: processingTime,
+          system_type: 'html_direct',
+          tokens_used: estimatedTokens,
+          cost: estimatedCost
+        }
+      })
+
+    } catch (iaError: any) {
+      logger.error('Erro na IA Service, usando fallback:', iaError.message)
+      
+      const fallbackResult = generateFallbackHTML(prompt)
+      
+      if (userId) {
+        await supabase.rpc('increment_api_usage', {
+          p_user_id: userId,
+          p_endpoint: '/ai/generate',
+          p_tokens: 0,
+          p_cost: 0
+        })
+      }
+      
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'HTML gerado com fallback devido a erro na IA',
+        data: {
+          id: `fallback_error_${Date.now()}`,
+          name: `Email Fallback - ${new Date().toLocaleDateString('pt-BR')}`,
+          ...fallbackResult
+        },
+        metadata: {
+          service: 'mailtrendz-fallback-html',
+          fallback_mode: true,
+          original_error: iaError.message,
+          system_type: 'html_direct',
+          model: 'fallback'
+        }
+      })
     }
 
-    logger.info(`🐍 [PYTHON AI] Enviando requisição para geração`, {
-      promptLength: prompt.length,
-      industry,
-      tone,
-      urgency
-    })
-
-    const startTime = Date.now()
-    const pythonResponse = await pythonAIClient.post('/generate', pythonRequest)
-    const processingTime = Date.now() - startTime
-
-    logger.info('✅ [PYTHON AI] Email gerado com sucesso', {
-      processingTime,
-      success: pythonResponse.data.success,
-      aiProcessingTime: pythonResponse.data.processing_time
-    })
-
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: 'Email gerado com sucesso via Python AI Service',
-      data: pythonResponse.data.data,
-      metadata: {
-        ...pythonResponse.data.metadata,
-        proxy_processing_time: processingTime,
-        service: 'python-ai-service',
-        proxy: 'nodejs-backend'
-      }
-    })
-
   } catch (error: any) {
-    logger.error('❌ [AI] Erro na geração de email:', {
-      error: error.message,
-      status: error.response?.status,
-      pythonResponse: error.response?.data
-    })
+    logger.error('Erro na geração de HTML:', error.message)
     
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
       success: false,
-      message: 'Erro na geração de email',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Serviço temporariamente indisponível',
-      debug: {
-        python_ai_enabled: isPythonAIEnabled(),
-        python_ai_url: PYTHON_AI_SERVICE_URL
-      }
+      message: 'Erro na geração de HTML',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Serviço temporariamente indisponível'
     })
   }
 }
 
 const modifyEmail = async (req: Request, res: Response): Promise<void> => {
   try {
-    logger.info('🔧 [AI] Request para modificação de email', {
-      project_id: req.body.project_id,
-      instructions: req.body.instructions?.substring(0, 50) + '...',
-      userId: (req as any).user?.userId,
-      preserve_structure: req.body.preserve_structure
-    })
-
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
-      logger.error('❌ [AI] Validation errors:', errors.array())
       res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
         message: 'Dados de entrada inválidos',
@@ -297,178 +387,94 @@ const modifyEmail = async (req: Request, res: Response): Promise<void> => {
       return
     }
 
-    if (!isPythonAIEnabled()) {
-      logger.error('❌ [AI] Python AI Service não configurado')
-      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
-        success: false,
-        message: 'Funcionalidade de modificação requer Python AI Service',
-        error: 'Python AI Service não configurado',
-        debug: {
-          PYTHON_AI_SERVICE_URL: PYTHON_AI_SERVICE_URL,
-          enabled: false,
-          timestamp: new Date().toISOString()
+    const userId = (req as any).user?.id
+    const { 
+      instructions, 
+      html, 
+      project_id, 
+      images = [],
+      imageUrls = [] 
+    } = req.body
+
+    const processedImages = processImages(images.length > 0 ? images : imageUrls)
+    const finalImageUrls = processedImages.imageUrls
+    const imageIntents = processedImages.imageIntents
+
+    if (!iaService.isEnabled()) {
+      const fallbackResult = generateFallbackHTML(instructions)
+      
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Email modificado com fallback',
+        data: fallbackResult,
+        metadata: {
+          service: 'mailtrendz-fallback-modification',
+          fallback_mode: true
         }
       })
       return
     }
 
-    logger.info('🔍 [AI] Verificando disponibilidade do Python AI Service...')
-    const pythonAvailable = await checkPythonAIService()
-    
-    if (!pythonAvailable) {
-      logger.error('❌ [AI] Python AI Service não disponível')
-      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
-        success: false,
-        message: 'Serviço de IA temporariamente indisponível',
-        error: 'Python AI Service não responde',
-        debug: {
-          python_url: PYTHON_AI_SERVICE_URL,
-          health_check: 'failed',
-          timestamp: new Date().toISOString()
+    try {
+      const startTime = Date.now()
+      const iaResponse = await iaService.modifyHTML(
+        instructions, 
+        html, 
+        finalImageUrls,
+        imageIntents
+      )
+      const processingTime = Date.now() - startTime
+
+      const estimatedTokens = Math.ceil(iaResponse.html.length / 4)
+      const estimatedCost = estimatedTokens * 0.000003
+
+      if (userId) {
+        await supabase.rpc('increment_api_usage', {
+          p_user_id: userId,
+          p_endpoint: '/ai/modify',
+          p_tokens: estimatedTokens,
+          p_cost: estimatedCost
+        })
+      }
+
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: (iaResponse.metadata.imagesAnalyzed ?? 0) > 0
+          ? `Email modificado com sucesso! ${iaResponse.metadata.imagesAnalyzed} imagem(ns) integrada(s).`
+          : 'Email modificado com sucesso via IA Service',
+        data: iaResponse,
+        metadata: {
+          ...iaResponse.metadata,
+          proxy_processing_time: processingTime,
+          project_id,
+          tokens_used: estimatedTokens,
+          cost: estimatedCost
         }
       })
-      return
-    }
 
-    const pythonRequest = {
-      project_id: req.body.project_id,
-      user_id: (req as any).user?.userId || 'anonymous',
-      instructions: req.body.instructions,
-      preserve_structure: req.body.preserve_structure !== false,
-      timestamp: new Date().toISOString(),
-      source: 'nodejs-backend'
-    }
-
-    logger.info('🐍 [AI] Enviando requisição para Python AI Service:', {
-      url: `${PYTHON_AI_SERVICE_URL}/modify`,
-      project_id: pythonRequest.project_id,
-      user_id: pythonRequest.user_id,
-      instructions_length: pythonRequest.instructions?.length || 0
-    })
-
-    const startTime = Date.now()
-    const pythonResponse = await pythonAIClient.post('/modify', pythonRequest, {
-      timeout: PYTHON_AI_TIMEOUT,
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'MailTrendz-Backend/2.0.0-fixed',
-        'X-Request-Source': 'nodejs-backend',
-        'X-Request-ID': `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      }
-    })
-    const processingTime = Date.now() - startTime
-
-    logger.info('✅ [AI] Python AI Response recebida com sucesso:', {
-      status: pythonResponse.status,
-      success: pythonResponse.data.success,
-      processing_time: processingTime,
-      python_processing_time: pythonResponse.data.metadata?.processing_time
-    })
-
-    if (!pythonResponse.data || pythonResponse.data.success !== true) {
-      logger.error('❌ [AI] Resposta inválida do Python AI:', pythonResponse.data)
-      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-        success: false,
-        message: 'Resposta inválida do serviço de IA',
-        error: 'Python AI retornou resposta inválida'
+    } catch (iaError: any) {
+      logger.error('Erro na modificação via IA, usando fallback:', iaError.message)
+      
+      const fallbackResult = generateFallbackHTML(instructions)
+      
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Email modificado com fallback devido a erro',
+        data: fallbackResult,
+        metadata: {
+          service: 'mailtrendz-fallback-modification',
+          fallback_mode: true,
+          original_error: iaError.message
+        }
       })
-      return
     }
-
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: 'Email modificado com sucesso via Python AI Service',
-      data: pythonResponse.data.data,
-      metadata: {
-        ...pythonResponse.data.metadata,
-        proxy_processing_time: processingTime,
-        total_processing_time: processingTime,
-        service: 'python-ai-service',
-        proxy: 'nodejs-backend',
-        timestamp: new Date().toISOString()
-      }
-    })
 
   } catch (error: any) {
-    logger.error('❌ [AI] Erro na modificação de email:', {
-      error: error.message,
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      python_response: error.response?.data,
-      python_url: PYTHON_AI_SERVICE_URL,
-      timeout: PYTHON_AI_TIMEOUT,
-      stack: error.stack
-    })
-    
-    let statusCode: number = HTTP_STATUS.INTERNAL_SERVER_ERROR
-    let errorMessage = 'Erro interno na modificação de email'
-    
-    if (error.code === 'ECONNREFUSED') {
-      statusCode = HTTP_STATUS.SERVICE_UNAVAILABLE
-      errorMessage = 'Não foi possível conectar ao serviço de IA'
-    } else if (error.code === 'ETIMEDOUT' || error.message.includes('timeout')) {
-      statusCode = HTTP_STATUS.REQUEST_TIMEOUT
-      errorMessage = 'Timeout na comunicação com o serviço de IA'
-    } else if (error.response?.status === 404) {
-      statusCode = HTTP_STATUS.SERVICE_UNAVAILABLE
-      errorMessage = 'Endpoint de modificação não encontrado no serviço de IA'
-    } else if (error.response?.status >= 400 && error.response?.status < 500) {
-      statusCode = error.response.status
-      errorMessage = 'Erro na requisição para o serviço de IA'
-    }
-    
-    res.status(statusCode).json({
-      success: false,
-      message: errorMessage,
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Serviço temporariamente indisponível',
-      debug: {
-        python_ai_enabled: isPythonAIEnabled(),
-        python_ai_url: PYTHON_AI_SERVICE_URL,
-        error_type: error.code || 'unknown',
-        error_status: error.response?.status,
-        timestamp: new Date().toISOString()
-      }
-    })
-  }
-}
-
-const optimizeCSS = async (req: Request, res: Response): Promise<void> => {
-  try {
-    logger.info('🎨 [AI] Request para otimização CSS')
-
-    if (!isPythonAIEnabled()) {
-      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
-        success: false,
-        message: 'Funcionalidade de otimização requer Python AI Service',
-        error: 'Python AI Service não configurado'
-      })
-      return
-    }
-
-    const pythonAvailable = await checkPythonAIService()
-    if (!pythonAvailable) {
-      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
-        success: false,
-        message: 'Serviço de IA temporariamente indisponível'
-      })
-      return
-    }
-
-    const pythonResponse = await pythonAIClient.post('/optimize-css', req.body)
-
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: 'CSS otimizado com sucesso via Python AI Service',
-      data: pythonResponse.data.data,
-      metadata: pythonResponse.data.metadata
-    })
-
-  } catch (error: any) {
-    logger.error('❌ [AI] Erro na otimização CSS:', error.message)
+    logger.error('Erro na modificação de HTML:', error.message)
     
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
       success: false,
-      message: 'Erro na otimização CSS',
+      message: 'Erro na modificação de email',
       error: process.env.NODE_ENV === 'development' ? error.message : 'Serviço temporariamente indisponível'
     })
   }
@@ -476,52 +482,67 @@ const optimizeCSS = async (req: Request, res: Response): Promise<void> => {
 
 const validateEmail = async (req: Request, res: Response): Promise<void> => {
   try {
-    logger.info('✅ [AI] Request para validação HTML')
+    const { html } = req.body
 
-    if (!isPythonAIEnabled()) {
-      const htmlContent = req.body.html
-      const validation = {
-        valid: true,
-        issues: [],
-        suggestions: [
-          'HTML estruturado corretamente',
-          'Considere adicionar meta tags para melhor compatibilidade',
-          'Teste em diferentes clientes de email'
-        ],
-        score: 85
-      }
-
-      res.status(HTTP_STATUS.OK).json({
-        success: true,
-        message: 'HTML validado com sucesso (validação básica)',
-        data: validation,
-        metadata: {
-          service: 'basic-validation',
-          python_ai_enabled: false
-        }
-      })
-      return
-    }
-
-    const pythonAvailable = await checkPythonAIService()
-    if (!pythonAvailable) {
-      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+    if (!html || typeof html !== 'string') {
+      res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
-        message: 'Serviço de IA temporariamente indisponível'
+        message: 'HTML é obrigatório para validação'
       })
       return
     }
 
-    const pythonResponse = await pythonAIClient.post('/validate', { html: req.body.html })
+    const validation: {
+      valid: boolean
+      issues: string[]
+      suggestions: string[]
+      score: number
+    } = {
+      valid: true,
+      issues: [],
+      suggestions: [
+        'HTML estruturado corretamente',
+        'Considere adicionar meta tags para melhor compatibilidade',
+        'Teste em diferentes clientes de email'
+      ],
+      score: 85
+    }
+
+    if (!html.includes('<!DOCTYPE')) {
+      validation.issues.push('HTML sem DOCTYPE declarado')
+      validation.score -= 10
+    }
+
+    if (!html.includes('<meta charset')) {
+      validation.issues.push('Charset não especificado')
+      validation.score -= 5
+    }
+
+    if (html.includes('javascript:') || html.includes('<script')) {
+      validation.issues.push('JavaScript detectado - pode ser bloqueado por clientes de email')
+      validation.score -= 20
+    }
+
+    if (!html.includes('font-size')) {
+      validation.suggestions.push('Considere especificar tamanhos de fonte para melhor consistência')
+    }
+
+    if (validation.issues.length > 0) {
+      validation.valid = false
+    }
+
+    if (validation.score > 80) {
+      validation.suggestions.push('HTML bem estruturado para emails!')
+    }
 
     res.status(HTTP_STATUS.OK).json({
       success: true,
-      message: 'HTML validado com sucesso via Python AI Service',
-      data: pythonResponse.data
+      message: 'HTML validado com sucesso',
+      data: validation
     })
 
   } catch (error: any) {
-    logger.error('❌ [AI] Erro na validação HTML:', error.message)
+    logger.error('Erro na validação HTML:', error.message)
     
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
       success: false,
@@ -533,44 +554,100 @@ const validateEmail = async (req: Request, res: Response): Promise<void> => {
 
 const processChat = async (req: Request, res: Response): Promise<void> => {
   try {
-    logger.info('💬 [AI] Request para processamento de chat')
+    const userId = (req as any).user?.id
+    const { 
+      message, 
+      chat_id, 
+      project_id, 
+      images = [],
+      imageUrls = [] 
+    } = req.body
 
-    if (!isPythonAIEnabled()) {
+    const processedImages = processImages(images.length > 0 ? images : imageUrls)
+    const finalImageUrls = processedImages.imageUrls
+    const imageIntents = processedImages.imageIntents
+
+    if (!iaService.isEnabled()) {
       res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
         success: false,
-        message: 'Funcionalidade de chat requer Python AI Service',
-        error: 'Python AI Service não configurado'
+        message: 'Funcionalidade de chat requer IA Service configurada'
       })
       return
     }
 
-    const pythonAvailable = await checkPythonAIService()
-    if (!pythonAvailable) {
-      res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
-        success: false,
-        message: 'Serviço de IA temporariamente indisponível'
+    try {
+      const iaResponse = await iaService.generateHTML({
+        userInput: message,
+        imageUrls: finalImageUrls,
+        imageIntents: imageIntents,
+        context: {
+          chat_id,
+          project_id,
+          isChat: true
+        },
+        userId
       })
-      return
+
+      const estimatedTokens = Math.ceil(message.length / 4)
+      const estimatedCost = estimatedTokens * 0.000003
+
+      if (userId) {
+        await supabase.rpc('increment_api_usage', {
+          p_user_id: userId,
+          p_endpoint: '/ai/chat',
+          p_tokens: estimatedTokens,
+          p_cost: estimatedCost
+        })
+      }
+
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: (iaResponse.metadata.imagesAnalyzed ?? 0) > 0
+          ? `Chat processado com sucesso! ${iaResponse.metadata.imagesAnalyzed} imagem(ns) analisada(s).`
+          : 'Chat processado com sucesso',
+        data: {
+          response: iaResponse.response,
+          html: iaResponse.html,
+          suggestions: [
+            (iaResponse.metadata.imagesAnalyzed ?? 0) > 0 
+              ? `${iaResponse.metadata.imagesAnalyzed} imagem(ns) integrada(s) ao email`
+              : 'HTML gerado via chat',
+            'Você pode pedir modificações específicas',
+            'Use comandos como "mude a cor para azul" ou "adicione um botão"'
+          ]
+        },
+        metadata: {
+          ...iaResponse.metadata,
+          chat_id,
+          project_id,
+          tokens_used: estimatedTokens,
+          cost: estimatedCost
+        }
+      })
+
+    } catch (iaError: any) {
+      logger.error('Erro no chat via IA:', iaError.message)
+      
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Chat processado com limitações',
+        data: {
+          response: 'Desculpe, não consegui processar sua solicitação no momento. Tente reformular sua pergunta ou use o editor manual.',
+          suggestions: [
+            'Tente ser mais específico na sua solicitação',
+            'Use o editor manual como alternativa',
+            'Verifique se a IA Service está configurada corretamente'
+          ]
+        },
+        metadata: {
+          service: 'mailtrendz-chat-fallback',
+          error: iaError.message
+        }
+      })
     }
-
-    const pythonRequest = {
-      message: req.body.message,
-      chat_id: req.body.chat_id,
-      user_id: (req as any).user?.userId,
-      project_id: req.body.project_id
-    }
-
-    const pythonResponse = await pythonAIClient.post('/chat/process', pythonRequest)
-
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: 'Chat processado com sucesso via Python AI Service',
-      data: pythonResponse.data.data,
-      metadata: pythonResponse.data.metadata
-    })
 
   } catch (error: any) {
-    logger.error('❌ [AI] Erro no processamento de chat:', error.message)
+    logger.error('Erro no processamento de chat:', error.message)
     
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
       success: false,
@@ -580,11 +657,12 @@ const processChat = async (req: Request, res: Response): Promise<void> => {
   }
 }
 
-const getHealthStatus = async (req: Request, res: Response): Promise<void> => {
+export const getHealthStatus = async (_req: Request, res: Response): Promise<void> => {
   try {
     const nodeHealth = {
       status: 'healthy',
-      service: 'mailtrendz-nodejs-backend',
+      service: 'mailtrendz-nodejs-backend-ia',
+      database: 'supabase',
       uptime: Math.round(process.uptime()),
       memory: {
         used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
@@ -592,55 +670,52 @@ const getHealthStatus = async (req: Request, res: Response): Promise<void> => {
       }
     }
 
-    let pythonHealth = null
-    let pythonAvailable = false
+    let iaHealth = null
+    let iaAvailable = false
 
-    if (isPythonAIEnabled()) {
+    if (iaService.isEnabled()) {
       try {
-        logger.info('🔍 [HEALTH] Verificando Python AI Service...')
-        const pythonResponse = await pythonAIClient.get('/health', { timeout: 15000 })
-        pythonHealth = pythonResponse.data
-        pythonAvailable = pythonHealth.status === 'healthy' || pythonHealth.status === 'ok'
-        logger.info('✅ [HEALTH] Python AI Service respondeu:', { status: pythonHealth.status })
+        iaAvailable = await iaService.healthCheck()
+        iaHealth = {
+          status: iaAvailable ? 'healthy' : 'degraded',
+          model: iaService.getModel(),
+          enabled: true,
+          features: ['image-analysis-urls', 'html-generation', 'email-modification']
+        }
       } catch (error: any) {
-        logger.error('❌ [HEALTH] Python AI Service falhou:', error.message)
-        pythonHealth = {
+        iaHealth = {
           status: 'unhealthy',
-          error: 'Não foi possível conectar ao Python AI Service',
-          url: PYTHON_AI_SERVICE_URL,
-          details: error.message
+          error: error.message,
+          enabled: true
         }
       }
     } else {
-      pythonHealth = {
+      iaHealth = {
         status: 'disabled',
-        message: 'Python AI Service desabilitado na configuração',
-        url: PYTHON_AI_SERVICE_URL
+        message: 'IA Service not configured (OPENROUTER_API_KEY missing)',
+        enabled: false
       }
     }
 
-    const overallStatus = isPythonAIEnabled() ? (pythonAvailable ? 'healthy' : 'degraded') : 'healthy'
+    const overallStatus = iaService.isEnabled() ? (iaAvailable ? 'healthy' : 'degraded') : 'healthy'
 
     res.status(HTTP_STATUS.OK).json({
       success: true,
-      message: 'Health Check - MailTrendz Backend',
+      message: 'Health Check - MailTrendz Backend IA',
       data: {
         overall_status: overallStatus,
         services: {
           nodejs_backend: nodeHealth,
-          python_ai_service: pythonHealth
+          ia_service: iaHealth
         },
-        python_ai_enabled: isPythonAIEnabled(),
-        python_ai_url: PYTHON_AI_SERVICE_URL,
-        python_available: pythonAvailable,
-        configuration: {
-          timeout: PYTHON_AI_TIMEOUT,
-          environment: process.env.NODE_ENV || 'development'
-        }
+        ia_enabled: iaService.isEnabled(),
+        ia_available: iaAvailable,
+        system_type: 'html_direct_ia_with_images',
+        version: '4.0.0-ia-integrated-images'
       },
       metadata: {
         timestamp: new Date().toISOString(),
-        version: '2.0.0-fixed'
+        version: '4.0.0-ia-integrated-images'
       }
     })
 
@@ -658,100 +733,88 @@ const getHealthStatus = async (req: Request, res: Response): Promise<void> => {
   }
 }
 
-const testConnection = async (req: Request, res: Response): Promise<void> => {
+export const testConnection = async (_req: Request, res: Response): Promise<void> => {
   try {
-    if (!isPythonAIEnabled()) {
+    if (!iaService.isEnabled()) {
       res.status(HTTP_STATUS.OK).json({
         success: false,
-        message: 'Python AI Service desabilitado na configuração',
+        message: 'IA Service disabled - OPENROUTER_API_KEY not configured',
         data: {
           connected: false,
           enabled: false,
-          url: PYTHON_AI_SERVICE_URL,
-          testTimestamp: new Date().toISOString(),
-          note: 'Para habilitar, configure PYTHON_AI_SERVICE_URL no .env'
+          model: iaService.getModel()
         }
       })
       return
     }
 
-    logger.info(`🔗 Testando conectividade com Python AI Service: ${PYTHON_AI_SERVICE_URL}`)
-
     const startTime = Date.now()
-    
     const tests = []
     
     try {
-      const rootTest = await pythonAIClient.get('/', { timeout: 15000 })
+      const healthTest = await iaService.healthCheck()
       tests.push({
-        endpoint: '/',
-        status: rootTest.status,
-        success: true,
-        response: rootTest.data
+        endpoint: 'health_check',
+        success: healthTest,
+        response: healthTest ? 'IA Service OK' : 'IA Service degraded'
       })
     } catch (error: any) {
       tests.push({
-        endpoint: '/',
-        status: error.response?.status || 0,
+        endpoint: 'health_check',
         success: false,
         error: error.message
       })
     }
     
     try {
-      const healthTest = await pythonAIClient.get('/health', { timeout: 15000 })
+      const testGeneration = await iaService.generateHTML({
+        userInput: 'teste de conexão com análise de imagens',
+        imageUrls: ['https://example.com/test-image.jpg']
+      })
       tests.push({
-        endpoint: '/health',
-        status: healthTest.status,
+        endpoint: 'test_generation_with_images',
         success: true,
-        response: healthTest.data
+        response: 'Geração com imagens OK',
+        html_length: testGeneration.html.length,
+        images_processed: testGeneration.metadata.imagesAnalyzed
       })
     } catch (error: any) {
       tests.push({
-        endpoint: '/health',
-        status: error.response?.status || 0,
+        endpoint: 'test_generation_with_images',
         success: false,
         error: error.message
       })
     }
     
     const responseTime = Date.now() - startTime
-    const successfulTests = tests.filter(t => t.success).length
-    const isConnected = successfulTests > 0
+    const isConnected = tests.filter(t => t.success).length > 0
 
     res.status(HTTP_STATUS.OK).json({
       success: isConnected,
-      message: isConnected ? 'Conectividade OK com Python AI Service' : 'Falha na conectividade',
+      message: isConnected ? 'IA Connection OK with Image Support' : 'IA Connection failed',
       data: {
         connected: isConnected,
         enabled: true,
         responseTime,
-        successful_tests: successfulTests,
-        total_tests: tests.length,
         tests,
-        url: PYTHON_AI_SERVICE_URL,
-        testTimestamp: new Date().toISOString()
+        model: iaService.getModel(),
+        system_type: 'html_direct_ia_with_images',
+        features: ['image-url-analysis', 'html-generation', 'css-inline']
       }
     })
 
   } catch (error: any) {
-    logger.error('Connection test error:', error.message)
+    logger.error('IA connection test error:', error.message)
     
     res.status(HTTP_STATUS.OK).json({
       success: false,
-      message: 'Erro no teste de conectividade com Python AI Service',
+      message: 'IA connection test error',
       error: error.message,
       data: {
         connected: false,
         enabled: true,
-        url: PYTHON_AI_SERVICE_URL,
-        testTimestamp: new Date().toISOString(),
-        troubleshooting: {
-          checkUrl: 'Verifique se PYTHON_AI_SERVICE_URL está correto',
-          checkService: 'Verifique se o Python AI Service está rodando',
-          currentUrl: PYTHON_AI_SERVICE_URL,
-          timeout: PYTHON_AI_TIMEOUT
-        }
+        model: iaService.getModel(),
+        system_type: 'html_direct_ia_with_images'
       }
     })
   }
@@ -760,7 +823,6 @@ const testConnection = async (req: Request, res: Response): Promise<void> => {
 const AIController = {
   generateEmail,
   modifyEmail,
-  optimizeCSS,
   validateEmail,
   processChat,
   getHealthStatus,

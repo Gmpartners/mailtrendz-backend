@@ -1,715 +1,557 @@
-import { Types } from 'mongoose'
-import { Project, IProjectDocument } from '../models/Project.model'
-import { Chat } from '../models/Chat.model'
-import { User } from '../models/User.model'
+import { getSupabaseWithAuth, supabaseAdmin } from '../config/supabase.config'
+import { Database } from '../database/types'
 import { 
-  IProject,
-  CreateProjectDto,
-  UpdateProjectDto,
-  ProjectFilters,
-  ProjectResponse,
-  ProjectAnalytics,
-  DuplicateProjectResponse
+  CreateProjectDto, 
+  UpdateProjectDto, 
+  ProjectQuery, 
+  ProjectStats,
+  ProjectWithStats
 } from '../types/project.types'
-import { PAGINATION, PROJECT_STATUS, API_LIMITS, EMAIL_COLORS, PROJECT_TYPES } from '../utils/constants'
+import { ApiError } from '../utils/api-error'
+import { HTTP_STATUS, ERROR_CODES } from '../utils/constants'
 import { logger } from '../utils/logger'
-import { 
-  createNotFoundError, 
-  createForbiddenError,
-  createConflictError 
-} from '../middleware/error.middleware'
-import AIService from './ai/AIService'
+import iaService from './iaservice'
 
-/**
- * ✅ PROJECT SERVICE ATUALIZADO
- * Agora usa o AIService unificado
- * Mantém todas as funcionalidades
- */
-
-const convertProjectToInterface = (project: IProjectDocument): IProject => {
-  return {
-    _id: project._id as Types.ObjectId,
-    id: project._id.toString(),
-    userId: project.userId,
-    name: project.name,
-    description: project.description,
-    type: project.type,
-    status: project.status,
-    content: project.content,
-    metadata: project.metadata,
-    stats: project.stats,
-    tags: project.tags,
-    color: project.color,
-    isPublic: project.isPublic,
-    chatId: project.chatId,
-    createdAt: project.createdAt,
-    updatedAt: project.updatedAt
-  }
-}
+type Project = Database['public']['Tables']['projects']['Row']
+type ProjectInsert = Database['public']['Tables']['projects']['Insert']
+type ProjectUpdate = Database['public']['Tables']['projects']['Update']
 
 class ProjectService {
-  async checkUserLimits(userId: string): Promise<boolean> {
+  async create(userId: string, projectData: CreateProjectDto, userToken?: string): Promise<Project> {
     try {
-      const user = await User.findById(userId)
-      if (!user) return false
-
-      const projectCount = await Project.countDocuments({ userId: new Types.ObjectId(userId) })
-      const limits = API_LIMITS[user.subscription as keyof typeof API_LIMITS]
+      // ✅ USAR CLIENTE COM CONTEXTO DE USUÁRIO
+      const supabase = getSupabaseWithAuth(userToken)
       
-      return projectCount < limits.MAX_PROJECTS
-    } catch (error) {
-      logger.error('Check user limits failed:', error)
-      return false
-    }
-  }
-
-  generateProjectName(prompt: string): string {
-    try {
-      const words = prompt.toLowerCase()
-        .split(' ')
-        .filter(word => word.length > 3)
-        .slice(0, 3)
+      let projectName = projectData.name
+      let htmlContent = projectData.html || ''
+      let subjectContent = projectData.subject || ''
       
-      if (words.length === 0) {
-        return `Projeto ${Date.now()}`
-      }
-
-      const capitalizedWords = words.map(word => 
-        word.charAt(0).toUpperCase() + word.slice(1)
-      )
-
-      return `Email ${capitalizedWords.join(' ')}`
-    } catch (error) {
-      return `Projeto ${Date.now()}`
-    }
-  }
-
-  generateTags(prompt: string, type?: string): string[] {
-    try {
-      const tags: string[] = []
-      
-      if (type) {
-        tags.push(type)
-      }
-
-      const keywords = ['marketing', 'vendas', 'promocao', 'newsletter', 'boas-vindas', 'campanha']
-      const promptLower = prompt.toLowerCase()
-      
-      keywords.forEach(keyword => {
-        if (promptLower.includes(keyword)) {
-          tags.push(keyword)
+      // ✅ SE HOUVER IMAGENS, PROCESSAR COM IA PRIMEIRO
+      if (projectData.images && projectData.images.length > 0) {
+        logger.info('Processing project with images', {
+          imageCount: projectData.images.length,
+          prompt: projectData.prompt?.substring(0, 50)
+        })
+        
+        try {
+          // Preparar dados para IA - extrair apenas strings válidas
+          const imageUrls: string[] = []
+          const imageIntents: Array<{ url: string; intent: 'analyze' | 'include' }> = []
+          
+          projectData.images.forEach(img => {
+            let url: string | undefined
+            let intent: 'analyze' | 'include' = 'include'
+            
+            if (typeof img === 'string') {
+              url = img
+            } else if (img && typeof img === 'object') {
+              url = img.uploadUrl || img.url
+              intent = img.intent || 'include'
+            }
+            
+            if (url && typeof url === 'string' && url.length > 0) {
+              imageUrls.push(url)
+              imageIntents.push({ url, intent })
+            }
+          })
+          
+          // Gerar HTML com IA
+          const iaResponse = await iaService.generateHTML({
+            userInput: projectData.prompt || 'Criar email baseado nas imagens anexadas',
+            imageUrls: imageUrls,
+            imageIntents: imageIntents,
+            context: {
+              industry: projectData.industry || 'geral',
+              tone: projectData.tone || 'profissional',
+              targetAudience: projectData.targetAudience
+            },
+            userId
+          })
+          
+          // Usar o HTML gerado pela IA
+          htmlContent = iaResponse.html
+          subjectContent = iaResponse.subject
+          
+          logger.info('IA generated HTML with images successfully', {
+            htmlLength: htmlContent.length,
+            subject: subjectContent,
+            imagesProcessed: iaResponse.metadata.imagesAnalyzed
+          })
+          
+        } catch (iaError: any) {
+          logger.error('Error generating HTML with IA for images:', iaError)
+          // Continuar sem HTML se IA falhar
         }
-      })
-
-      if (tags.length === 0) {
-        tags.push('email', 'marketing')
-      } else if (tags.length === 1) {
-        tags.push('email')
       }
-
-      return tags.slice(0, 5)
-    } catch (error) {
-      return ['email', 'marketing']
-    }
-  }
-
-  generateColor(type?: string): string {
-    if (type && EMAIL_COLORS[type as keyof typeof EMAIL_COLORS]) {
-      return EMAIL_COLORS[type as keyof typeof EMAIL_COLORS]
-    }
-    return '#6b7280'
-  }
-
-  async createProject(projectData: any): Promise<IProject> {
-    try {
-      const project = new Project({
-        userId: new Types.ObjectId(projectData.userId),
-        name: projectData.name,
-        description: projectData.description,
+      
+      if (!projectName || typeof projectName !== 'string' || projectName.trim() === '') {
+        projectName = this.generateProjectName(projectData.prompt || projectData.description || '')
+        logger.info(`Generated project name: "${projectName}" from prompt: "${(projectData.prompt || '').substring(0, 50)}..."`)
+      } else {
+        projectName = projectName.trim()
+        logger.info(`Using provided project name: "${projectName}"`)
+      }
+      
+      if (!projectName || projectName.length === 0) {
+        const fallbackName = `Projeto ${new Date().toLocaleString('pt-BR')}`
+        logger.warn(`Project name was empty, using fallback: "${fallbackName}"`)
+        projectName = fallbackName
+      }
+      
+      if (projectName.length > 100) {
+        projectName = projectName.substring(0, 97) + '...'
+        logger.info(`Project name truncated to: "${projectName}"`)
+      }
+      
+      logger.info(`Creating project with name: "${projectName}" for user: ${userId}`)
+      
+      const newProject: ProjectInsert = {
+        user_id: userId,
+        name: projectName,
+        description: projectData.description || projectData.prompt || '',
         type: projectData.type || 'campaign',
-        status: PROJECT_STATUS.DRAFT,
-        content: projectData.content,
+        content: {
+          html: htmlContent,
+          text: projectData.text || '',
+          subject: subjectContent,
+          previewText: projectData.previewText || ''
+        },
         metadata: {
-          industry: projectData.metadata.industry || 'Geral',
-          targetAudience: projectData.metadata.targetAudience,
-          tone: projectData.metadata.tone || 'profissional',
-          originalPrompt: projectData.metadata.originalPrompt,
+          industry: projectData.industry || 'outros',
+          targetAudience: projectData.targetAudience || '',
+          tone: projectData.tone || 'profissional',
+          originalPrompt: projectData.prompt || '',
           version: 1
         },
-        tags: projectData.tags || ['email'],
-        color: projectData.color || '#6b7280',
-        isPublic: false
+        tags: projectData.tags || [],
+        chat_id: projectData.chatId || null
+      }
+
+      logger.info('Project data to insert:', {
+        user_id: newProject.user_id,
+        name: newProject.name,
+        name_length: newProject.name?.length,
+        name_type: typeof newProject.name,
+        description_length: newProject.description?.length,
+        type: newProject.type,
+        hasUserToken: !!userToken,
+        hasHtml: !!newProject.content?.html,
+        htmlLength: newProject.content?.html?.length || 0
       })
 
-      await project.save()
+      const { data: project, error } = await supabase
+        .from('projects')
+        .insert(newProject)
+        .select()
+        .single()
 
-      logger.info('Project created', { 
-        projectId: project._id.toString(), 
-        userId: projectData.userId,
-        type: project.type 
-      })
-
-      return convertProjectToInterface(project)
-    } catch (error) {
-      logger.error('Create project failed:', error)
-      throw error
-    }
-  }
-
-  // ✅ ATUALIZADO: Usa o AIService unificado
-  async createProjectWithAI(userId: string, createProjectDto: CreateProjectDto): Promise<IProject> {
-    try {
-      console.log('📝 [PROJECT SERVICE] Criando projeto com IA unificada...')
-
-      const context = {
-        userId,
-        type: createProjectDto.type || 'campaign',
-        industry: createProjectDto.industry || 'geral',
-        targetAudience: createProjectDto.targetAudience,
-        tone: createProjectDto.tone || 'professional',
-        projectName: this.generateProjectName(createProjectDto.prompt),
-        status: 'draft' as const
+      if (error) {
+        logger.error('Supabase error creating project:', {
+          error: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          projectName: newProject.name,
+          userId: userId,
+          hasUserToken: !!userToken
+        })
+        throw new ApiError('Erro ao criar projeto no banco de dados', HTTP_STATUS.INTERNAL_SERVER_ERROR)
       }
-
-      // ✅ Usar o AIService unificado (retorna simple response)
-      const emailResult = await AIService.generateEmail(createProjectDto.prompt, context)
-
-      // Create default content structure since AI service is stub
-      const emailContent = {
-        html: emailResult.data ? 
-          `<div>
-            <h1>${this.generateProjectName(createProjectDto.prompt)}</h1>
-            <p>Email content generated from prompt: ${createProjectDto.prompt}</p>
-            <p>This is a demo version. Connect to Python AI Service for full functionality.</p>
-          </div>` : 
-          `<div>
-            <h1>${this.generateProjectName(createProjectDto.prompt)}</h1>
-            <p>Demo email content</p>
-          </div>`,
-        text: `Email content for: ${this.generateProjectName(createProjectDto.prompt)}`,
-        subject: this.generateProjectName(createProjectDto.prompt),
-        previewText: 'Preview text for email'
-      }
-
-      const project = new Project({
-        userId: new Types.ObjectId(userId),
-        name: this.generateProjectName(createProjectDto.prompt),
-        description: `Projeto gerado a partir do prompt: ${createProjectDto.prompt.substring(0, 100)}...`,
-        type: createProjectDto.type || 'campaign',
-        status: PROJECT_STATUS.DRAFT,
-        content: emailContent,
-        metadata: {
-          industry: createProjectDto.industry || 'Geral',
-          targetAudience: createProjectDto.targetAudience,
-          tone: createProjectDto.tone || 'professional',
-          originalPrompt: createProjectDto.prompt,
-          version: 1,
-          aiVersion: '5.0.0-unified'
-        },
-        tags: this.generateTags(createProjectDto.prompt, createProjectDto.type),
-        color: this.generateColor(createProjectDto.type),
-        isPublic: false
-      })
-
-      await project.save()
-      await this.createProjectChat(project._id as Types.ObjectId, userId)
-
-      console.log('✅ [PROJECT SERVICE] Projeto criado com IA unificada:', {
-        projectId: project._id.toString(),
-        hasHTML: !!emailContent.html,
-        htmlLength: emailContent.html?.length
-      })
-
-      logger.info('Project created with AI', { 
-        projectId: project._id.toString(), 
-        userId,
-        type: project.type 
-      })
-
-      return convertProjectToInterface(project)
-    } catch (error) {
-      console.error('❌ [PROJECT SERVICE] Erro ao criar projeto com IA:', error)
-      logger.error('Create project with AI failed:', error)
-      throw error
-    }
-  }
-
-  async createProjectChat(projectId: Types.ObjectId, userId: string): Promise<any> {
-    try {
-      const chat = new Chat({
-        userId: new Types.ObjectId(userId),
-        projectId,
-        title: 'Chat do Projeto',
-        isActive: true,
-        metadata: {
-          totalMessages: 0,
-          emailUpdates: 0,
-          lastActivity: new Date(),
-          version: '5.0.0-unified'
-        }
-      })
-
-      await chat.save()
-      await Project.findByIdAndUpdate(projectId, { chatId: chat._id })
-
-      return chat
-    } catch (error) {
-      logger.error('Create project chat failed:', error)
-      throw error
-    }
-  }
-
-  async trackProjectCreation(userId: string, projectId: string): Promise<void> {
-    try {
-      await User.findByIdAndUpdate(userId, {
-        $inc: { 'apiUsage.currentMonth': 1 },
-        $set: { 'apiUsage.lastUsed': new Date() }
-      })
-
-      logger.info('Project creation tracked', { userId, projectId })
-    } catch (error) {
-      logger.error('Track project creation failed:', error)
-    }
-  }
-
-  async getUserProjects(filters: ProjectFilters): Promise<ProjectResponse> {
-    try {
-      const {
-        userId,
-        search,
-        type,
-        status,
-        tags,
-        pagination,
-        sort
-      } = filters
-
-      if (!userId) {
-        throw new Error('UserId é obrigatório')
-      }
-
-      const query: any = { userId: new Types.ObjectId(userId) }
-
-      if (search) {
-        query.$text = { $search: search }
-      }
-
-      if (type && type !== 'all') {
-        query.type = type
-      }
-
-      if (status && status !== 'all') {
-        query.status = status
-      }
-
-      if (tags && tags.length > 0) {
-        query.tags = { $in: tags }
-      }
-
-      const page = pagination.page || 1
-      const limit = pagination.limit || PAGINATION.DEFAULT_LIMIT
-      const skip = (page - 1) * limit
-
-      const sortObj: any = {}
-      sortObj[sort.field] = sort.order === 'asc' ? 1 : -1
-
-      const [projects, totalItems] = await Promise.all([
-        Project.find(query)
-          .sort(sortObj)
-          .skip(skip)
-          .limit(limit)
-          .populate('chatId', 'title metadata.totalMessages'),
-        Project.countDocuments(query)
-      ])
-
-      let stats
-      try {
-        stats = await this.getUserProjectStats(userId)
-      } catch (statsError) {
-        stats = {
-          totalProjects: totalItems,
-          totalOpens: 0,
-          totalClicks: 0,
-          totalUses: 0,
-          avgConversion: 0
-        }
-      }
-
-      const totalPages = Math.ceil(totalItems / limit)
-
-      const projectsData: IProject[] = projects.map(project => convertProjectToInterface(project))
-
-      const result: ProjectResponse = {
-        projects: projectsData,
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalItems,
-          hasNext: page < totalPages,
-          hasPrev: page > 1
-        },
-        stats: {
-          total: stats.totalProjects,
-          drafts: await Project.countDocuments({ userId: new Types.ObjectId(userId), status: 'draft' }),
-          completed: await Project.countDocuments({ userId: new Types.ObjectId(userId), status: 'completed' }),
-          recent: await Project.countDocuments({ 
-            userId: new Types.ObjectId(userId),
-            createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-          })
-        }
-      }
-
-      return result
-    } catch (error) {
-      logger.error('Get user projects failed:', error)
-      throw error
-    }
-  }
-
-  async getProjectById(projectId: string, userId: string): Promise<IProject | null> {
-    try {
-      const project = await Project.findOne({
-        _id: projectId,
-        userId: new Types.ObjectId(userId)
-      }).populate('chatId', 'title metadata.totalMessages')
 
       if (!project) {
-        return null
+        logger.error('Project creation returned no data')
+        throw new ApiError('Erro ao criar projeto - nenhum dado retornado', HTTP_STATUS.INTERNAL_SERVER_ERROR)
       }
 
-      await project.incrementViews()
-      return convertProjectToInterface(project)
+      logger.info(`✅ Project created successfully: ${project.id} with name: "${project.name}" by user ${userId}`)
+      return project
     } catch (error) {
-      logger.error('Get project by ID failed:', error)
-      throw error
-    }
-  }
-
-  async incrementProjectViews(projectId: string): Promise<void> {
-    try {
-      await Project.findByIdAndUpdate(projectId, {
-        $inc: { 'stats.views': 1 }
+      logger.error('Create project error:', {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+        projectName: projectData.name,
+        userId: userId,
+        hasUserToken: !!userToken
       })
-      logger.info('Project views incremented', { projectId })
-    } catch (error) {
-      logger.error('Increment project views failed:', error)
+      
+      if (error instanceof ApiError) throw error
+      throw new ApiError('Erro ao criar projeto', HTTP_STATUS.INTERNAL_SERVER_ERROR)
     }
   }
 
-  async updateProject(projectId: string, userId: string, updates: UpdateProjectDto): Promise<IProject | null> {
+  private generateProjectName(prompt: string): string {
     try {
-      const project = await Project.findOneAndUpdate(
-        { _id: projectId, userId: new Types.ObjectId(userId) },
-        { ...updates },
-        { new: true, runValidators: true }
-      )
+      const now = new Date()
+      const defaultName = `Projeto ${now.toLocaleDateString('pt-BR', { 
+        day: '2-digit', 
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      })}`
+      
+      if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+        logger.info('No valid prompt provided, using default name')
+        return defaultName
+      }
+      
+      const cleanPrompt = prompt
+        .trim()
+        .replace(/[^\w\s\u00C0-\u024F\u1E00-\u1EFF\-]/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+      
+      if (!cleanPrompt || cleanPrompt.length === 0) {
+        logger.info('Prompt became empty after cleaning, using default name')
+        return defaultName
+      }
+      
+      const words = cleanPrompt.split(' ').filter(word => word.length > 0)
+      let name = ''
+      
+      for (const word of words) {
+        const potentialName = name + (name ? ' ' : '') + word
+        if (potentialName.length > 50) break
+        name = potentialName
+      }
+      
+      if (!name || name.length < 3) {
+        logger.info('Generated name too short, using default name')
+        return defaultName
+      }
+      
+      name = name.split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ')
+      
+      logger.info(`Generated name: "${name}" from prompt: "${prompt.substring(0, 30)}..."`)
+      return name
+      
+    } catch (error) {
+      logger.error('Error generating project name:', error)
+      const now = new Date()
+      return `Projeto ${now.toLocaleDateString('pt-BR', { 
+        day: '2-digit', 
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      })}`
+    }
+  }
 
-      if (project) {
-        logger.info('Project updated', { 
-          projectId, 
-          userId, 
-          updates: Object.keys(updates) 
+  async findById(projectId: string, userId?: string, userToken?: string): Promise<ProjectWithStats> {
+    try {
+      // ✅ USAR CLIENTE COM CONTEXTO DE USUÁRIO
+      const supabase = getSupabaseWithAuth(userToken)
+      
+      const { data: project, error } = await supabase
+        .from('projects_with_stats')
+        .select('*')
+        .eq('id', projectId)
+        .single()
+
+      if (error || !project) {
+        throw new ApiError('Projeto não encontrado', HTTP_STATUS.NOT_FOUND, ERROR_CODES.RESOURCE_NOT_FOUND)
+      }
+
+      if (!project.is_public && (!userId || project.user_id !== userId)) {
+        throw new ApiError('Acesso negado', HTTP_STATUS.FORBIDDEN, ERROR_CODES.INSUFFICIENT_PERMISSIONS)
+      }
+
+      return project as ProjectWithStats
+    } catch (error) {
+      logger.error('Find project error:', error)
+      if (error instanceof ApiError) throw error
+      throw new ApiError('Erro ao buscar projeto', HTTP_STATUS.INTERNAL_SERVER_ERROR)
+    }
+  }
+
+  async findByUser(userId: string, query: ProjectQuery = {}, userToken?: string) {
+    try {
+      // ✅ USAR CLIENTE COM CONTEXTO DE USUÁRIO
+      const supabase = getSupabaseWithAuth(userToken)
+      
+      let queryBuilder = supabase
+        .from('projects_with_stats')
+        .select('*')
+        .eq('user_id', userId)
+
+      if (query.type) {
+        queryBuilder = queryBuilder.eq('type', query.type)
+      }
+
+      if (query.status) {
+        queryBuilder = queryBuilder.eq('status', query.status)
+      }
+
+      if (query.search) {
+        queryBuilder = queryBuilder.or(`name.ilike.%${query.search}%,description.ilike.%${query.search}%`)
+      }
+
+      if (query.tags && query.tags.length > 0) {
+        queryBuilder = queryBuilder.contains('tags', query.tags)
+      }
+
+      const sortField = query.sortBy || 'updated_at'
+      const sortOrder = query.order || 'desc'
+      queryBuilder = queryBuilder.order(sortField, { ascending: sortOrder === 'asc' })
+
+      const limit = query.limit || 20
+      const offset = ((query.page || 1) - 1) * limit
+      queryBuilder = queryBuilder.range(offset, offset + limit - 1)
+
+      const { data: projects, error, count } = await queryBuilder
+
+      if (error) {
+        logger.error('Error fetching user projects:', error)
+        throw new ApiError('Erro ao buscar projetos', HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      }
+
+      return {
+        data: projects || [],
+        pagination: {
+          page: query.page || 1,
+          limit,
+          total: count || 0,
+          totalPages: Math.ceil((count || 0) / limit)
+        }
+      }
+    } catch (error) {
+      logger.error('Find user projects error:', error)
+      if (error instanceof ApiError) throw error
+      throw new ApiError('Erro ao buscar projetos', HTTP_STATUS.INTERNAL_SERVER_ERROR)
+    }
+  }
+
+  async update(projectId: string, userId: string, updates: UpdateProjectDto, userToken?: string): Promise<Project> {
+    try {
+      // ✅ USAR CLIENTE COM CONTEXTO DE USUÁRIO
+      const supabase = getSupabaseWithAuth(userToken)
+      
+      const { data: existingProject } = await supabase
+        .from('projects')
+        .select('id, user_id, metadata')
+        .eq('id', projectId)
+        .single()
+
+      if (!existingProject || existingProject.user_id !== userId) {
+        throw new ApiError('Projeto não encontrado', HTTP_STATUS.NOT_FOUND, ERROR_CODES.RESOURCE_NOT_FOUND)
+      }
+
+      const projectUpdate: ProjectUpdate = {}
+
+      if (updates.name !== undefined) projectUpdate.name = updates.name
+      if (updates.description !== undefined) projectUpdate.description = updates.description
+      if (updates.type !== undefined) projectUpdate.type = updates.type
+      if (updates.status !== undefined) projectUpdate.status = updates.status
+      if (updates.tags !== undefined) projectUpdate.tags = updates.tags
+      if (updates.isPublic !== undefined) projectUpdate.is_public = updates.isPublic
+
+      if (updates.content) {
+        projectUpdate.content = {
+          html: updates.content.html,
+          text: updates.content.text,
+          subject: updates.content.subject,
+          previewText: updates.content.previewText
+        }
+      }
+
+      if (updates.metadata) {
+        projectUpdate.metadata = {
+          ...existingProject.metadata,
+          ...updates.metadata,
+          version: (existingProject.metadata.version || 0) + 1
+        }
+      }
+
+      const { data: project, error } = await supabase
+        .from('projects')
+        .update(projectUpdate)
+        .eq('id', projectId)
+        .select()
+        .single()
+
+      if (error || !project) {
+        logger.error('Error updating project:', error)
+        throw new ApiError('Erro ao atualizar projeto', HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      }
+
+      logger.info(`Project updated: ${projectId} by user ${userId}`)
+      return project
+    } catch (error) {
+      logger.error('Update project error:', error)
+      if (error instanceof ApiError) throw error
+      throw new ApiError('Erro ao atualizar projeto', HTTP_STATUS.INTERNAL_SERVER_ERROR)
+    }
+  }
+
+  async delete(projectId: string, userId: string, userToken?: string): Promise<void> {
+    try {
+      // ✅ USAR CLIENTE COM CONTEXTO DE USUÁRIO
+      const supabase = getSupabaseWithAuth(userToken)
+      
+      const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', projectId)
+        .eq('user_id', userId)
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          throw new ApiError('Projeto não encontrado', HTTP_STATUS.NOT_FOUND, ERROR_CODES.RESOURCE_NOT_FOUND)
+        }
+        throw error
+      }
+
+      logger.info(`Project deleted: ${projectId} by user ${userId}`)
+    } catch (error) {
+      logger.error('Delete project error:', error)
+      if (error instanceof ApiError) throw error
+      throw new ApiError('Erro ao deletar projeto', HTTP_STATUS.INTERNAL_SERVER_ERROR)
+    }
+  }
+
+  async duplicate(projectId: string, userId: string, userToken?: string): Promise<Project> {
+    try {
+      // ✅ USAR CLIENTE COM CONTEXTO DE USUÁRIO
+      const supabase = getSupabaseWithAuth(userToken)
+      
+      const { data: original } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', projectId)
+        .eq('user_id', userId)
+        .single()
+
+      if (!original) {
+        throw new ApiError('Projeto não encontrado', HTTP_STATUS.NOT_FOUND, ERROR_CODES.RESOURCE_NOT_FOUND)
+      }
+
+      const originalName = original.name || 'Projeto Sem Nome'
+      const duplicatedName = `${originalName} (Cópia)`
+
+      const newProject: ProjectInsert = {
+        ...original,
+        id: undefined,
+        name: duplicatedName,
+        created_at: undefined,
+        updated_at: undefined
+      }
+
+      const { data: project, error } = await supabase
+        .from('projects')
+        .insert(newProject)
+        .select()
+        .single()
+
+      if (error || !project) {
+        logger.error('Error duplicating project:', error)
+        throw new ApiError('Erro ao duplicar projeto', HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      }
+
+      logger.info(`Project duplicated: ${projectId} -> ${project.id} by user ${userId}`)
+      return project
+    } catch (error) {
+      logger.error('Duplicate project error:', error)
+      if (error instanceof ApiError) throw error
+      throw new ApiError('Erro ao duplicar projeto', HTTP_STATUS.INTERNAL_SERVER_ERROR)
+    }
+  }
+
+  async getStats(userId: string, userToken?: string): Promise<ProjectStats> {
+    try {
+      // ✅ USAR CLIENTE COM CONTEXTO DE USUÁRIO
+      const supabase = getSupabaseWithAuth(userToken)
+      
+      const { data: projects } = await supabase
+        .from('projects_with_stats')
+        .select('type, opens, clicks, uses')
+        .eq('user_id', userId)
+
+      const stats: ProjectStats = {
+        total: projects?.length || 0,
+        byType: {},
+        totalOpens: 0,
+        totalClicks: 0,
+        totalUses: 0,
+        avgConversionRate: 0
+      }
+
+      if (projects && projects.length > 0) {
+        let totalConversionRate = 0
+        let projectsWithOpens = 0
+
+        projects.forEach((project: any) => {
+          if (!stats.byType[project.type]) {
+            stats.byType[project.type] = { count: 0, avgOpens: 0, avgClicks: 0 }
+          }
+          
+          stats.byType[project.type].count++
+          stats.totalOpens += project.opens
+          stats.totalClicks += project.clicks
+          stats.totalUses += project.uses
+
+          if (project.opens > 0) {
+            projectsWithOpens++
+            totalConversionRate += (project.clicks / project.opens) * 100
+          }
         })
 
-        return convertProjectToInterface(project)
+        Object.keys(stats.byType).forEach(type => {
+          const typeProjects = projects.filter((p: any) => p.type === type)
+          stats.byType[type].avgOpens = typeProjects.reduce((sum: number, p: any) => sum + p.opens, 0) / typeProjects.length
+          stats.byType[type].avgClicks = typeProjects.reduce((sum: number, p: any) => sum + p.clicks, 0) / typeProjects.length
+        })
+
+        stats.avgConversionRate = projectsWithOpens > 0 ? totalConversionRate / projectsWithOpens : 0
       }
 
-      return null
-    } catch (error) {
-      logger.error('Update project failed:', error)
-      throw error
-    }
-  }
-
-  async deleteProject(projectId: string, userId: string): Promise<boolean> {
-    try {
-      const project = await Project.findOne({
-        _id: projectId,
-        userId: new Types.ObjectId(userId)
-      })
-
-      if (!project) {
-        return false
-      }
-
-      if (project.chatId) {
-        await Chat.findByIdAndDelete(project.chatId)
-      }
-
-      await Project.findByIdAndDelete(projectId)
-
-      logger.info('Project deleted', { projectId, userId })
-      return true
-    } catch (error) {
-      logger.error('Delete project failed:', error)
-      throw error
-    }
-  }
-
-  async duplicateProject(projectId: string, userId: string): Promise<DuplicateProjectResponse | null> {
-    try {
-      const originalProject = await Project.findOne({
-        _id: projectId,
-        userId: new Types.ObjectId(userId)
-      })
-
-      if (!originalProject) {
-        return null
-      }
-
-      const duplicatedProject = new Project({
-        userId: originalProject.userId,
-        name: `${originalProject.name} (Cópia)`,
-        description: originalProject.description,
-        type: originalProject.type,
-        status: 'draft',
-        content: originalProject.content,
-        metadata: {
-          ...originalProject.metadata,
-          version: 1,
-          aiVersion: '5.0.0-unified'
-        },
-        tags: [...originalProject.tags, 'Duplicado'],
-        color: originalProject.color,
-        isPublic: false
-      })
-
-      await duplicatedProject.save()
-      await this.createProjectChat(duplicatedProject._id as Types.ObjectId, userId)
-
-      logger.info('Project duplicated', {
-        originalId: projectId,
-        duplicatedId: duplicatedProject._id.toString(),
-        userId
-      })
-
-      return convertProjectToInterface(duplicatedProject)
-    } catch (error) {
-      logger.error('Duplicate project failed:', error)
-      throw error
-    }
-  }
-
-  async getPopularProjects(limit: number = 10): Promise<IProject[]> {
-    try {
-      const projects = await Project.find({ isPublic: true })
-        .sort({ 'stats.uses': -1, 'stats.views': -1 })
-        .limit(limit)
-
-      return projects.map(project => convertProjectToInterface(project))
-    } catch (error) {
-      logger.error('Get popular projects failed:', error)
-      throw error
-    }
-  }
-
-  async getProjectTypeStats(userId: string): Promise<any> {
-    try {
-      const stats = await Project.aggregate([
-        { $match: { userId: new Types.ObjectId(userId) } },
-        {
-          $group: {
-            _id: '$type',
-            count: { $sum: 1 },
-            avgOpens: { $avg: '$stats.opens' },
-            avgClicks: { $avg: '$stats.clicks' },
-            totalUses: { $sum: '$stats.uses' }
-          }
-        }
-      ])
-      
       return stats
     } catch (error) {
-      logger.error('Get project type stats failed:', error)
-      throw error
+      logger.error('Get stats error:', error)
+      throw new ApiError('Erro ao buscar estatísticas', HTTP_STATUS.INTERNAL_SERVER_ERROR)
     }
   }
 
-  async getProjectAnalytics(projectId: string, userId: string): Promise<ProjectAnalytics | null> {
+  async updateStats() {
     try {
-      const project = await Project.findOne({
-        _id: projectId,
-        userId: new Types.ObjectId(userId)
-      })
+      logger.info('Stats update skipped to avoid RLS issues')
+    } catch (error) {
+      logger.error('Update stats error:', error)
+    }
+  }
 
-      if (!project) {
-        return null
+  async getPopularTags(userId?: string, limit: number = 20, userToken?: string) {
+    try {
+      // ✅ USAR CLIENTE APROPRIADO
+      const supabase = userId ? getSupabaseWithAuth(userToken) : supabaseAdmin
+      
+      let query = supabase.from('projects').select('tags')
+
+      if (userId) {
+        query = query.eq('user_id', userId)
+      } else {
+        query = query.eq('is_public', true)
       }
 
-      const timeline = []
-      for (let i = 29; i >= 0; i--) {
-        const date = new Date()
-        date.setDate(date.getDate() - i)
-        
-        timeline.push({
-          date,
-          opens: Math.floor(Math.random() * (project.stats.opens / 30)),
-          clicks: Math.floor(Math.random() * (project.stats.clicks / 30)),
-          uses: Math.floor(Math.random() * (project.stats.uses / 30))
+      const { data: projects } = await query
+
+      const tagCount: Record<string, number> = {}
+
+      projects?.forEach((project: any) => {
+        project.tags?.forEach((tag: string) => {
+          tagCount[tag] = (tagCount[tag] || 0) + 1
         })
-      }
-
-      const improvements = project.metadata.lastImprovement ? [{
-        date: project.metadata.lastImprovement.timestamp,
-        feedback: project.metadata.lastImprovement.feedback,
-        version: project.metadata.lastImprovement.version
-      }] : []
-
-      const conversionRate = project.getConversionRate()
-      
-      return {
-        projectId,
-        name: project.name,
-        type: project.type,
-        createdAt: project.createdAt,
-        stats: {
-          opens: project.stats.opens,
-          clicks: project.stats.clicks,
-          uses: project.stats.uses,
-          views: project.stats.views,
-          conversionRate
-        },
-        timeline,
-        improvements,
-        performance: {
-          openRate: project.stats.views > 0 ? (project.stats.opens / project.stats.views) * 100 : 0,
-          clickRate: conversionRate,
-          engagement: project.stats.views > 0 ? 
-            ((project.stats.opens + project.stats.clicks * 2) / project.stats.views) * 100 : 0,
-          trend: conversionRate > 5 ? 'up' : conversionRate < 2 ? 'down' : 'stable'
-        }
-      }
-    } catch (error) {
-      logger.error('Get project analytics failed:', error)
-      throw error
-    }
-  }
-
-  async incrementProjectUse(projectId: string, userId: string): Promise<void> {
-    try {
-      const project = await Project.findOne({
-        _id: projectId,
-        userId: new Types.ObjectId(userId)
       })
 
-      if (project) {
-        await project.incrementUses()
-        logger.info('Project use incremented', { projectId, userId })
-      }
+      const sortedTags = Object.entries(tagCount)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, limit)
+        .map(([tag, count]) => ({ tag, count }))
+
+      return sortedTags
     } catch (error) {
-      logger.error('Increment project use failed:', error)
-    }
-  }
-
-  async getUserProjectStats(userId: string): Promise<any> {
-    try {
-      const stats = await Project.aggregate([
-        { $match: { userId: new Types.ObjectId(userId) } },
-        {
-          $group: {
-            _id: null,
-            totalProjects: { $sum: 1 },
-            totalOpens: { $sum: '$stats.opens' },
-            totalClicks: { $sum: '$stats.clicks' },
-            totalUses: { $sum: '$stats.uses' },
-            avgConversion: { 
-              $avg: { 
-                $cond: [
-                  { $gt: ['$stats.opens', 0] },
-                  { $multiply: [{ $divide: ['$stats.clicks', '$stats.opens'] }, 100] },
-                  0
-                ]
-              }
-            }
-          }
-        }
-      ])
-      
-      const result = stats[0] || {
-        totalProjects: 0,
-        totalOpens: 0,
-        totalClicks: 0,
-        totalUses: 0,
-        avgConversion: 0
-      }
-
-      return result
-    } catch (error) {
-      logger.error('Get user project stats failed:', error)
-      
-      return {
-        totalProjects: 0,
-        totalOpens: 0,
-        totalClicks: 0,
-        totalUses: 0,
-        avgConversion: 0
-      }
-    }
-  }
-
-  // ✅ NOVO: Método para melhorar projeto com IA
-  async improveProjectWithAI(projectId: string, userId: string, feedback: string): Promise<IProject | null> {
-    try {
-      console.log('🔧 [PROJECT SERVICE] Melhorando projeto com IA unificada...')
-
-      const project = await Project.findOne({
-        _id: projectId,
-        userId: new Types.ObjectId(userId)
-      })
-
-      if (!project) {
-        return null
-      }
-
-      // Usar AIService stub com 2 argumentos apenas
-      const improvedResult = await AIService.improveEmail(
-        JSON.stringify(project.content), 
-        feedback
-      )
-
-      // Create improved content structure
-      const improvedContent = {
-        html: `<div><h1>Improved: ${project.name}</h1><p>Feedback applied: ${feedback}</p><p>Original content enhanced.</p></div>`,
-        text: `Improved email content based on feedback: ${feedback}`,
-        subject: `Enhanced: ${project.content.subject || project.name}`,
-        previewText: 'Enhanced email based on your feedback'
-      }
-
-      const currentVersion = project.metadata?.version || 1
-      const newVersion = currentVersion + 1
-
-      const updatedProject = await Project.findByIdAndUpdate(
-        projectId,
-        {
-          $set: {
-            content: improvedContent,
-            'metadata.version': newVersion,
-            'metadata.lastImprovement': {
-              feedback,
-              timestamp: new Date(),
-              version: newVersion
-            },
-            'metadata.lastUpdate': new Date()
-          }
-        },
-        { new: true }
-      )
-
-      if (updatedProject) {
-        console.log('✅ [PROJECT SERVICE] Projeto melhorado:', {
-          projectId,
-          newVersion,
-          htmlLength: improvedContent.html?.length
-        })
-
-        return convertProjectToInterface(updatedProject)
-      }
-
-      return null
-    } catch (error) {
-      console.error('❌ [PROJECT SERVICE] Erro ao melhorar projeto:', error)
-      logger.error('Improve project with AI failed:', error)
-      throw error
+      logger.error('Get popular tags error:', error)
+      return []
     }
   }
 }

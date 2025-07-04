@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import AuthController from '../controllers/auth.controller'
 import { authLimiter } from '../middleware/rate-limit.middleware'
-import { authenticateToken, optionalAuth } from '../middleware/auth.middleware'
+import { authenticateToken } from '../middleware/auth.middleware'
 import {
   validateRegister,
   validateLogin,
@@ -16,6 +16,7 @@ const router = Router()
 // Rotas públicas (sem autenticação)
 router.post('/register', authLimiter, validateRegister, AuthController.register)
 router.post('/login', authLimiter, validateLogin, AuthController.login)
+router.post('/social-login', authLimiter, AuthController.socialLogin)
 router.post('/refresh-token', AuthController.refreshToken)
 router.post('/request-password-reset', authLimiter, validatePasswordReset, AuthController.requestPasswordReset)
 router.post('/reset-password', authLimiter, validatePasswordUpdate, AuthController.resetPassword)

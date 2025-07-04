@@ -1,9 +1,8 @@
 import { Request, Response, NextFunction } from 'express'
-import { Types } from 'mongoose'
-import { Conversation } from '../models/Conversation.model'
-import { Project } from '../models/Project.model'
 import { HTTP_STATUS } from '../utils/constants'
 import { logger } from '../utils/logger'
+import { ID_UTILS } from '../utils/id-utils'
+import { supabase } from '../config/supabase.config'
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -27,7 +26,7 @@ export const validateConversation = async (
     const { conversationId } = req.params
     const userId = req.user?.userId
 
-    if (!conversationId || !Types.ObjectId.isValid(conversationId)) {
+    if (!conversationId || !ID_UTILS.isValid(conversationId)) {
       res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
         message: 'ID da conversa inválido'
@@ -35,12 +34,14 @@ export const validateConversation = async (
       return
     }
 
-    const conversation = await Conversation.findOne({
-      _id: conversationId,
-      userId: new Types.ObjectId(userId!)
-    })
+    const { data: conversation, error } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('id', conversationId)
+      .eq('user_id', userId!)
+      .single()
 
-    if (!conversation) {
+    if (error || !conversation) {
       res.status(HTTP_STATUS.NOT_FOUND).json({
         success: false,
         message: 'Conversa não encontrada'
@@ -72,7 +73,7 @@ export const validateProject = async (
     const { projectId } = req.params
     const userId = req.user?.userId
 
-    if (!projectId || !Types.ObjectId.isValid(projectId)) {
+    if (!projectId || !ID_UTILS.isValid(projectId)) {
       res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
         message: 'ID do projeto inválido'
@@ -80,12 +81,14 @@ export const validateProject = async (
       return
     }
 
-    const project = await Project.findOne({
-      _id: projectId,
-      userId: new Types.ObjectId(userId!)
-    })
+    const { data: project, error } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', projectId)
+      .eq('user_id', userId!)
+      .single()
 
-    if (!project) {
+    if (error || !project) {
       res.status(HTTP_STATUS.NOT_FOUND).json({
         success: false,
         message: 'Projeto não encontrado'
@@ -117,7 +120,7 @@ export const validateProjectAndConversation = async (
     const { projectId } = req.params
     const userId = req.user?.userId
 
-    if (!projectId || !Types.ObjectId.isValid(projectId)) {
+    if (!projectId || !ID_UTILS.isValid(projectId)) {
       res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
         message: 'ID do projeto inválido'
@@ -126,12 +129,14 @@ export const validateProjectAndConversation = async (
     }
 
     // Carregar projeto
-    const project = await Project.findOne({
-      _id: projectId,
-      userId: new Types.ObjectId(userId!)
-    })
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', projectId)
+      .eq('user_id', userId!)
+      .single()
 
-    if (!project) {
+    if (projectError || !project) {
       res.status(HTTP_STATUS.NOT_FOUND).json({
         success: false,
         message: 'Projeto não encontrado'
@@ -140,10 +145,12 @@ export const validateProjectAndConversation = async (
     }
 
     // Carregar conversa
-    const conversation = await Conversation.findOne({
-      projectId: new Types.ObjectId(projectId),
-      userId: new Types.ObjectId(userId!)
-    })
+    const { data: conversation } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('user_id', userId!)
+      .single()
 
     req.project = project
     req.conversation = conversation
@@ -215,11 +222,12 @@ export const conversationRateLimit = (
  * ✅ MIDDLEWARE: Validar conteúdo da mensagem
  */
 export const validateMessageContent = (
-  req: AuthenticatedRequest,
+  _req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ): void => {
   try {
+    const req = _req as AuthenticatedRequest
     const { content } = req.body
 
     if (!content) {
@@ -274,7 +282,7 @@ export const validateMessageContent = (
  * ✅ MIDDLEWARE: Verificar saúde do Python AI Service
  */
 export const checkPythonAIHealth = async (
-  req: AuthenticatedRequest,
+  _req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
@@ -327,13 +335,13 @@ export const checkPythonAIHealth = async (
  */
 export const logConversationActivity = (
   req: AuthenticatedRequest,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ): void => {
   try {
     const userId = req.user?.userId
-    const projectId = req.params.projectId || req.project?._id
-    const conversationId = req.params.conversationId || req.conversation?._id
+    const projectId = req.params.projectId || req.project?.id
+    const conversationId = req.params.conversationId || req.conversation?.id
     const action = req.method
     const path = req.path
 

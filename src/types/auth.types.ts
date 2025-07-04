@@ -1,37 +1,10 @@
 import { Request } from 'express'
-import { JwtPayload } from 'jsonwebtoken'
-
-export interface IUser {
-  _id: string
-  name: string
-  email: string
-  password: string
-  avatar?: string
-  subscription: 'free' | 'pro' | 'enterprise'
-  apiUsage: {
-    currentMonth: number
-    limit: number
-    resetDate: Date
-  }
-  preferences: {
-    defaultIndustry?: string
-    defaultTone?: string
-    emailSignature?: string
-  }
-  isEmailVerified: boolean
-  emailVerificationToken?: string
-  passwordResetToken?: string
-  passwordResetExpires?: Date
-  lastLoginAt?: Date
-  createdAt: Date
-  updatedAt: Date
-}
 
 export interface AuthRequest extends Request {
   user?: {
     id: string
     email: string
-    subscription: string
+    subscription: 'free' | 'pro' | 'enterprise'
   }
 }
 
@@ -51,21 +24,10 @@ export interface AuthResponse {
   success: boolean
   message: string
   data?: {
-    user: Omit<IUser, 'password'>
+    user: any
     accessToken: string
     refreshToken: string
   }
-}
-
-export interface JwtTokenPayload extends JwtPayload {
-  userId: string
-  email: string
-  subscription: string
-}
-
-export interface RefreshTokenPayload extends JwtPayload {
-  userId: string
-  tokenVersion: number
 }
 
 export interface UserProfile {
@@ -73,7 +35,7 @@ export interface UserProfile {
   name: string
   email: string
   avatar?: string
-  subscription: string
+  subscription: 'free' | 'pro' | 'enterprise'
   apiUsage: {
     currentMonth: number
     limit: number

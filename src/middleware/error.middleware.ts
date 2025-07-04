@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from 'express'
-import { AuthRequest } from '../types/auth.types'
 import { logger } from '../utils/logger'
 
 export const performanceLogger = (req: Request, res: Response, next: NextFunction) => {
@@ -35,7 +34,7 @@ export const notFoundHandler = (req: Request, res: Response, next: NextFunction)
   next(error)
 }
 
-export const errorHandler = (error: any, req: Request, res: Response, next: NextFunction) => {
+export const errorHandler = (error: any, req: Request, res: Response, _next: NextFunction) => {
   let statusCode = res.statusCode !== 200 ? res.statusCode : 500
   let message = error.message
 
@@ -135,7 +134,7 @@ export const createInternalServerError = (message: string = 'Internal server err
   return new AppError(message, 500)
 }
 
-export const healthCheckMiddleware = (req: Request, res: Response, next: NextFunction) => {
+export const healthCheckMiddleware = (_req: Request, res: Response, next: NextFunction) => {
   const memoryUsage = process.memoryUsage()
   const usedMemory = memoryUsage.heapUsed / memoryUsage.heapTotal
 
@@ -149,7 +148,7 @@ export const healthCheckMiddleware = (req: Request, res: Response, next: NextFun
   next()
 }
 
-export const smartRateLimitHandler = (error: any, req: Request, res: Response, next: NextFunction) => {
+export const smartRateLimitHandler = (error: any, _req: Request, res: Response, next: NextFunction) => {
   if (error.status === 429) {
     const retryAfter = error.retryAfter || 60
 
@@ -158,13 +157,14 @@ export const smartRateLimitHandler = (error: any, req: Request, res: Response, n
     res.setHeader('X-RateLimit-Remaining', 0)
     res.setHeader('X-RateLimit-Reset', Date.now() + (retryAfter * 1000))
 
-    return res.status(429).json({
+    res.status(429).json({
       success: false,
       message: `Muitas requisições. Tente novamente em ${retryAfter} segundos.`,
       error: 'RATE_LIMIT_EXCEEDED',
       retryAfter,
       timestamp: new Date().toISOString()
     })
+    return
   }
 
   next(error)

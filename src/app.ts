@@ -8,7 +8,7 @@ import dotenv from 'dotenv'
 
 dotenv.config()
 
-import Database from './config/database.config'
+import { testConnection } from './config/supabase.config'
 import corsOptions from './config/cors.config'
 import { logger, morganStream } from './utils/logger'
 import { API_PREFIX } from './utils/constants'
@@ -25,6 +25,7 @@ import projectRoutes from './routes/project.routes'
 import chatRoutes from './routes/chat.routes'
 import userRoutes from './routes/user.routes'
 import aiRoutes from './routes/ai.routes'
+import uploadRoutes from './routes/upload.routes'
 
 class App {
   public app: express.Application
@@ -32,7 +33,6 @@ class App {
 
   constructor() {
     this.app = express()
-    // Railway fornece PORT automaticamente
     this.port = parseInt(process.env.PORT || '3000')
     
     this.initializeMiddlewares()
@@ -41,11 +41,10 @@ class App {
   }
 
   private initializeMiddlewares(): void {
-    // ✅ CORREÇÃO: Trust proxy seguro específico para Railway
     if (process.env.NODE_ENV === 'production') {
-      this.app.set('trust proxy', 1) // Apenas o primeiro proxy (Railway)
+      this.app.set('trust proxy', 1)
     } else {
-      this.app.set('trust proxy', false) // Desenvolvimento sem proxy
+      this.app.set('trust proxy', false)
     }
     
     this.app.use(morgan('combined', { stream: morganStream }))
@@ -76,7 +75,7 @@ class App {
     this.app.use(express.urlencoded({ extended: true, limit: '10mb' }))
     this.app.use(cookieParser())
     
-    this.app.use((req, res, next) => {
+    this.app.use((_req, res, next) => {
       res.setHeader('X-Content-Type-Options', 'nosniff')
       res.setHeader('X-Frame-Options', 'DENY')
       res.setHeader('X-XSS-Protection', '1; mode=block')
@@ -84,7 +83,7 @@ class App {
       next()
     })
     
-    this.app.use((req, res, next) => {
+    this.app.use((req, _res, next) => {
       req.headers['x-request-id'] = req.headers['x-request-id'] || 
         `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
       next()
@@ -92,37 +91,40 @@ class App {
   }
 
   private initializeRoutes(): void {
-    this.app.get('/', (req, res) => {
+    this.app.get('/', (_req, res) => {
       res.json({
         success: true,
         message: 'MailTrendz API v2.0 - Backend Funcionando!',
-        version: '2.0.0-enhanced',
+        version: '2.0.0-supabase',
         timestamp: new Date(),
         environment: process.env.NODE_ENV || 'development',
         port: this.port,
         features: {
-          enhancedAI: true,
-          smartAnalysis: true,
-          intelligentChat: true,
-          compatibilityAI: true
+          database: 'supabase',
+          auth: 'supabase-auth',
+          storage: 'supabase-storage',
+          realtime: 'supabase-realtime'
         }
       })
     })
 
-    this.app.get('/health', async (req, res) => {
+    this.app.get('/health', async (_req, res) => {
       try {
-        const dbHealth = await Database.healthCheck()
+        const dbConnected = await testConnection()
         const memoryUsage = process.memoryUsage()
         
         const health = {
-          status: 'ok',
+          status: dbConnected ? 'ok' : 'degraded',
           timestamp: new Date(),
           uptime: process.uptime(),
-          version: '2.0.0-enhanced',
+          version: '2.0.0-supabase',
           environment: process.env.NODE_ENV || 'development',
           port: this.port,
           services: {
-            database: dbHealth,
+            database: { 
+              status: dbConnected ? 'connected' : 'disconnected',
+              provider: 'supabase'
+            },
             api: { status: 'ok' }
           },
           memory: {
@@ -132,8 +134,9 @@ class App {
           }
         }
 
-        res.json({
-          success: true,
+        const statusCode = dbConnected ? 200 : 503
+        res.status(statusCode).json({
+          success: dbConnected,
           data: health
         })
       } catch (error) {
@@ -145,49 +148,52 @@ class App {
       }
     })
 
-    // API Routes
     this.app.use(`${API_PREFIX}/auth`, authRoutes)
     this.app.use(`${API_PREFIX}/projects`, projectRoutes)
     this.app.use(`${API_PREFIX}/chats`, chatRoutes)
     this.app.use(`${API_PREFIX}/ai`, aiRoutes)
     this.app.use(`${API_PREFIX}/users`, userRoutes)
+    this.app.use(`${API_PREFIX}/upload`, uploadRoutes)
 
-    // API Info endpoint
-    this.app.get(`${API_PREFIX}`, (req, res) => {
+    this.app.get(`${API_PREFIX}`, (_req, res) => {
       res.json({
         success: true,
-        message: 'MailTrendz Enhanced API v2.0',
-        version: '2.0.0-enhanced',
+        message: 'MailTrendz Supabase API v2.0',
+        version: '2.0.0-supabase',
         endpoints: {
           auth: `${API_PREFIX}/auth`,
           projects: `${API_PREFIX}/projects`,
           chats: `${API_PREFIX}/chats`,
           ai: `${API_PREFIX}/ai`,
           users: `${API_PREFIX}/users`,
+          upload: `${API_PREFIX}/upload`,
           health: `${API_PREFIX}/health`
         },
         features: {
           login: `${API_PREFIX}/auth/login`,
           register: `${API_PREFIX}/auth/register`,
-          aiGenerate: `${API_PREFIX}/ai/generate`
+          aiGenerate: `${API_PREFIX}/ai/generate`,
+          uploadImage: `${API_PREFIX}/upload/image`
         },
         timestamp: new Date()
       })
     })
 
-    // API Health endpoint
-    this.app.get(`${API_PREFIX}/health`, async (req, res) => {
+    this.app.get(`${API_PREFIX}/health`, async (_req, res) => {
       try {
-        const dbHealth = await Database.healthCheck()
+        const dbConnected = await testConnection()
         
         const health = {
-          status: 'ok',
-          service: 'MailTrendz Enhanced API',
+          status: dbConnected ? 'ok' : 'degraded',
+          service: 'MailTrendz Supabase API',
           timestamp: new Date(),
           uptime: process.uptime(),
-          version: '2.0.0-enhanced',
+          version: '2.0.0-supabase',
           environment: process.env.NODE_ENV || 'development',
-          database: dbHealth
+          database: {
+            status: dbConnected ? 'connected' : 'disconnected',
+            provider: 'supabase'
+          }
         }
 
         res.json({
@@ -211,22 +217,29 @@ class App {
 
   public async start(): Promise<void> {
     try {
-      await Database.connect()
+      const dbConnected = await testConnection()
       
-      console.log('🧠 [APP] Sistema MailTrendz Enhanced iniciando...')
+      if (!dbConnected) {
+        logger.warn('Starting server without database connection')
+      }
+      
+      console.log('🧠 [APP] Sistema MailTrendz Supabase iniciando...')
       
       this.app.listen(this.port, '0.0.0.0', () => {
         logger.info(`🚀 MailTrendz API rodando na porta ${this.port}`, {
           port: this.port,
           environment: process.env.NODE_ENV || 'development',
-          version: '2.0.0-enhanced'
+          version: '2.0.0-supabase',
+          database: dbConnected ? 'connected' : 'disconnected'
         })
         
         console.log('✨ [APP] Servidor rodando:')
         console.log(`   📧 API Base: ${API_PREFIX}`)
         console.log(`   🔐 Auth: ${API_PREFIX}/auth/login`)
         console.log(`   🤖 AI: ${API_PREFIX}/ai/generate`)
+        console.log(`   📁 Upload: ${API_PREFIX}/upload/image`)
         console.log(`   ⚡ Health: /health`)
+        console.log(`   🗄️  Database: Supabase ${dbConnected ? '✅' : '❌'}`)
       })
       
       process.on('SIGTERM', this.gracefulShutdown.bind(this))
@@ -240,9 +253,6 @@ class App {
 
   private async gracefulShutdown(signal: string): Promise<void> {
     logger.info(`Received ${signal}, shutting down gracefully...`)
-    
-    await Database.disconnect()
-    
     logger.info('Server shutdown complete')
     process.exit(0)
   }

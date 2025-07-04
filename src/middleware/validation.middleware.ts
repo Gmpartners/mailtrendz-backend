@@ -1,27 +1,27 @@
 import { body, query, param, validationResult, FieldValidationError } from 'express-validator'
-import { Request, Response, NextFunction } from 'express'
+import { Response, NextFunction } from 'express'
+import { AuthRequest } from '../types/auth.types'
 import { HTTP_STATUS, ERROR_CODES, VALIDATION, PROJECT_TYPES } from '../utils/constants'
 
-// Middleware para processar resultados de validação
-export const handleValidationErrors = (req: Request, res: Response, next: NextFunction) => {
+export const handleValidationErrors = (req: AuthRequest, res: Response, next: NextFunction): void => {
   const errors = validationResult(req)
   
   if (!errors.isEmpty()) {
-    // Log detalhado do erro de validação
     console.log('❌ Erro de validação:', {
       body: req.body,
       errors: errors.array(),
       url: req.url,
-      method: req.method
+      method: req.method,
+      hasUserContext: !!req.user,
+      timestamp: new Date().toISOString()
     })
     
-    return res.status(HTTP_STATUS.BAD_REQUEST).json({
+    res.status(HTTP_STATUS.BAD_REQUEST).json({
       success: false,
       message: 'Dados de entrada inválidos',
       error: {
         code: ERROR_CODES.VALIDATION_ERROR,
         details: errors.array().map(error => {
-          // Usar type assertion para acessar propriedades específicas
           const fieldError = error as FieldValidationError
           return {
             field: fieldError.path || 'unknown',
@@ -31,12 +31,12 @@ export const handleValidationErrors = (req: Request, res: Response, next: NextFu
         })
       }
     })
+    return
   }
   
   next()
 }
 
-// Validações para autenticação
 export const validateRegister = [
   body('name')
     .trim()
@@ -121,7 +121,6 @@ export const validatePasswordUpdate = [
   handleValidationErrors
 ]
 
-// Validações para projetos - CORRIGIDA
 export const validateCreateProject = [
   body('prompt')
     .trim()
@@ -161,8 +160,8 @@ export const validateUpdateProject = [
   body('name')
     .optional()
     .trim()
-    .isLength({ min: VALIDATION.PROJECT.NAME_MIN_LENGTH, max: VALIDATION.PROJECT.NAME_MAX_LENGTH })
-    .withMessage(`Nome deve ter entre ${VALIDATION.PROJECT.NAME_MIN_LENGTH} e ${VALIDATION.PROJECT.NAME_MAX_LENGTH} caracteres`),
+    .isLength({ min: 1, max: VALIDATION.PROJECT.NAME_MAX_LENGTH })
+    .withMessage(`Nome deve ter entre 1 e ${VALIDATION.PROJECT.NAME_MAX_LENGTH} caracteres`),
   
   body('description')
     .optional()
@@ -183,18 +182,24 @@ export const validateUpdateProject = [
   body('content.subject')
     .optional()
     .trim()
-    .isLength({ min: 1, max: 100 })
-    .withMessage('Assunto deve ter entre 1 e 100 caracteres'),
+    .isLength({ min: 0, max: 100 })
+    .withMessage('Assunto deve ter no máximo 100 caracteres'),
   
   body('content.html')
     .optional()
-    .isLength({ min: 10 })
-    .withMessage('Conteúdo HTML deve ter pelo menos 10 caracteres'),
+    .isLength({ min: 0 })
+    .withMessage('Conteúdo HTML inválido'),
   
   body('content.text')
     .optional()
-    .isLength({ min: 10 })
-    .withMessage('Conteúdo texto deve ter pelo menos 10 caracteres'),
+    .isLength({ min: 0 })
+    .withMessage('Conteúdo texto inválido'),
+  
+  body('content.previewText')
+    .optional()
+    .trim()
+    .isLength({ min: 0, max: 200 })
+    .withMessage('Preview text deve ter no máximo 200 caracteres'),
   
   body('tags')
     .optional()
@@ -212,6 +217,11 @@ export const validateUpdateProject = [
     .isBoolean()
     .withMessage('isPublic deve ser verdadeiro ou falso'),
   
+  body('metadata')
+    .optional()
+    .isObject()
+    .withMessage('Metadata deve ser um objeto'),
+  
   handleValidationErrors
 ]
 
@@ -224,7 +234,6 @@ export const validateImproveEmail = [
   handleValidationErrors
 ]
 
-// Validações para chat
 export const validateSendMessage = [
   body('content')
     .trim()
@@ -254,7 +263,6 @@ export const validateUpdateChat = [
   handleValidationErrors
 ]
 
-// Validações para query parameters
 export const validatePagination = [
   query('page')
     .optional()
@@ -304,16 +312,36 @@ export const validateSearch = [
   handleValidationErrors
 ]
 
-// Validações para parâmetros de rota
 export const validateObjectId = (paramName: string = 'id') => [
   param(paramName)
-    .isMongoId()
-    .withMessage(`${paramName} deve ser um ID válido`),
+    .isUUID()
+    .withMessage(`${paramName} deve ser um UUID válido`),
   
   handleValidationErrors
 ]
 
-// Validações para perfil do usuário
+export const modifyEmailValidation = [
+  body('project_id')
+    .notEmpty()
+    .withMessage('ID do projeto é obrigatório')
+    .isUUID()
+    .withMessage('ID do projeto deve ser um UUID válido'),
+  
+  body('instructions')
+    .trim()
+    .notEmpty()
+    .withMessage('Instruções são obrigatórias')
+    .isLength({ min: 10, max: 1000 })
+    .withMessage('Instruções devem ter entre 10 e 1000 caracteres'),
+  
+  body('preserve_structure')
+    .optional()
+    .isBoolean()
+    .withMessage('preserve_structure deve ser um booleano'),
+  
+  handleValidationErrors
+]
+
 export const validateProfileUpdate = [
   body('name')
     .optional()
@@ -363,5 +391,6 @@ export default {
   validatePagination,
   validateSearch,
   validateObjectId,
-  validateProfileUpdate
+  validateProfileUpdate,
+  modifyEmailValidation
 }

@@ -1,7 +1,5 @@
-import { Types } from 'mongoose'
-
 export interface IConversationMessage {
-  id: Types.ObjectId
+  id: string
   type: 'user' | 'ai'
   content: string
   timestamp: Date

@@ -1,6 +1,11 @@
-import { Types } from 'mongoose'
+import { v4 as uuidv4 } from 'uuid'
 
 export const ID_UTILS = {
+  // Gerar novo ID
+  generate: (): string => {
+    return uuidv4()
+  },
+  
   // Converter para string sempre
   toString: (id: any): string => {
     if (!id) return ''
@@ -9,26 +14,22 @@ export const ID_UTILS = {
     return String(id)
   },
   
-  // Converter para ObjectId sempre
-  toObjectId: (id: any): Types.ObjectId => {
-    if (!id) throw new Error('ID é obrigatório')
-    if (id instanceof Types.ObjectId) return id
-    if (!Types.ObjectId.isValid(id)) throw new Error(`ID inválido: ${id}`)
-    return new Types.ObjectId(id)
-  },
-  
-  // Validar se ID é válido
+  // Validar se ID é válido UUID
   isValid: (id: any): boolean => {
     if (!id) return false
-    return Types.ObjectId.isValid(id)
+    if (typeof id !== 'string') return false
+    // Regex para validar UUID v4
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    return uuidRegex.test(id)
   },
   
   // Normalizar documento para frontend
   normalize: (doc: any) => {
     if (!doc) return null
+    const obj = typeof doc.toObject === 'function' ? doc.toObject() : doc
     return {
-      ...doc.toObject ? doc.toObject() : doc,
-      id: ID_UTILS.toString(doc._id || doc.id),
+      ...obj,
+      id: ID_UTILS.toString(obj.id || obj._id),
       _id: undefined // Remover _id do frontend
     }
   }
