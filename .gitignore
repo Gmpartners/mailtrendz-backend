@@ -2,9 +2,14 @@
 node_modules/
 npm-debug.log*
 
-# Environment
+# Environment files - SECURITY
+.env
 .env.local
+.env.production
+.env.development
+.env.test
 .env.backup
+!.env.example
 
 # Logs
 logs/
@@ -34,3 +39,21 @@ dist/
 temp/
 tmp/
 .tmp/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Runtime
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage/
+.nyc_output/
+
+# TypeScript
+*.tsbuildinfo
