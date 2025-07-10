@@ -4,8 +4,9 @@ export interface AuthRequest extends Request {
   user?: {
     id: string
     email: string
-    subscription: 'free' | 'pro' | 'enterprise'
+    subscription: 'free' | 'starter' | 'enterprise' | 'unlimited'
   }
+  creditsToConsume?: number
 }
 
 export interface LoginDto {
@@ -35,7 +36,7 @@ export interface UserProfile {
   name: string
   email: string
   avatar?: string
-  subscription: 'free' | 'pro' | 'enterprise'
+  subscription: 'free' | 'starter' | 'enterprise' | 'unlimited'
   apiUsage: {
     currentMonth: number
     limit: number

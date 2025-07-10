@@ -4,7 +4,8 @@ import ProjectService from '../services/project.service'
 import { CreateProjectDto, UpdateProjectDto, ProjectQuery } from '../types/project.types'
 import { HTTP_STATUS } from '../utils/constants'
 import { asyncHandler } from '../middleware/error.middleware'
-import { supabaseAdmin } from '../config/supabase.config'
+import { supabaseAdmin, supabase } from '../config/supabase.config'
+import { consumeCreditsAfterSuccess } from '../middleware/auth.middleware'
 
 function getUserToken(req: AuthRequest): string | undefined {
   const authHeader = req.headers.authorization
@@ -26,11 +27,16 @@ class ProjectController {
       p_cost: 0
     })
 
-    res.status(HTTP_STATUS.CREATED).json({
+    const response = {
       success: true,
       message: 'Projeto criado com sucesso',
       data: { project }
-    })
+    }
+
+    res.status(HTTP_STATUS.CREATED).json(response)
+
+    // Consumir créditos após resposta bem-sucedida
+    await consumeCreditsAfterSuccess(req)
   })
 
   findAll = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -44,15 +50,31 @@ class ProjectController {
       sortBy: req.query.sortBy as string,
       order: req.query.order as 'asc' | 'desc',
       page: parseInt(req.query.page as string) || 1,
-      limit: parseInt(req.query.limit as string) || 20
+      limit: parseInt(req.query.limit as string) || 20,
+      folder_id: req.query.folder_id as string
     }
 
     const result = await ProjectService.findByUser(userId, query, userToken)
 
+    // ✅ CORRIGIDO: Estrutura de resposta consistente com o frontend
     res.json({
       success: true,
-      data: result.data,
-      pagination: result.pagination
+      data: {
+        projects: result.data || [], // Garantir que sempre seja um array
+        pagination: {
+          currentPage: result.pagination.page,
+          totalPages: result.pagination.totalPages,
+          totalItems: result.pagination.total,
+          hasNext: result.pagination.page < result.pagination.totalPages,
+          hasPrev: result.pagination.page > 1
+        },
+        stats: {
+          total: result.pagination.total,
+          drafts: (result.data || []).filter((p: any) => p.status === 'draft').length,
+          completed: (result.data || []).filter((p: any) => p.status === 'completed').length,
+          recent: result.data?.length || 0
+        }
+      }
     })
   })
 
@@ -62,10 +84,30 @@ class ProjectController {
     const userToken = getUserToken(req)
 
     const project = await ProjectService.findById(projectId, userId, userToken)
+    
+    const { data: hasHtmlExport } = await supabase.rpc('user_has_feature', {
+      p_user_id: userId,
+      p_feature: 'has_html_export'
+    })
+
+    const { data: hasEmailPreview } = await supabase.rpc('user_has_feature', {
+      p_user_id: userId,
+      p_feature: 'has_email_preview'
+    })
+
+    if (!hasEmailPreview && project.content.html) {
+      project.content.html = '<p>Visualização de HTML não disponível no plano Free. Faça upgrade para visualizar.</p>'
+    }
 
     res.json({
       success: true,
-      data: { project }
+      data: { 
+        project,
+        permissions: {
+          canExportHtml: hasHtmlExport || false,
+          canPreviewEmail: hasEmailPreview || false
+        }
+      }
     })
   })
 
@@ -104,11 +146,16 @@ class ProjectController {
 
     const project = await ProjectService.duplicate(projectId, userId, userToken)
 
-    res.status(HTTP_STATUS.CREATED).json({
+    const response = {
       success: true,
       message: 'Projeto duplicado com sucesso',
       data: { project }
-    })
+    }
+
+    res.status(HTTP_STATUS.CREATED).json(response)
+
+    // Consumir créditos após resposta bem-sucedida
+    await consumeCreditsAfterSuccess(req)
   })
 
   getStats = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -164,6 +211,24 @@ class ProjectController {
     const projectId = req.params.id
     const userId = req.user?.id
     const userToken = getUserToken(req)
+
+    const { data: hasHtmlExport } = await supabase.rpc('user_has_feature', {
+      p_user_id: userId,
+      p_feature: 'has_html_export'
+    })
+
+    if (!hasHtmlExport) {
+      res.status(HTTP_STATUS.FORBIDDEN).json({
+        success: false,
+        message: 'Exportação de HTML não disponível no seu plano',
+        error: {
+          code: 'FEATURE_NOT_AVAILABLE',
+          feature: 'has_html_export',
+          currentPlan: req.user?.subscription
+        }
+      })
+      return
+    }
 
     const project = await ProjectService.findById(projectId, userId, userToken)
 
@@ -288,11 +353,16 @@ class ProjectController {
 
     const project = await ProjectService.findById(projectId, userId, userToken)
 
-    res.json({
+    const response = {
       success: true,
       message: 'Funcionalidade de melhoria em desenvolvimento',
       data: { project }
-    })
+    }
+
+    res.json(response)
+
+    // Consumir créditos após resposta bem-sucedida
+    await consumeCreditsAfterSuccess(req)
   })
 
   getProjectAnalytics = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -319,6 +389,28 @@ class ProjectController {
     res.json({
       success: true,
       data: { analytics }
+    })
+  })
+
+  moveToFolder = asyncHandler(async (req: AuthRequest, res: Response) => {
+    const projectId = req.params.id
+    const userId = req.user!.id
+    const userToken = getUserToken(req)
+    const { folderId } = req.body
+
+    const project = await ProjectService.update(
+      projectId, 
+      userId, 
+      { folder_id: folderId }, 
+      userToken
+    )
+
+    res.json({
+      success: true,
+      message: folderId 
+        ? 'Projeto movido para a pasta com sucesso'
+        : 'Projeto removido da pasta com sucesso',
+      data: { project }
     })
   })
 }

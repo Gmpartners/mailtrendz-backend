@@ -5,6 +5,7 @@ import { HTTP_STATUS } from '../utils/constants'
 import { asyncHandler } from '../middleware/error.middleware'
 import { supabase } from '../config/supabase.config'
 import { logger } from '../utils/logger'
+import CreditsService from '../services/credits.service'
 
 class AuthController {
   register = asyncHandler(async (req: any, res: Response) => {
@@ -30,7 +31,6 @@ class AuthController {
 
     logger.info('Social login attempt:', { supabaseUserId, email, provider })
 
-    // Verificar se já existe perfil
     let { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
@@ -38,13 +38,14 @@ class AuthController {
       .single()
 
     if (profileError && profileError.code !== 'PGRST116') {
-      // PGRST116 significa "não encontrado", que é esperado para novos usuários
       logger.error('Error checking profile:', profileError)
       throw new Error('Erro ao verificar perfil')
     }
 
+    let isNewUser = false
+
     if (!profile) {
-      // Criar novo perfil para usuário social
+      isNewUser = true
       logger.info('Creating new profile for social user:', { supabaseUserId, email })
       
       const { data: newProfile, error: insertError } = await supabase
@@ -71,7 +72,6 @@ class AuthController {
       
       profile = newProfile
     } else {
-      // Atualizar avatar se mudou
       if (avatar && avatar !== profile.avatar) {
         const { error: updateError } = await supabase
           .from('profiles')
@@ -84,9 +84,19 @@ class AuthController {
       }
     }
 
-    logger.info('Social login successful:', { userId: profile.id, provider })
+    if (isNewUser) {
+      try {
+        await CreditsService.initializeCreditsForNewUser(supabaseUserId, 'free')
+        logger.info('Credits initialized for new social user:', { supabaseUserId })
+      } catch (error: any) {
+        logger.error('Error initializing credits for social user:', error)
+      }
+    }
 
-    // NÃO gerar tokens customizados - o Supabase já tem os tokens!
+    const creditsBalance = await CreditsService.getCreditsBalance(supabaseUserId)
+
+    logger.info('Social login successful:', { userId: profile.id, provider, creditsBalance })
+
     res.json({
       success: true,
       message: `Login com ${provider} realizado com sucesso`,
@@ -108,11 +118,12 @@ class AuthController {
             defaultTone: 'profissional',
             emailSignature: null
           },
-          isEmailVerified: true, // Usuários social já são verificados
+          isEmailVerified: true,
           lastLoginAt: new Date().toISOString(),
           createdAt: profile.created_at,
           updatedAt: profile.updated_at
-        }
+        },
+        creditsBalance
       }
     })
   })

@@ -2,6 +2,7 @@ import { Response } from 'express'
 import { AuthRequest } from '../types/auth.types'
 import { supabase } from '../config/supabase.config'
 import StorageService from '../services/supabase/storage.service'
+import CreditsService from '../services/credits.service'
 import { HTTP_STATUS } from '../utils/constants'
 import { asyncHandler } from '../middleware/error.middleware'
 import { logger } from '../utils/logger'
@@ -31,6 +32,8 @@ class UserController {
       .gte('month', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
       .single()
 
+    const creditsBalance = await CreditsService.getCreditsBalance(userId)
+
     const profileData = {
       ...profile,
       apiUsage: {
@@ -38,7 +41,8 @@ class UserController {
         limit: profile.api_usage_limit,
         percentage: Math.round(((usage?.request_count || 0) / profile.api_usage_limit) * 100),
         resetDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1)
-      }
+      },
+      creditsBalance
     }
 
     res.json({
@@ -169,6 +173,8 @@ class UserController {
       endpointStats[log.endpoint] = (endpointStats[log.endpoint] || 0) + 1
     })
 
+    const creditsBalance = await CreditsService.getCreditsBalance(userId)
+
     res.json({
       success: true,
       data: {
@@ -180,8 +186,20 @@ class UserController {
         },
         history: monthlyUsage || [],
         endpoints: endpointStats,
-        subscription: profile?.subscription || 'free'
+        subscription: profile?.subscription || 'free',
+        creditsBalance
       }
+    })
+  })
+
+  getCredits = asyncHandler(async (req: AuthRequest, res: Response) => {
+    const userId = req.user!.id
+
+    const creditsBalance = await CreditsService.getCreditsBalance(userId)
+
+    res.json({
+      success: true,
+      data: { credits: creditsBalance }
     })
   })
 
@@ -212,6 +230,8 @@ class UserController {
       .order('views', { ascending: false })
       .limit(5)
 
+    const creditsBalance = await CreditsService.getCreditsBalance(userId)
+
     res.json({
       success: true,
       data: {
@@ -220,7 +240,8 @@ class UserController {
           chats: chatCount || 0
         },
         recent: recentProjects || [],
-        popular: topProjects || []
+        popular: topProjects || [],
+        creditsBalance
       }
     })
   })
@@ -276,7 +297,6 @@ class UserController {
     })
   })
 
-  // Métodos adicionais para compatibilidade com rotas
   systemHealthCheck = asyncHandler(async (_req: AuthRequest, res: Response) => {
     const health = {
       status: 'ok',
@@ -300,12 +320,15 @@ class UserController {
       this.getRecentActivity(userId)
     ])
 
+    const creditsBalance = await CreditsService.getCreditsBalance(userId)
+
     res.json({
       success: true,
       data: {
         profile,
         stats,
-        recentActivity
+        recentActivity,
+        creditsBalance
       }
     })
   })
@@ -452,7 +475,6 @@ class UserController {
       return
     }
 
-    // Note: Em produção, verificar a senha antes de deletar
     logger.warn(`Account deletion requested for user: ${userId}`)
 
     res.json({
@@ -461,7 +483,6 @@ class UserController {
     })
   })
 
-  // Métodos auxiliares privados
   private async getProfileData(userId: string) {
     const { data } = await supabase
       .from('profiles')

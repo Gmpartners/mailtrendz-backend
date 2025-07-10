@@ -4,6 +4,7 @@ import { RegisterDto, LoginDto } from '../types/auth.types'
 import { HTTP_STATUS, ERROR_CODES } from '../utils/constants'
 import { logger } from '../utils/logger'
 import { ApiError } from '../utils/api-error'
+import CreditsService from './credits.service'
 
 type Profile = Database['public']['Tables']['profiles']['Row']
 
@@ -30,6 +31,8 @@ class AuthService {
         throw new ApiError('Erro ao criar usuário', HTTP_STATUS.INTERNAL_SERVER_ERROR)
       }
 
+      await CreditsService.initializeCreditsForNewUser(authData.user.id, 'free')
+
       const { data: sessionData, error: sessionError } = await supabase.auth.signInWithPassword({
         email: userData.email,
         password: userData.password
@@ -50,6 +53,8 @@ class AuthService {
         logger.error('Error fetching profile after registration:', profileError)
       }
 
+      const creditsBalance = await CreditsService.getCreditsBalance(authData.user.id)
+
       logger.info(`New user registered: ${userData.email} from IP: ${ip}`)
 
       return {
@@ -58,7 +63,8 @@ class AuthService {
         data: {
           user: profile,
           accessToken: sessionData.session?.access_token,
-          refreshToken: sessionData.session?.refresh_token
+          refreshToken: sessionData.session?.refresh_token,
+          creditsBalance
         }
       }
     } catch (error) {
@@ -96,6 +102,8 @@ class AuthService {
         throw new ApiError('Perfil não encontrado', HTTP_STATUS.NOT_FOUND)
       }
 
+      const creditsBalance = await CreditsService.getCreditsBalance(authData.user.id)
+
       logger.info(`User logged in: ${credentials.email} from IP: ${ip}`)
 
       return {
@@ -104,7 +112,8 @@ class AuthService {
         data: {
           user: profile,
           accessToken: authData.session.access_token,
-          refreshToken: authData.session.refresh_token
+          refreshToken: authData.session.refresh_token,
+          creditsBalance
         }
       }
     } catch (error) {
@@ -130,13 +139,16 @@ class AuthService {
         .eq('id', sessionData.user!.id)
         .single()
 
+      const creditsBalance = await CreditsService.getCreditsBalance(sessionData.user!.id)
+
       return {
         success: true,
         message: 'Token renovado com sucesso',
         data: {
           user: profile,
           accessToken: sessionData.session.access_token,
-          refreshToken: sessionData.session.refresh_token
+          refreshToken: sessionData.session.refresh_token,
+          creditsBalance
         }
       }
     } catch (error) {
@@ -226,7 +238,6 @@ class AuthService {
 
   async resetPassword(token: string, newPassword: string) {
     try {
-      // Primeiro, verificar o token
       const { data: sessionData, error: verifyError } = await supabase.auth.verifyOtp({
         token_hash: token,
         type: 'recovery'
@@ -236,7 +247,6 @@ class AuthService {
         throw new ApiError('Token inválido ou expirado', HTTP_STATUS.BAD_REQUEST, ERROR_CODES.TOKEN_INVALID)
       }
 
-      // Se o token for válido, atualizar a senha
       const { error: updateError } = await supabase.auth.updateUser({
         password: newPassword
       })
@@ -312,8 +322,9 @@ class AuthService {
       const counts = {
         total: profiles.length,
         free: 0,
-        pro: 0,
-        enterprise: 0
+        starter: 0,
+        enterprise: 0,
+        unlimited: 0
       }
 
       profiles.forEach(profile => {
@@ -359,6 +370,5 @@ class AuthService {
   }
 }
 
-// Export both the class and the instance
 export { AuthService }
 export default new AuthService()

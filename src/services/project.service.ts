@@ -19,69 +19,94 @@ type ProjectUpdate = Database['public']['Tables']['projects']['Update']
 class ProjectService {
   async create(userId: string, projectData: CreateProjectDto, userToken?: string): Promise<Project> {
     try {
-      // ✅ USAR CLIENTE COM CONTEXTO DE USUÁRIO
       const supabase = getSupabaseWithAuth(userToken)
       
       let projectName = projectData.name
       let htmlContent = projectData.html || ''
       let subjectContent = projectData.subject || ''
       
-      // ✅ SE HOUVER IMAGENS, PROCESSAR COM IA PRIMEIRO
-      if (projectData.images && projectData.images.length > 0) {
-        logger.info('Processing project with images', {
-          imageCount: projectData.images.length,
-          prompt: projectData.prompt?.substring(0, 50)
+      const shouldGenerateWithAI = (projectData.prompt && projectData.prompt.trim().length > 0) || 
+                                   (projectData.images && projectData.images.length > 0)
+      
+      if (shouldGenerateWithAI) {
+        logger.info('🤖 Generating HTML with AI for project creation', {
+          hasPrompt: !!projectData.prompt,
+          promptLength: projectData.prompt?.length || 0,
+          hasImages: !!(projectData.images && projectData.images.length > 0),
+          imageCount: projectData.images?.length || 0,
+          userId
         })
         
         try {
-          // Preparar dados para IA - extrair apenas strings válidas
           const imageUrls: string[] = []
           const imageIntents: Array<{ url: string; intent: 'analyze' | 'include' }> = []
           
-          projectData.images.forEach(img => {
-            let url: string | undefined
-            let intent: 'analyze' | 'include' = 'include'
-            
-            if (typeof img === 'string') {
-              url = img
-            } else if (img && typeof img === 'object') {
-              url = img.uploadUrl || img.url
-              intent = img.intent || 'include'
-            }
-            
-            if (url && typeof url === 'string' && url.length > 0) {
-              imageUrls.push(url)
-              imageIntents.push({ url, intent })
-            }
-          })
+          if (projectData.images && projectData.images.length > 0) {
+            projectData.images.forEach(img => {
+              let url: string | undefined
+              let intent: 'analyze' | 'include' = 'include'
+              
+              if (typeof img === 'string') {
+                url = img
+              } else if (img && typeof img === 'object') {
+                url = img.uploadUrl || img.url
+                intent = img.intent || 'include'
+              }
+              
+              if (url && typeof url === 'string' && url.length > 0) {
+                imageUrls.push(url)
+                imageIntents.push({ url, intent })
+              }
+            })
+          }
           
-          // Gerar HTML com IA
           const iaResponse = await iaService.generateHTML({
-            userInput: projectData.prompt || 'Criar email baseado nas imagens anexadas',
+            userInput: projectData.prompt || 'Criar email personalizado',
             imageUrls: imageUrls,
             imageIntents: imageIntents,
             context: {
               industry: projectData.industry || 'geral',
               tone: projectData.tone || 'profissional',
-              targetAudience: projectData.targetAudience
+              targetAudience: projectData.targetAudience,
+              userId,
+              timestamp: new Date().toISOString()
             },
             userId
           })
           
-          // Usar o HTML gerado pela IA
           htmlContent = iaResponse.html
-          subjectContent = iaResponse.subject
+          subjectContent = iaResponse.subject || 'Email Personalizado'
           
-          logger.info('IA generated HTML with images successfully', {
+          logger.info('✅ IA generated HTML successfully', {
             htmlLength: htmlContent.length,
             subject: subjectContent,
-            imagesProcessed: iaResponse.metadata.imagesAnalyzed
+            hasImages: imageUrls.length > 0,
+            imagesProcessed: iaResponse.metadata?.imagesAnalyzed || 0,
+            model: iaResponse.metadata?.model
           })
           
         } catch (iaError: any) {
-          logger.error('Error generating HTML with IA for images:', iaError)
-          // Continuar sem HTML se IA falhar
+          logger.error('❌ Error generating HTML with IA, using fallback', iaError)
+          
+          const fallbackHtml = this.generateFallbackHTML(projectData)
+          htmlContent = fallbackHtml.html
+          subjectContent = fallbackHtml.subject
+          
+          logger.info('📝 Using fallback HTML generation', {
+            htmlLength: htmlContent.length,
+            subject: subjectContent
+          })
         }
+      }
+      
+      if (!htmlContent || htmlContent.trim().length === 0) {
+        const fallbackHtml = this.generateFallbackHTML(projectData)
+        htmlContent = fallbackHtml.html
+        subjectContent = fallbackHtml.subject
+        
+        logger.info('📝 No HTML content, using fallback', {
+          htmlLength: htmlContent.length
+        })
       }
       
       if (!projectName || typeof projectName !== 'string' || projectName.trim() === '') {
@@ -112,16 +137,18 @@ class ProjectService {
         type: projectData.type || 'campaign',
         content: {
           html: htmlContent,
-          text: projectData.text || '',
+          text: projectData.text || this.htmlToText(htmlContent),
           subject: subjectContent,
-          previewText: projectData.previewText || ''
+          previewText: projectData.previewText || this.generatePreviewText(htmlContent)
         },
         metadata: {
           industry: projectData.industry || 'outros',
           targetAudience: projectData.targetAudience || '',
           tone: projectData.tone || 'profissional',
           originalPrompt: projectData.prompt || '',
-          version: 1
+          version: 1,
+          aiGenerated: shouldGenerateWithAI,
+          generatedAt: new Date().toISOString()
         },
         tags: projectData.tags || [],
         chat_id: projectData.chatId || null
@@ -136,7 +163,9 @@ class ProjectService {
         type: newProject.type,
         hasUserToken: !!userToken,
         hasHtml: !!newProject.content?.html,
-        htmlLength: newProject.content?.html?.length || 0
+        htmlLength: newProject.content?.html?.length || 0,
+        hasSubject: !!newProject.content?.subject,
+        aiGenerated: newProject.metadata?.aiGenerated
       })
 
       const { data: project, error } = await supabase
@@ -163,7 +192,12 @@ class ProjectService {
         throw new ApiError('Erro ao criar projeto - nenhum dado retornado', HTTP_STATUS.INTERNAL_SERVER_ERROR)
       }
 
-      logger.info(`✅ Project created successfully: ${project.id} with name: "${project.name}" by user ${userId}`)
+      logger.info(`✅ Project created successfully: ${project.id} with name: "${project.name}" by user ${userId}`, {
+        htmlLength: project.content?.html?.length || 0,
+        hasSubject: !!project.content?.subject,
+        aiGenerated: project.metadata?.aiGenerated
+      })
+      
       return project
     } catch (error) {
       logger.error('Create project error:', {
@@ -177,6 +211,76 @@ class ProjectService {
       if (error instanceof ApiError) throw error
       throw new ApiError('Erro ao criar projeto', HTTP_STATUS.INTERNAL_SERVER_ERROR)
     }
+  }
+
+  private generateFallbackHTML(projectData: CreateProjectDto): { html: string; subject: string } {
+    const prompt = projectData.prompt || 'Email personalizado'
+    const industry = projectData.industry || 'geral'
+    
+    const subject = `Email ${industry.charAt(0).toUpperCase() + industry.slice(1)} - ${new Date().toLocaleDateString('pt-BR')}`
+    
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${subject}</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #f5f5f5; font-family: Arial, sans-serif; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header { background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%); padding: 25px; text-align: center; border-radius: 12px; margin-bottom: 25px; }
+        .content { padding: 40px 30px; }
+        .cta { text-align: center; margin: 20px 0; }
+        .btn { background: #6366f1; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block; }
+        .footer { background: #6b7280; color: white; padding: 15px; text-align: center; font-size: 12px; }
+        p { font-size: 16px; margin-bottom: 15px; line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="content">
+            <div class="header">
+                <h1 style="color: #7c3aed; font-size: 28px; margin: 0;">✨ ${subject}</h1>
+            </div>
+            
+            <p style="color: #374151;">
+                Email baseado em: "<strong>${prompt}</strong>"
+            </p>
+            
+            <p style="color: #374151;">
+                Este email foi gerado automaticamente com HTML responsivo. Você pode editá-lo diretamente no editor ou pedir modificações via chat.
+            </p>
+            
+            <div class="cta">
+                <a href="#" class="btn">Saiba Mais</a>
+            </div>
+        </div>
+        <div class="footer">
+            <p style="margin: 0;">© 2025 MailTrendz - Sistema Inteligente</p>
+        </div>
+    </div>
+</body>
+</html>`
+
+    return { html, subject }
+  }
+
+  private htmlToText(html: string): string {
+    if (!html) return ''
+    
+    return html
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .substring(0, 500)
+  }
+
+  private generatePreviewText(html: string): string {
+    if (!html) return ''
+    
+    const text = this.htmlToText(html)
+    const words = text.split(' ').slice(0, 20)
+    return words.join(' ') + (words.length >= 20 ? '...' : '')
   }
 
   private generateProjectName(prompt: string): string {
@@ -240,7 +344,6 @@ class ProjectService {
 
   async findById(projectId: string, userId?: string, userToken?: string): Promise<ProjectWithStats> {
     try {
-      // ✅ USAR CLIENTE COM CONTEXTO DE USUÁRIO
       const supabase = getSupabaseWithAuth(userToken)
       
       const { data: project, error } = await supabase
@@ -267,7 +370,6 @@ class ProjectService {
 
   async findByUser(userId: string, query: ProjectQuery = {}, userToken?: string) {
     try {
-      // ✅ USAR CLIENTE COM CONTEXTO DE USUÁRIO
       const supabase = getSupabaseWithAuth(userToken)
       
       let queryBuilder = supabase
@@ -324,7 +426,6 @@ class ProjectService {
 
   async update(projectId: string, userId: string, updates: UpdateProjectDto, userToken?: string): Promise<Project> {
     try {
-      // ✅ USAR CLIENTE COM CONTEXTO DE USUÁRIO
       const supabase = getSupabaseWithAuth(userToken)
       
       const { data: existingProject } = await supabase
@@ -359,7 +460,8 @@ class ProjectService {
         projectUpdate.metadata = {
           ...existingProject.metadata,
           ...updates.metadata,
-          version: (existingProject.metadata.version || 0) + 1
+          version: (existingProject.metadata.version || 0) + 1,
+          lastModified: new Date().toISOString()
         }
       }
 
@@ -386,7 +488,6 @@ class ProjectService {
 
   async delete(projectId: string, userId: string, userToken?: string): Promise<void> {
     try {
-      // ✅ USAR CLIENTE COM CONTEXTO DE USUÁRIO
       const supabase = getSupabaseWithAuth(userToken)
       
       const { error } = await supabase
@@ -412,7 +513,6 @@ class ProjectService {
 
   async duplicate(projectId: string, userId: string, userToken?: string): Promise<Project> {
     try {
-      // ✅ USAR CLIENTE COM CONTEXTO DE USUÁRIO
       const supabase = getSupabaseWithAuth(userToken)
       
       const { data: original } = await supabase
@@ -459,7 +559,6 @@ class ProjectService {
 
   async getStats(userId: string, userToken?: string): Promise<ProjectStats> {
     try {
-      // ✅ USAR CLIENTE COM CONTEXTO DE USUÁRIO
       const supabase = getSupabaseWithAuth(userToken)
       
       const { data: projects } = await supabase
@@ -522,7 +621,6 @@ class ProjectService {
 
   async getPopularTags(userId?: string, limit: number = 20, userToken?: string) {
     try {
-      // ✅ USAR CLIENTE APROPRIADO
       const supabase = userId ? getSupabaseWithAuth(userToken) : supabaseAdmin
       
       let query = supabase.from('projects').select('tags')

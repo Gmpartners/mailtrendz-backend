@@ -74,11 +74,14 @@ export interface Database {
             tone: string
             originalPrompt: string
             version: number
+            aiGenerated?: boolean
+            generatedAt?: string
             lastImprovement?: {
               feedback: string
               timestamp: string
               version: number
             }
+            lastModified?: string
           }
           tags: string[]
           color: string
@@ -107,6 +110,8 @@ export interface Database {
             tone?: string
             originalPrompt: string
             version?: number
+            aiGenerated?: boolean
+            generatedAt?: string
           }
           tags?: string[]
           color?: string
@@ -135,11 +140,14 @@ export interface Database {
             tone?: string
             originalPrompt?: string
             version?: number
+            aiGenerated?: boolean
+            generatedAt?: string
             lastImprovement?: {
               feedback: string
               timestamp: string
               version: number
             }
+            lastModified?: string
           }
           tags?: string[]
           color?: string

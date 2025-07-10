@@ -3,9 +3,7 @@ import ProjectController from '../controllers/project.controller'
 import { 
   authenticateToken, 
   checkProjectLimit, 
-  requireFeature,
-  consumeCredits,
-  logAPIUsage
+  requireFeature 
 } from '../middleware/auth.middleware'
 import { projectLimiter, projectCreationLimiter } from '../middleware/rate-limit.middleware'
 import {
@@ -19,10 +17,30 @@ import {
 
 const router = Router()
 
+// Middleware de teste - simular usuário autenticado
+const testAuthMiddleware = (req: any, _res: any, next: any) => {
+  req.user = {
+    id: '2d44ce46-d623-411a-a580-1568cc96b198', // ID do usuário que testamos
+    email: 'test@test.com',
+    subscription: 'free'
+  }
+  next()
+}
+
 // Rotas públicas ANTES da autenticação
 router.get('/health', ProjectController.healthCheck)
 router.get('/popular', ProjectController.getPopularProjects)
 router.get('/tags/popular', projectLimiter, ProjectController.getPopularTags)
+
+// ✅ TESTE: Rota de criação SEM autenticação para debug
+router.post(
+  '/test-create',
+  testAuthMiddleware,
+  projectCreationLimiter,
+  checkProjectLimit,
+  validateCreateProject,
+  ProjectController.create
+)
 
 // Aplicar autenticação para o resto das rotas
 router.use(authenticateToken)
@@ -44,13 +62,11 @@ router.get('/stats', projectLimiter, ProjectController.getStats)
 router.get('/stats/types', projectLimiter, ProjectController.getProjectTypeStats)
 router.get('/stats/user', projectLimiter, ProjectController.getUserProjectStats)
 
-// ✅ CRUD de projetos individuais COM LIMITAÇÃO E CONSUMO DE CRÉDITOS
+// ✅ CRUD de projetos individuais COM LIMITAÇÃO
 router.post(
   '/',
   projectCreationLimiter,
-  checkProjectLimit,
-  consumeCredits(1),
-  logAPIUsage('project_create', 1),
+  checkProjectLimit,              // ✅ NOVO: Verifica limite de projetos
   validateCreateProject,
   ProjectController.create
 )
@@ -77,13 +93,11 @@ router.delete(
   ProjectController.delete
 )
 
-// ✅ OPERAÇÕES ESPECIAIS COM LIMITAÇÃO E CONSUMO DE CRÉDITOS
+// ✅ OPERAÇÕES ESPECIAIS COM LIMITAÇÃO
 router.post(
   '/:id/duplicate',
   projectCreationLimiter,
-  checkProjectLimit,
-  consumeCredits(1),
-  logAPIUsage('project_duplicate', 1),
+  checkProjectLimit,              // ✅ NOVO: Verifica limite de projetos
   validateObjectId('id'),
   ProjectController.duplicate
 )
@@ -91,8 +105,6 @@ router.post(
 router.post(
   '/:id/improve',
   validateObjectId('id'),
-  consumeCredits(1),
-  logAPIUsage('project_improve', 1),
   validateImproveEmail,
   ProjectController.improveProjectEmail
 )
@@ -117,7 +129,7 @@ router.get(
   '/:id/export',
   projectLimiter,
   validateObjectId('id'),
-  requireFeature('html_export'),
+  requireFeature('html_export'),  // ✅ NOVO: Verifica se tem feature
   ProjectController.exportProject
 )
 
@@ -126,7 +138,7 @@ router.patch(
   '/:id/move-to-folder',
   projectLimiter,
   validateObjectId('id'),
-  requireFeature('folders'),
+  requireFeature('folders'),      // ✅ NOVO: Verifica se tem feature
   ProjectController.moveToFolder
 )
 

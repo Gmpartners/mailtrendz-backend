@@ -22,10 +22,14 @@ import { generalLimiter } from './middleware/rate-limit.middleware'
 
 import authRoutes from './routes/auth.routes'
 import projectRoutes from './routes/project.routes'
+import projectDebugRoutes from './routes/project.routes.debug'
 import chatRoutes from './routes/chat.routes'
 import userRoutes from './routes/user.routes'
 import aiRoutes from './routes/ai.routes'
 import uploadRoutes from './routes/upload.routes'
+import subscriptionRoutes from './routes/subscription.routes'
+import folderRoutes from './routes/folder.routes'
+import creditsRoutes from './routes/credits.routes'
 
 class App {
   public app: express.Application
@@ -69,11 +73,25 @@ class App {
     
     this.app.use(cors(corsOptions))
     this.app.use(compression())
-    this.app.use(generalLimiter)
     
-    this.app.use(express.json({ limit: '10mb' }))
+    this.app.use((req, res, next) => {
+      if (req.originalUrl === `${API_PREFIX}/subscriptions/webhook`) {
+        next()
+      } else {
+        express.json({ limit: '10mb' })(req, res, next)
+      }
+    })
+    
     this.app.use(express.urlencoded({ extended: true, limit: '10mb' }))
     this.app.use(cookieParser())
+    
+    this.app.use((req, res, next) => {
+      if (req.originalUrl !== `${API_PREFIX}/subscriptions/webhook`) {
+        generalLimiter(req, res, next)
+      } else {
+        next()
+      }
+    })
     
     this.app.use((_req, res, next) => {
       res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -95,7 +113,7 @@ class App {
       res.json({
         success: true,
         message: 'MailTrendz API v2.0 - Backend Funcionando!',
-        version: '2.0.0-supabase',
+        version: '2.0.0-supabase-stripe',
         timestamp: new Date(),
         environment: process.env.NODE_ENV || 'development',
         port: this.port,
@@ -103,7 +121,10 @@ class App {
           database: 'supabase',
           auth: 'supabase-auth',
           storage: 'supabase-storage',
-          realtime: 'supabase-realtime'
+          realtime: 'supabase-realtime',
+          payments: 'stripe',
+          subscriptions: 'active',
+          credits: 'active'
         }
       })
     })
@@ -117,7 +138,7 @@ class App {
           status: dbConnected ? 'ok' : 'degraded',
           timestamp: new Date(),
           uptime: process.uptime(),
-          version: '2.0.0-supabase',
+          version: '2.0.0-supabase-stripe',
           environment: process.env.NODE_ENV || 'development',
           port: this.port,
           services: {
@@ -125,7 +146,12 @@ class App {
               status: dbConnected ? 'connected' : 'disconnected',
               provider: 'supabase'
             },
-            api: { status: 'ok' }
+            api: { status: 'ok' },
+            payments: { 
+              status: process.env.STRIPE_SECRET_KEY ? 'configured' : 'not-configured',
+              provider: 'stripe'
+            },
+            credits: { status: 'active' }
           },
           memory: {
             used: Math.round(memoryUsage.heapUsed / 1024 / 1024 * 100) / 100,
@@ -150,16 +176,20 @@ class App {
 
     this.app.use(`${API_PREFIX}/auth`, authRoutes)
     this.app.use(`${API_PREFIX}/projects`, projectRoutes)
+    this.app.use(`${API_PREFIX}/projects-debug`, projectDebugRoutes) // ✅ ROTA DE DEBUG
     this.app.use(`${API_PREFIX}/chats`, chatRoutes)
     this.app.use(`${API_PREFIX}/ai`, aiRoutes)
     this.app.use(`${API_PREFIX}/users`, userRoutes)
     this.app.use(`${API_PREFIX}/upload`, uploadRoutes)
+    this.app.use(`${API_PREFIX}/subscriptions`, subscriptionRoutes)
+    this.app.use(`${API_PREFIX}/folders`, folderRoutes)
+    this.app.use(`${API_PREFIX}/credits`, creditsRoutes)
 
     this.app.get(`${API_PREFIX}`, (_req, res) => {
       res.json({
         success: true,
         message: 'MailTrendz Supabase API v2.0',
-        version: '2.0.0-supabase',
+        version: '2.0.0-supabase-stripe',
         endpoints: {
           auth: `${API_PREFIX}/auth`,
           projects: `${API_PREFIX}/projects`,
@@ -167,13 +197,19 @@ class App {
           ai: `${API_PREFIX}/ai`,
           users: `${API_PREFIX}/users`,
           upload: `${API_PREFIX}/upload`,
+          subscriptions: `${API_PREFIX}/subscriptions`,
+          folders: `${API_PREFIX}/folders`,
+          credits: `${API_PREFIX}/credits`,
           health: `${API_PREFIX}/health`
         },
         features: {
           login: `${API_PREFIX}/auth/login`,
           register: `${API_PREFIX}/auth/register`,
           aiGenerate: `${API_PREFIX}/ai/generate`,
-          uploadImage: `${API_PREFIX}/upload/image`
+          uploadImage: `${API_PREFIX}/upload/image`,
+          plans: `${API_PREFIX}/subscriptions/plans`,
+          checkout: `${API_PREFIX}/subscriptions/checkout`,
+          creditsInfo: `${API_PREFIX}/credits/info`
         },
         timestamp: new Date()
       })
@@ -188,11 +224,19 @@ class App {
           service: 'MailTrendz Supabase API',
           timestamp: new Date(),
           uptime: process.uptime(),
-          version: '2.0.0-supabase',
+          version: '2.0.0-supabase-stripe',
           environment: process.env.NODE_ENV || 'development',
           database: {
             status: dbConnected ? 'connected' : 'disconnected',
             provider: 'supabase'
+          },
+          payments: {
+            status: process.env.STRIPE_SECRET_KEY ? 'configured' : 'not-configured',
+            provider: 'stripe'
+          },
+          credits: {
+            status: 'active',
+            freePlanCredits: 3
           }
         }
 
@@ -223,14 +267,15 @@ class App {
         logger.warn('Starting server without database connection')
       }
       
-      console.log('🧠 [APP] Sistema MailTrendz Supabase iniciando...')
+      console.log('🧠 [APP] Sistema MailTrendz Supabase com Stripe iniciando...')
       
       this.app.listen(this.port, '0.0.0.0', () => {
         logger.info(`🚀 MailTrendz API rodando na porta ${this.port}`, {
           port: this.port,
           environment: process.env.NODE_ENV || 'development',
-          version: '2.0.0-supabase',
-          database: dbConnected ? 'connected' : 'disconnected'
+          version: '2.0.0-supabase-stripe',
+          database: dbConnected ? 'connected' : 'disconnected',
+          stripe: process.env.STRIPE_SECRET_KEY ? 'configured' : 'not-configured'
         })
         
         console.log('✨ [APP] Servidor rodando:')
@@ -238,8 +283,14 @@ class App {
         console.log(`   🔐 Auth: ${API_PREFIX}/auth/login`)
         console.log(`   🤖 AI: ${API_PREFIX}/ai/generate`)
         console.log(`   📁 Upload: ${API_PREFIX}/upload/image`)
+        console.log(`   💳 Subscriptions: ${API_PREFIX}/subscriptions/plans`)
+        console.log(`   📂 Folders: ${API_PREFIX}/folders`)
+        console.log(`   🎯 Credits: ${API_PREFIX}/credits/info`)
         console.log(`   ⚡ Health: /health`)
+        console.log(`   🔧 Debug: ${API_PREFIX}/projects-debug/test-create`)
         console.log(`   🗄️  Database: Supabase ${dbConnected ? '✅' : '❌'}`)
+        console.log(`   💰 Stripe: ${process.env.STRIPE_SECRET_KEY ? '✅' : '❌'}`)
+        console.log(`   🎟️  Credits: Free Plan (3 usos) ✅`)
       })
       
       process.on('SIGTERM', this.gracefulShutdown.bind(this))

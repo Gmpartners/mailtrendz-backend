@@ -12,6 +12,7 @@ export interface IProject {
   color: string
   isPublic: boolean
   chatId?: string | null
+  folderId?: string | null
   createdAt: string
   updatedAt: string
   opens?: number
@@ -21,26 +22,26 @@ export interface IProject {
   conversionRate?: number
 }
 
-// ✅ CORREÇÃO: Tornar 'name' opcional no CreateProjectDto
 export interface CreateProjectDto {
-  name?: string // ✅ AGORA É OPCIONAL - será gerado automaticamente se não fornecido
+  name?: string
   description?: string
   type?: 'campaign' | 'newsletter' | 'transactional' | 'notification' | 'other'
   industry?: string
   targetAudience?: string
   tone?: string
   prompt?: string
-  html?: string // ✅ TORNAR OPCIONAL TAMBÉM
-  text?: string // ✅ TORNAR OPCIONAL TAMBÉM
-  subject?: string // ✅ TORNAR OPCIONAL TAMBÉM
+  html?: string
+  text?: string
+  subject?: string
   previewText?: string
   tags?: string[]
   chatId?: string
+  folderId?: string
   images?: Array<{
     uploadUrl?: string
     url?: string
     intent?: 'analyze' | 'include'
-  }> // ✅ ADICIONADO CAMPO IMAGES
+  }>
 }
 
 export interface UpdateProjectDto {
@@ -66,6 +67,7 @@ export interface UpdateProjectDto {
   }
   tags?: string[]
   isPublic?: boolean
+  folder_id?: string | null
 }
 
 export interface ProjectQuery {
@@ -77,6 +79,7 @@ export interface ProjectQuery {
   order?: 'asc' | 'desc'
   page?: number
   limit?: number
+  folder_id?: string
 }
 
 export interface ProjectStats {
@@ -106,6 +109,7 @@ export interface ProjectWithStats {
   color: string
   is_public: boolean
   chat_id: string | null
+  folder_id: string | null
   created_at: string
   updated_at: string
   opens: number
@@ -124,6 +128,7 @@ export interface ProjectFilters {
   dateFrom?: Date
   dateTo?: Date
   isPublic?: boolean
+  folderId?: string | null
   pagination?: {
     page: number
     limit: number
@@ -142,6 +147,10 @@ export interface ProjectResponse {
     uses: number
     views: number
     conversionRate: number
+  }
+  permissions?: {
+    canExportHtml: boolean
+    canPreviewEmail: boolean
   }
 }
 

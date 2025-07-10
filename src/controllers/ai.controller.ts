@@ -3,6 +3,8 @@ import { validationResult } from 'express-validator'
 import { HTTP_STATUS } from '../utils/constants'
 import { logger } from '../utils/logger'
 import { supabase } from '../config/supabase.config'
+import { AuthRequest } from '../types/auth.types'
+import { consumeCreditsAfterSuccess } from '../middleware/auth.middleware'
 import iaService from '../services/iaservice'
 
 const generateFallbackHTML = (prompt: string) => {
@@ -210,7 +212,7 @@ const processImages = (images: any[]) => {
   return { imageUrls, imageIntents }
 }
 
-const generateEmail = async (req: Request, res: Response): Promise<void> => {
+const generateEmail = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
@@ -232,7 +234,7 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
       imageUrls = [] 
     } = req.body
     
-    const userId = (req as any).user?.id
+    const userId = req.user?.id
 
     if (!prompt?.trim()) {
       res.status(HTTP_STATUS.BAD_REQUEST).json({
@@ -253,13 +255,9 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
       
       const fallbackResult = generateFallbackHTML(prompt)
 
+      // ✅ CONSUMIR CRÉDITOS APÓS SUCESSO
       if (userId) {
-        await supabase.rpc('increment_api_usage', {
-          p_user_id: userId,
-          p_endpoint: '/ai/generate',
-          p_tokens: 0,
-          p_cost: 0
-        })
+        await consumeCreditsAfterSuccess(req)
       }
 
       res.status(HTTP_STATUS.OK).json({
@@ -304,11 +302,15 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
       const estimatedTokens = Math.ceil(iaResponse.html.length / 4)
       const estimatedCost = estimatedTokens * 0.000003
 
+      // ✅ CONSUMIR CRÉDITOS APÓS SUCESSO
       if (userId) {
-        await supabase.rpc('increment_api_usage', {
+        await consumeCreditsAfterSuccess(req)
+        
+        // Log de uso da API
+        await supabase.rpc('log_api_usage', {
           p_user_id: userId,
-          p_endpoint: '/ai/generate',
-          p_tokens: estimatedTokens,
+          p_endpoint: 'ai_generate',
+          p_tokens_used: estimatedTokens,
           p_cost: estimatedCost
         })
       }
@@ -337,13 +339,9 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
       
       const fallbackResult = generateFallbackHTML(prompt)
       
+      // ✅ CONSUMIR CRÉDITOS APÓS SUCESSO (mesmo com fallback)
       if (userId) {
-        await supabase.rpc('increment_api_usage', {
-          p_user_id: userId,
-          p_endpoint: '/ai/generate',
-          p_tokens: 0,
-          p_cost: 0
-        })
+        await consumeCreditsAfterSuccess(req)
       }
       
       res.status(HTTP_STATUS.OK).json({
@@ -375,7 +373,7 @@ const generateEmail = async (req: Request, res: Response): Promise<void> => {
   }
 }
 
-const modifyEmail = async (req: Request, res: Response): Promise<void> => {
+const modifyEmail = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
@@ -387,7 +385,7 @@ const modifyEmail = async (req: Request, res: Response): Promise<void> => {
       return
     }
 
-    const userId = (req as any).user?.id
+    const userId = req.user?.id
     const { 
       instructions, 
       html, 
@@ -403,10 +401,17 @@ const modifyEmail = async (req: Request, res: Response): Promise<void> => {
     if (!iaService.isEnabled()) {
       const fallbackResult = generateFallbackHTML(instructions)
       
+      // ✅ CONSUMIR CRÉDITOS APÓS SUCESSO
+      if (userId) {
+        await consumeCreditsAfterSuccess(req)
+      }
+      
       res.status(HTTP_STATUS.OK).json({
         success: true,
         message: 'Email modificado com fallback',
-        data: fallbackResult,
+        data: {
+          ...fallbackResult
+        },
         metadata: {
           service: 'mailtrendz-fallback-modification',
           fallback_mode: true
@@ -428,11 +433,15 @@ const modifyEmail = async (req: Request, res: Response): Promise<void> => {
       const estimatedTokens = Math.ceil(iaResponse.html.length / 4)
       const estimatedCost = estimatedTokens * 0.000003
 
+      // ✅ CONSUMIR CRÉDITOS APÓS SUCESSO
       if (userId) {
-        await supabase.rpc('increment_api_usage', {
+        await consumeCreditsAfterSuccess(req)
+        
+        // Log de uso da API
+        await supabase.rpc('log_api_usage', {
           p_user_id: userId,
-          p_endpoint: '/ai/modify',
-          p_tokens: estimatedTokens,
+          p_endpoint: 'ai_modify',
+          p_tokens_used: estimatedTokens,
           p_cost: estimatedCost
         })
       }
@@ -442,7 +451,9 @@ const modifyEmail = async (req: Request, res: Response): Promise<void> => {
         message: (iaResponse.metadata.imagesAnalyzed ?? 0) > 0
           ? `Email modificado com sucesso! ${iaResponse.metadata.imagesAnalyzed} imagem(ns) integrada(s).`
           : 'Email modificado com sucesso via IA Service',
-        data: iaResponse,
+        data: {
+          ...iaResponse
+        },
         metadata: {
           ...iaResponse.metadata,
           proxy_processing_time: processingTime,
@@ -457,10 +468,17 @@ const modifyEmail = async (req: Request, res: Response): Promise<void> => {
       
       const fallbackResult = generateFallbackHTML(instructions)
       
+      // ✅ CONSUMIR CRÉDITOS APÓS SUCESSO (mesmo com fallback)
+      if (userId) {
+        await consumeCreditsAfterSuccess(req)
+      }
+      
       res.status(HTTP_STATUS.OK).json({
         success: true,
         message: 'Email modificado com fallback devido a erro',
-        data: fallbackResult,
+        data: {
+          ...fallbackResult
+        },
         metadata: {
           service: 'mailtrendz-fallback-modification',
           fallback_mode: true,
@@ -480,7 +498,7 @@ const modifyEmail = async (req: Request, res: Response): Promise<void> => {
   }
 }
 
-const validateEmail = async (req: Request, res: Response): Promise<void> => {
+const validateEmail = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { html } = req.body
 
@@ -535,6 +553,7 @@ const validateEmail = async (req: Request, res: Response): Promise<void> => {
       validation.suggestions.push('HTML bem estruturado para emails!')
     }
 
+    // Validação não consome créditos
     res.status(HTTP_STATUS.OK).json({
       success: true,
       message: 'HTML validado com sucesso',
@@ -552,9 +571,9 @@ const validateEmail = async (req: Request, res: Response): Promise<void> => {
   }
 }
 
-const processChat = async (req: Request, res: Response): Promise<void> => {
+const processChat = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.id
+    const userId = req.user?.id
     const { 
       message, 
       chat_id, 
@@ -591,11 +610,15 @@ const processChat = async (req: Request, res: Response): Promise<void> => {
       const estimatedTokens = Math.ceil(message.length / 4)
       const estimatedCost = estimatedTokens * 0.000003
 
+      // ✅ CONSUMIR CRÉDITOS APÓS SUCESSO
       if (userId) {
-        await supabase.rpc('increment_api_usage', {
+        await consumeCreditsAfterSuccess(req)
+        
+        // Log de uso da API
+        await supabase.rpc('log_api_usage', {
           p_user_id: userId,
-          p_endpoint: '/ai/chat',
-          p_tokens: estimatedTokens,
+          p_endpoint: 'ai_chat',
+          p_tokens_used: estimatedTokens,
           p_cost: estimatedCost
         })
       }
@@ -711,11 +734,11 @@ export const getHealthStatus = async (_req: Request, res: Response): Promise<voi
         ia_enabled: iaService.isEnabled(),
         ia_available: iaAvailable,
         system_type: 'html_direct_ia_with_images',
-        version: '4.0.0-ia-integrated-images'
+        version: '4.0.0-ia-integrated-images-stripe'
       },
       metadata: {
         timestamp: new Date().toISOString(),
-        version: '4.0.0-ia-integrated-images'
+        version: '4.0.0-ia-integrated-images-stripe'
       }
     })
 
