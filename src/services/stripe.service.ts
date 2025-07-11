@@ -1,6 +1,6 @@
 import Stripe from 'stripe'
 import { logger } from '../utils/logger'
-import { supabase } from '../config/supabase.config'
+import { supabase, supabaseAdmin } from '../config/supabase.config'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-06-30.basil'
@@ -95,7 +95,7 @@ const PLAN_FEATURES = {
 }
 
 class StripeService {
-  async createCustomer(userId: string, email: string, name?: string): Promise<string> {
+  async createCustomer(userId: string, email?: string, name?: string): Promise<string> {
     try {
       const { data: existingSubscription } = await supabase
         .from('subscriptions')
@@ -107,13 +107,21 @@ class StripeService {
         return existingSubscription.stripe_customer_id
       }
 
-      const customer = await stripe.customers.create({
-        email,
-        name,
+      const customerData: any = {
         metadata: {
           supabase_user_id: userId
         }
-      })
+      }
+
+      if (email) {
+        customerData.email = email
+      }
+
+      if (name) {
+        customerData.name = name
+      }
+
+      const customer = await stripe.customers.create(customerData)
 
       await supabase
         .from('subscriptions')
@@ -139,19 +147,36 @@ class StripeService {
     cancelUrl: string
   ): Promise<string> {
     try {
+      logger.info('Creating checkout session for user:', { userId, priceId })
+
+      const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId)
+      
+      if (!authUser?.user) {
+        throw new Error('Auth user not found')
+      }
+
       const { data: profile } = await supabase
         .from('profiles')
-        .select('email, name')
+        .select('name')
         .eq('id', userId)
         .single()
 
-      if (!profile) {
-        throw new Error('User profile not found')
+      const userEmail = authUser.user.email
+      const userName = profile?.name || authUser.user.user_metadata?.name || 'User'
+
+      logger.info('User data for checkout:', { 
+        userId, 
+        email: userEmail, 
+        name: userName 
+      })
+
+      if (!userEmail) {
+        throw new Error('User email not found in auth')
       }
 
-      const customerId = await this.createCustomer(userId, profile.email, profile.name)
+      const customerId = await this.createCustomer(userId, userEmail, userName)
 
-      const session = await stripe.checkout.sessions.create({
+      const sessionData: any = {
         customer: customerId,
         payment_method_types: ['card'],
         line_items: [{
@@ -168,9 +193,12 @@ class StripeService {
           metadata: {
             user_id: userId
           }
-        },
-        locale: 'pt-BR'
-      })
+        }
+      }
+
+      logger.info('Creating Stripe checkout session:', { sessionData })
+
+      const session = await stripe.checkout.sessions.create(sessionData)
 
       logger.info('Checkout session created:', { sessionId: session.id, userId })
       return session.url || ''

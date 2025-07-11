@@ -1,59 +1,21 @@
 import dotenv from 'dotenv'
+
+// ✅ IMPORTANTE: Carregar dotenv ANTES de importar qualquer módulo
+dotenv.config()
+
 import StripeService from '../src/services/stripe.service'
 import { supabase } from '../src/config/supabase.config'
-
-dotenv.config()
 
 const testStripeIntegration = async () => {
   console.log('🧪 Testing Stripe Integration...\n')
 
   try {
-    // Test 1: Get Price IDs
-    console.log('1️⃣ Testing Price IDs...')
-    const priceIds = await StripeService.getPriceIds()
-    console.log('✅ Price IDs:', priceIds)
-    console.log('')
-
-    // Test 2: Test Supabase connection
-    console.log('2️⃣ Testing Supabase connection...')
-    const { data: plans, error } = await supabase
-      .from('plan_features')
-      .select('*')
-    
-    if (error) {
-      console.log('❌ Supabase error:', error.message)
-    } else {
-      console.log('✅ Plan features found:', plans?.length || 0)
-      plans?.forEach(plan => {
-        console.log(`   - ${plan.plan_type}: ${plan.ai_credits} credits`)
-      })
-    }
-    console.log('')
-
-    // Test 3: Test Stripe API connection
-    console.log('3️⃣ Testing Stripe API connection...')
-    try {
-      // This will test if Stripe is properly configured
-      console.log('✅ Stripe service initialized successfully')
-      console.log('✅ API Version: 2025-06-30.basil')
-      console.log('')
-    } catch (stripeError: any) {
-      console.log('❌ Stripe initialization error:', stripeError.message)
-      console.log('')
-    }
-
-    // Test 4: Environment variables
-    console.log('4️⃣ Checking environment variables...')
+    // Test 1: Environment variables
+    console.log('1️⃣ Checking environment variables...')
     const requiredEnvVars = [
       'STRIPE_SECRET_KEY',
       'STRIPE_PUBLISHABLE_KEY',
-      'STRIPE_PRICE_STARTER_MONTHLY',
-      'STRIPE_PRICE_STARTER_YEARLY',
-      'STRIPE_PRICE_ENTERPRISE_MONTHLY',
-      'STRIPE_PRICE_ENTERPRISE_YEARLY',
-      'STRIPE_PRICE_UNLIMITED_MONTHLY',
-      'STRIPE_PRICE_UNLIMITED_YEARLY',
-      'FRONTEND_URL',
+      'STRIPE_WEBHOOK_SECRET',
       'SUPABASE_URL',
       'SUPABASE_ANON_KEY'
     ]
@@ -73,40 +35,73 @@ const testStripeIntegration = async () => {
       missingVars.forEach(varName => {
         console.log(`   - ${varName}`)
       })
+      return false
     }
 
     console.log('')
-    console.log('🎯 Integration Status:')
-    console.log(`   Database: ${error ? '❌' : '✅'}`)
-    console.log(`   Stripe Config: ${missingVars.some(v => v.includes('STRIPE')) ? '❌' : '✅'}`)
-    console.log(`   Environment: ${missingVars.length === 0 ? '✅' : '❌'}`)
+
+    // Test 2: Test Supabase connection
+    console.log('2️⃣ Testing Supabase connection...')
+    const { data: plans, error } = await supabase
+      .from('plan_features')
+      .select('*')
     
-    if (error || missingVars.length > 0) {
-      console.log('')
-      console.log('🔧 Next steps:')
-      if (error) {
-        console.log('   1. Run the Stripe migration SQL in Supabase')
-        console.log('   2. Execute: src/database/migrations/003_stripe_integration.sql')
-      }
-      if (missingVars.length > 0) {
-        console.log('   3. Update your .env file with missing variables')
-      }
+    if (error) {
+      console.log('❌ Supabase error:', error.message)
+      console.log('💡 Pode ser que as tabelas não existam ainda. Execute a migration.')
+      return false
     } else {
-      console.log('')
-      console.log('🎉 Integration is ready!')
-      console.log('   ✅ All systems operational')
-      console.log('   ✅ Ready for frontend integration')
+      console.log('✅ Plan features found:', plans?.length || 0)
+      plans?.forEach(plan => {
+        console.log(`   - ${plan.plan_type}: ${plan.ai_credits} credits`)
+      })
     }
+    console.log('')
+
+    // Test 3: Test Stripe API connection
+    console.log('3️⃣ Testing Stripe API connection...')
+    try {
+      const priceIds = await StripeService.getPriceIds()
+      console.log('✅ Stripe service initialized successfully')
+      console.log('✅ Price IDs loaded:', Object.keys(priceIds).length)
+      console.log('')
+    } catch (stripeError: any) {
+      console.log('❌ Stripe initialization error:', stripeError.message)
+      return false
+    }
+
+    // Test 4: Test Plans Info
+    console.log('4️⃣ Testing Plans Info...')
+    try {
+      const plansInfo = await StripeService.getPlansInfo()
+      console.log('✅ Plans info loaded:', Object.keys(plansInfo).length)
+      console.log('')
+    } catch (error: any) {
+      console.log('❌ Plans info error:', error.message)
+      return false
+    }
+
+    console.log('🎉 TODOS OS TESTES PASSARAM!')
+    console.log('✅ Integração Stripe está funcionando corretamente')
+    console.log('✅ Pronto para usar no frontend')
+    
+    return true
 
   } catch (error: any) {
     console.log('❌ Test failed:', error.message)
+    return false
   }
 }
 
 // Run the test
-testStripeIntegration().then(() => {
+testStripeIntegration().then((success) => {
   console.log('\n✨ Test completed!')
-  process.exit(0)
+  if (success) {
+    console.log('🚀 Próximo passo: Testar com npm run dev')
+  } else {
+    console.log('🔧 Corrija os problemas antes de prosseguir')
+  }
+  process.exit(success ? 0 : 1)
 }).catch((error) => {
   console.error('💥 Test crashed:', error)
   process.exit(1)

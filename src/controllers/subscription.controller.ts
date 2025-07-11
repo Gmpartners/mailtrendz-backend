@@ -181,6 +181,85 @@ class SubscriptionController {
     }
   })
 
+  consumeCredits = asyncHandler(async (req: AuthRequest, res: Response) => {
+    const userId = req.user!.id
+    const { amount = 1 } = req.body
+
+    try {
+      console.log('💎 [SUBSCRIPTION] Consumindo créditos:', { userId, amount })
+      
+      // Verificar se o usuário tem créditos suficientes
+      const creditsBalance = await CreditsService.getCreditsBalance(userId)
+      
+      if (!creditsBalance) {
+        res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
+          message: 'Créditos não encontrados'
+        })
+        return
+      }
+
+      // Se for unlimited, sempre pode consumir
+      if (creditsBalance.unlimited) {
+        console.log('♾️ [SUBSCRIPTION] Plano unlimited, permitindo consumo')
+        res.json({
+          success: true,
+          message: 'Credits consumed successfully (unlimited plan)',
+          data: {
+            consumed: amount,
+            remaining: 'unlimited'
+          }
+        })
+        return
+      }
+
+      // Verificar se tem créditos suficientes
+      if (creditsBalance.available < amount) {
+        console.log('❌ [SUBSCRIPTION] Créditos insuficientes:', { available: creditsBalance.available, requested: amount })
+        res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Insufficient credits',
+          data: {
+            available: creditsBalance.available,
+            requested: amount
+          }
+        })
+        return
+      }
+
+      // Consumir créditos
+      const success = await CreditsService.useCredits(userId, amount)
+      
+      if (success) {
+        console.log('✅ [SUBSCRIPTION] Créditos consumidos com sucesso')
+        
+        // Buscar balance atualizado
+        const updatedBalance = await CreditsService.getCreditsBalance(userId)
+        
+        res.json({
+          success: true,
+          message: 'Credits consumed successfully',
+          data: {
+            consumed: amount,
+            remaining: updatedBalance?.available || 0
+          }
+        })
+      } else {
+        console.log('❌ [SUBSCRIPTION] Erro ao consumir créditos')
+        res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+          success: false,
+          message: 'Failed to consume credits'
+        })
+      }
+    } catch (error: any) {
+      console.error('❌ [SUBSCRIPTION] Erro ao consumir créditos:', error)
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro ao consumir créditos'
+      })
+    }
+  })
+
   checkUpgradeRequired = asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id
     const { feature } = req.body

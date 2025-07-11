@@ -11,6 +11,8 @@ router.get('/current', authenticateToken, SubscriptionController.getCurrentSubsc
 
 router.get('/credits', authenticateToken, SubscriptionController.getCurrentCredits)
 
+router.post('/consume-credits', authenticateToken, SubscriptionController.consumeCredits)
+
 router.post('/check-upgrade', authenticateToken, SubscriptionController.checkUpgradeRequired)
 
 router.post('/checkout', authenticateToken, SubscriptionController.createCheckoutSession)

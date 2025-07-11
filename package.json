@@ -14,7 +14,7 @@
     "prepare": "npm run build",
     "initialize-credits": "ts-node scripts/initialize-credits.ts",
     "reset-monthly-credits": "ts-node scripts/reset-monthly-credits.ts",
-    "test:stripe": "ts-node scripts/test-stripe-connection.ts",
+    "test:stripe": "ts-node scripts/test-stripe-integration.ts",
     "setup:stripe": "ts-node scripts/setup-stripe.ts",
     "migration:run": "ts-node scripts/run-migrations.ts",
     "lint": "eslint src/**/*.ts",
