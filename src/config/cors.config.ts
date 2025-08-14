@@ -1,18 +1,18 @@
 import { CorsOptions } from 'cors'
 
 const allowedOrigins = [
-  // URLs de produção - CORRIGIDAS
-  'https://mailtrendz-frontend.onrender.com',
-  'https://mailtrendz-frontend-production.onrender.com',
+  // URLs de produção
+  'https://mailtrendz.com',
+  'https://www.mailtrendz.com',
   process.env.FRONTEND_URL,
   
-  // URLs de desenvolvimento
+  // URLs de desenvolvimento (manter para desenvolvimento local)
   'http://localhost:5173',
-  'http://localhost:5175', // Frontend Vite server
+  'http://localhost:5175',
   'http://localhost:3000',
   'http://localhost:3001',
   'http://127.0.0.1:5173',
-  'http://127.0.0.1:5175', // Frontend Vite server (127.0.0.1)
+  'http://127.0.0.1:5175',
   'http://127.0.0.1:3000'
 ].filter(Boolean) // Remove valores undefined/null
 

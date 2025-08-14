@@ -47,10 +47,10 @@ const PLAN_FEATURES = {
     price_monthly: 0,
     price_yearly: 0,
     features: [
-      '3 emails por mês',
       '3 créditos de IA',
       'Editor básico',
-      'Suporte por email'
+      'Suporte por email',
+      'Projetos limitados'
     ]
   },
   // ✅ CORRIGIDO: Mudei 'pro' para 'starter'
