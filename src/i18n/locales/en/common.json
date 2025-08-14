@@ -1,0 +1,21 @@
+{
+  "success": "Success",
+  "error": "Error", 
+  "notFound": "Not found",
+  "unauthorized": "Unauthorized access",
+  "forbidden": "Access forbidden",
+  "badRequest": "Bad request",
+  "internalError": "Internal server error",
+  "serviceUnavailable": "Service temporarily unavailable",
+  "created": "Created successfully",
+  "updated": "Updated successfully",
+  "deleted": "Deleted successfully",
+  "processing": "Processing...",
+  "completed": "Completed",
+  "cancelled": "Cancelled",
+  "pending": "Pending",
+  "active": "Active",
+  "inactive": "Inactive",
+  "enabled": "Enabled",
+  "disabled": "Disabled"
+}

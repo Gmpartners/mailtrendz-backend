@@ -1,0 +1,82 @@
+{
+  "auth": {
+    "invalidCredentials": "Invalid email or password",
+    "emailAlreadyExists": "Email address already exists",
+    "accountNotFound": "Account not found",
+    "accountNotVerified": "Account not verified",
+    "tokenExpired": "Token has expired",
+    "tokenInvalid": "Invalid token",
+    "passwordResetRequired": "Password reset required",
+    "sessionExpired": "Session has expired",
+    "insufficientPermissions": "Insufficient permissions",
+    "accountDisabled": "Account has been disabled",
+    "tooManyAttempts": "Too many login attempts. Please try again later.",
+    "socialLoginError": "Error during social login"
+  },
+  "validation": {
+    "required": "{{field}} is required",
+    "invalidFormat": "{{field}} has invalid format",
+    "tooShort": "{{field}} is too short (minimum {{min}} characters)",
+    "tooLong": "{{field}} is too long (maximum {{max}} characters)",
+    "invalidEmail": "Invalid email address",
+    "invalidUrl": "Invalid URL",
+    "invalidNumber": "Invalid number",
+    "invalidDate": "Invalid date",
+    "passwordTooWeak": "Password is too weak",
+    "passwordMismatch": "Passwords do not match",
+    "invalidFileType": "Invalid file type. Allowed: {{types}}",
+    "fileTooLarge": "File too large. Maximum size: {{maxSize}}",
+    "invalidRange": "Value must be between {{min}} and {{max}}"
+  },
+  "project": {
+    "notFound": "Project not found",
+    "accessDenied": "Access denied to project",
+    "limitReached": "Project limit reached",
+    "creationFailed": "Failed to create project",
+    "updateFailed": "Failed to update project",
+    "deleteFailed": "Failed to delete project",
+    "duplicateName": "Project name already exists",
+    "invalidStatus": "Invalid project status"
+  },
+  "subscription": {
+    "notFound": "Subscription not found",
+    "expired": "Subscription has expired",
+    "cancelled": "Subscription has been cancelled",
+    "paymentFailed": "Payment failed",
+    "upgradeRequired": "Upgrade required for this feature",
+    "downgradeFailed": "Failed to downgrade subscription",
+    "alreadySubscribed": "Already subscribed to this plan",
+    "invalidPlan": "Invalid subscription plan"
+  },
+  "credits": {
+    "insufficient": "Insufficient credits",
+    "expired": "Credits have expired",
+    "invalidAmount": "Invalid credit amount",
+    "purchaseFailed": "Credit purchase failed",
+    "refundFailed": "Credit refund failed",
+    "limitExceeded": "Credit limit exceeded"
+  },
+  "upload": {
+    "failed": "File upload failed",
+    "invalidType": "Invalid file type",
+    "tooLarge": "File too large",
+    "corruptedFile": "File appears to be corrupted",
+    "storageError": "Storage error occurred",
+    "processsingFailed": "File processing failed"
+  },
+  "ai": {
+    "serviceUnavailable": "AI service is temporarily unavailable",
+    "rateLimitExceeded": "AI rate limit exceeded",
+    "contentFiltered": "Content was filtered by AI safety measures",
+    "processingFailed": "AI processing failed",
+    "invalidPrompt": "Invalid prompt provided",
+    "modelError": "AI model error"
+  },
+  "database": {
+    "connectionFailed": "Database connection failed",
+    "queryFailed": "Database query failed",
+    "transactionFailed": "Database transaction failed",
+    "constraintViolation": "Database constraint violation",
+    "duplicateEntry": "Duplicate entry found"
+  }
+}

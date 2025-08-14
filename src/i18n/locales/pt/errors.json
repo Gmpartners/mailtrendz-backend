@@ -1,0 +1,82 @@
+{
+  "auth": {
+    "invalidCredentials": "Email ou senha inválidos",
+    "emailAlreadyExists": "Endereço de email já existe",
+    "accountNotFound": "Conta não encontrada",
+    "accountNotVerified": "Conta não verificada",
+    "tokenExpired": "Token expirou",
+    "tokenInvalid": "Token inválido",
+    "passwordResetRequired": "Redefinição de senha necessária",
+    "sessionExpired": "Sessão expirou",
+    "insufficientPermissions": "Permissões insuficientes",
+    "accountDisabled": "Conta foi desabilitada",
+    "tooManyAttempts": "Muitas tentativas de login. Tente novamente mais tarde.",
+    "socialLoginError": "Erro durante login social"
+  },
+  "validation": {
+    "required": "{{field}} é obrigatório",
+    "invalidFormat": "{{field}} tem formato inválido",
+    "tooShort": "{{field}} é muito curto (mínimo {{min}} caracteres)",
+    "tooLong": "{{field}} é muito longo (máximo {{max}} caracteres)",
+    "invalidEmail": "Endereço de email inválido",
+    "invalidUrl": "URL inválida",
+    "invalidNumber": "Número inválido",
+    "invalidDate": "Data inválida",
+    "passwordTooWeak": "Senha muito fraca",
+    "passwordMismatch": "As senhas não coincidem",
+    "invalidFileType": "Tipo de arquivo inválido. Permitidos: {{types}}",
+    "fileTooLarge": "Arquivo muito grande. Tamanho máximo: {{maxSize}}",
+    "invalidRange": "Valor deve estar entre {{min}} e {{max}}"
+  },
+  "project": {
+    "notFound": "Projeto não encontrado",
+    "accessDenied": "Acesso negado ao projeto",
+    "limitReached": "Limite de projetos atingido",
+    "creationFailed": "Falha ao criar projeto",
+    "updateFailed": "Falha ao atualizar projeto",
+    "deleteFailed": "Falha ao excluir projeto",
+    "duplicateName": "Nome do projeto já existe",
+    "invalidStatus": "Status do projeto inválido"
+  },
+  "subscription": {
+    "notFound": "Assinatura não encontrada",
+    "expired": "Assinatura expirou",
+    "cancelled": "Assinatura foi cancelada",
+    "paymentFailed": "Falha no pagamento",
+    "upgradeRequired": "Upgrade necessário para este recurso",
+    "downgradeFailed": "Falha ao fazer downgrade da assinatura",
+    "alreadySubscribed": "Já está inscrito neste plano",
+    "invalidPlan": "Plano de assinatura inválido"
+  },
+  "credits": {
+    "insufficient": "Créditos insuficientes",
+    "expired": "Créditos expiraram",
+    "invalidAmount": "Quantidade de créditos inválida",
+    "purchaseFailed": "Falha na compra de créditos",
+    "refundFailed": "Falha no reembolso de créditos",
+    "limitExceeded": "Limite de créditos excedido"
+  },
+  "upload": {
+    "failed": "Falha no upload do arquivo",
+    "invalidType": "Tipo de arquivo inválido",
+    "tooLarge": "Arquivo muito grande",
+    "corruptedFile": "Arquivo parece estar corrompido",
+    "storageError": "Erro de armazenamento ocorreu",
+    "processsingFailed": "Falha no processamento do arquivo"
+  },
+  "ai": {
+    "serviceUnavailable": "Serviço de IA temporariamente indisponível",
+    "rateLimitExceeded": "Limite de taxa da IA excedido",
+    "contentFiltered": "Conteúdo foi filtrado pelas medidas de segurança da IA",
+    "processingFailed": "Processamento da IA falhou",
+    "invalidPrompt": "Prompt inválido fornecido",
+    "modelError": "Erro do modelo de IA"
+  },
+  "database": {
+    "connectionFailed": "Falha na conexão com banco de dados",
+    "queryFailed": "Falha na consulta do banco de dados",
+    "transactionFailed": "Falha na transação do banco de dados",
+    "constraintViolation": "Violação de constraint do banco de dados",
+    "duplicateEntry": "Entrada duplicada encontrada"
+  }
+}
