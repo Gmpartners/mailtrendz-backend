@@ -370,6 +370,24 @@ const processChat = async (req: AuthRequest, res: Response): Promise<void> => {
     }
 
     try {
+      // ✅ BUSCAR HTML EXISTENTE DO PROJETO
+      let existingHTML: string | undefined
+      if (project_id) {
+        const { data: project, error } = await supabase
+          .from('projects')
+          .select('content')
+          .eq('id', project_id)
+          .single()
+        
+        if (!error && project?.content && typeof project.content === 'object' && 'html' in project.content) {
+          existingHTML = project.content.html as string
+          logger.info('HTML existente encontrado para modificação:', { 
+            projectId: project_id, 
+            htmlLength: existingHTML?.length || 0
+          })
+        }
+      }
+
       const iaResponse = await iaService.generateHTML({
         userInput: message,
         imageUrls: finalImageUrls,
@@ -377,7 +395,9 @@ const processChat = async (req: AuthRequest, res: Response): Promise<void> => {
         context: {
           chat_id,
           project_id,
-          isChat: true
+          isChat: true,
+          existingHTML, // ✅ ADICIONAR HTML EXISTENTE
+          isModification: !!existingHTML // ✅ INDICAR SE É MODIFICAÇÃO
         },
         userId
       })
@@ -387,6 +407,70 @@ const processChat = async (req: AuthRequest, res: Response): Promise<void> => {
 
       // ✅ CRÉDITOS SÃO CONSUMIDOS AUTOMATICAMENTE PELO MIDDLEWARE consumeAICredit
       
+      // ✅ SALVAR MENSAGENS NO BANCO
+      if (chat_id) {
+        try {
+          // Salvar mensagem do usuário
+          await supabase
+            .from('chat_messages')
+            .insert({
+              chat_id: chat_id,
+              role: 'user',
+              content: message,
+              metadata: {
+                images: finalImageUrls?.length || 0,
+                imageIntents: imageIntents?.map(i => i.intent) || []
+              }
+            })
+
+          // Salvar resposta da IA
+          await supabase
+            .from('chat_messages')
+            .insert({
+              chat_id: chat_id,
+              role: 'ai',
+              content: iaResponse.response,
+              metadata: {
+                ...iaResponse.metadata,
+                hasHtml: !!iaResponse.html,
+                htmlLength: iaResponse.html?.length || 0
+              }
+            })
+
+          logger.info('Mensagens salvas no banco com sucesso', { chat_id, project_id })
+        } catch (saveError) {
+          logger.error('Erro ao salvar mensagens:', saveError)
+        }
+      }
+
+      // ✅ SALVAR HTML MODIFICADO NO PROJETO
+      if (project_id && iaResponse.html) {
+        try {
+          const { error } = await supabase
+            .from('projects')
+            .update({
+              content: {
+                html: iaResponse.html,
+                subject: iaResponse.subject,
+                text: iaResponse.html.replace(/<[^>]*>/g, '').substring(0, 300) // Extract text preview
+              },
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', project_id)
+
+          if (!error) {
+            logger.info('HTML do projeto atualizado com sucesso', { 
+              project_id, 
+              htmlLength: iaResponse.html.length 
+            })
+          } else {
+            logger.error('Erro ao atualizar projeto:', error)
+          }
+        } catch (updateError) {
+          logger.error('Erro ao atualizar projeto:', updateError)
+        }
+      }
+
       // Log de uso da API
       await supabase.rpc('log_api_usage', {
         p_user_id: userId,
@@ -402,7 +486,10 @@ const processChat = async (req: AuthRequest, res: Response): Promise<void> => {
           : 'Chat processado com sucesso',
         data: {
           response: iaResponse.response,
-          html: iaResponse.html,
+          html: iaResponse.html, // ✅ GARANTIR QUE HTML ESTÁ NA RESPOSTA
+          aiResponse: {
+            html: iaResponse.html
+          },
           suggestions: [
             (iaResponse.metadata.imagesAnalyzed ?? 0) > 0 
               ? `${iaResponse.metadata.imagesAnalyzed} imagem(ns) integrada(s) ao email`

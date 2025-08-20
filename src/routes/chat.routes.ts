@@ -6,6 +6,7 @@ import {
   logAPIUsage 
 } from '../middleware/auth.middleware'
 import { checkAICredits, consumeAICredit } from '../middleware/credits.middleware'
+import { requireAIImageAnalysis } from '../middleware/subscription.middleware'  // ✅ NOVO IMPORT
 import { ensureUniqueChat, validateChatAccess } from '../middleware/chat.middleware'
 
 const router = Router()
@@ -31,7 +32,7 @@ const createChatValidation = [
   body('projectId').optional().isUUID().withMessage('Project ID deve ser um UUID válido')
 ]
 
-// ✅ ROTA COM CONSUMO CORRETO - Processar mensagem do chat com IA (APENAS PÓS-SUCESSO)
+// ✅ ROTA ATUALIZADA COM VALIDAÇÃO DE AI IMAGE ANALYSIS
 const processChatMessageValidation = [
   body('message').trim().isLength({ min: 1, max: 5000 }).withMessage('Mensagem deve ter entre 1 e 5.000 caracteres'),
   body('chat_id').trim().isLength({ min: 1 }).withMessage('Chat ID é obrigatório'),
@@ -41,8 +42,9 @@ const processChatMessageValidation = [
 router.post(
   '/process-ai-message',
   validateChatAccess,
-  checkAICredits,      // ✅ VERIFICAR CRÉDITOS ANTES
-  consumeAICredit('chat_ai_processing'),     // ✅ CONSUMIR CRÉDITO APÓS SUCESSO
+  requireAIImageAnalysis,  // ✅ NOVO: Verificar se pode usar IA com imagens
+  checkAICredits,          // ✅ VERIFICAR CRÉDITOS ANTES
+  consumeAICredit('chat_ai_processing'),  // ✅ CONSUMIR CRÉDITO APÓS SUCESSO
   logAPIUsage('chat_process_ai_message', 1),
   processChatMessageValidation,
   ChatController.processMessageWithAI

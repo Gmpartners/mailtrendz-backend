@@ -6,6 +6,7 @@ import { logger } from '../utils/logger'
 import { ApiError } from '../utils/api-error'
 import subscriptionService from './subscription.service'
 import secureDbService from './secure-db.service'
+import { getRedirectUrl } from '../utils/url-helper'
 
 type Profile = Database['public']['Tables']['profiles']['Row']
 
@@ -258,7 +259,7 @@ class AuthService {
   async requestPasswordReset(email: string) {
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${process.env.FRONTEND_URL}/reset-password`
+        redirectTo: getRedirectUrl('/reset-password')
       })
 
       if (error) {

@@ -51,7 +51,7 @@ router.post(
   '/',
   generalLimiter,
   checkProjectLimit,  // Verifica limite de projetos do usuário
-  consumeAICredit('project_creation'),  // Consome 1 crédito após sucesso
+  // 🚨 CORREÇÃO: Remover consumo automático de crédito - será feito condicionalmente no service
   logAPIUsage('project_create', 1),
   validateCreateProject,
   ProjectController.create

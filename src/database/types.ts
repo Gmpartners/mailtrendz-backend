@@ -952,6 +952,7 @@ export type Database = {
         Row: {
           ai_credits: number | null
           created_at: string | null
+          has_ai_image_analysis: boolean | null
           has_email_preview: boolean | null
           has_folders: boolean | null
           has_html_export: boolean | null
@@ -963,6 +964,7 @@ export type Database = {
         Insert: {
           ai_credits?: number | null
           created_at?: string | null
+          has_ai_image_analysis?: boolean | null
           has_email_preview?: boolean | null
           has_folders?: boolean | null
           has_html_export?: boolean | null
@@ -974,6 +976,7 @@ export type Database = {
         Update: {
           ai_credits?: number | null
           created_at?: string | null
+          has_ai_image_analysis?: boolean | null
           has_email_preview?: boolean | null
           has_folders?: boolean | null
           has_html_export?: boolean | null

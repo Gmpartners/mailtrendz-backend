@@ -126,10 +126,10 @@ class SubscriptionService {
         creditsUsed: data.credits_used,
         features: {
           maxProjects: data.max_projects,
-          hasFolders: data.has_folders,
           hasMultiUser: data.has_multi_user,
           hasHtmlExport: data.has_html_export,
-          hasEmailPreview: data.has_email_preview
+          hasEmailPreview: data.has_email_preview,
+          hasAiImageAnalysis: data.has_ai_image_analysis || false  // ✅ NOVA FEATURE
         },
         isUnlimited: data.is_unlimited,
         stripeCustomerId: data.stripe_customer_id,
@@ -346,10 +346,10 @@ class SubscriptionService {
         creditsUsed: 0,
         features: {
           maxProjects: planFeatures?.max_projects || 50,
-          hasFolders: planFeatures?.has_folders || false,
           hasMultiUser: planFeatures?.has_multi_user || false,
           hasHtmlExport: planFeatures?.has_html_export || true,
-          hasEmailPreview: planFeatures?.has_email_preview || true
+          hasEmailPreview: planFeatures?.has_email_preview || true,
+          hasAiImageAnalysis: planFeatures?.has_ai_image_analysis || false  // ✅ NOVA FEATURE
         },
         isUnlimited: (profile.subscription || 'starter') === 'unlimited',
         stripeCustomerId: subscription?.stripe_customer_id || undefined,
@@ -414,29 +414,29 @@ class SubscriptionService {
       // Limpar cache após consumo de créditos
       this.stateCache.delete(userId)
 
-      // Garantir que data é do tipo correto
-      const result = data as any
+      // ✅ CORREÇÃO: RPC retorna array, pegar primeiro elemento
+      const result = Array.isArray(data) ? data[0] : data
       if (!result || typeof result !== 'object') {
-        logger.error('[SubscriptionService] Invalid response format')
+        logger.error('[SubscriptionService] Invalid response format:', { data, result, isArray: Array.isArray(data) })
         return {
           success: false,
           error: 'invalid_response_format'
         }
       }
 
-      // Mapear resposta do sistema
+      // ✅ CORREÇÃO: Mapear resposta correta do RPC
       return {
         success: result.success || false,
-        remaining: result.remaining || 0,
-        error: result.error || null,
-        unlimited: result.unlimited || false,
-        consumed: result.consumed || result.used || amount,
-        totalUsed: result.total_used || 0,
-        isFreePlan: result.plan_type === 'free_lifetime' || result.plan_type === 'free' || result.is_free_plan,
-        isLifetimeFree: result.plan_type === 'free_lifetime' || result.is_lifetime_free,
-        planType: result.plan_type || 'free',
-        monthlyLimit: result.monthly_limit || 0,
-        resetDate: result.reset_date || null
+        remaining: result.credits_remaining || 0,
+        error: result.error_message || null,
+        unlimited: false, // Enterprise plan has limits
+        consumed: amount,
+        totalUsed: 0, // Can be calculated later if needed
+        isFreePlan: false, // Enterprise user
+        isLifetimeFree: false,
+        planType: 'enterprise',
+        monthlyLimit: 50, // Enterprise limit
+        resetDate: undefined
       }
     } catch (error) {
       logger.error('[SubscriptionService] Error consuming credits:', error)
@@ -448,7 +448,7 @@ class SubscriptionService {
   }
 
   /**
-   * Verificar se usuário pode usar uma feature específica
+   * ✅ MÉTODO ATUALIZADO: Verificar se usuário pode usar uma feature específica
    */
   async canUseFeature(userId: string, feature: string): Promise<boolean> {
     try {
@@ -456,14 +456,14 @@ class SubscriptionService {
       if (!state) return false
 
       switch (feature) {
-        case 'folders':
-          return state.features.hasFolders
         case 'multi_user':
           return state.features.hasMultiUser
         case 'html_export':
           return state.features.hasHtmlExport
         case 'email_preview':
           return state.features.hasEmailPreview
+        case 'ai_image_analysis':  // ✅ NOVA FEATURE
+          return state.features.hasAiImageAnalysis
         default:
           return true
       }
@@ -544,15 +544,48 @@ class SubscriptionService {
   }
 
   /**
-   * ✅ MÉTODO ATUALIZADO: Informações de upgrade específicas para FREE esgotado
+   * ✅ MÉTODO ATUALIZADO: Informações de upgrade específicas para nova feature
    */
-  async getUpgradeInfo(userId: string, reason: 'credits' | 'projects' | 'features'): Promise<UpgradeInfo | null> {
+  async getUpgradeInfo(userId: string, reason: 'credits' | 'projects' | 'features' | 'ai_image_analysis'): Promise<UpgradeInfo | null> {
     try {
       const state = await this.getState(userId)
       if (!state) return null
 
       const currentPlan = state.planType
       const upgradeOptions = []
+
+      // ✅ NOVA MENSAGEM ESPECÍFICA PARA AI IMAGE ANALYSIS
+      if (reason === 'ai_image_analysis') {
+        return {
+          currentPlan,
+          reason: 'ai_image_analysis',
+          upgradeOptions: [
+            {
+              planType: 'enterprise',
+              benefits: {
+                credits: 50,
+                renewable: true,
+                features: ['ai_image_analysis', 'multi_user', 'html_export', 'email_preview']
+              }
+            },
+            {
+              planType: 'unlimited',
+              benefits: {
+                credits: 'unlimited',
+                renewable: true,
+                features: ['ai_image_analysis', 'all_features']
+              }
+            }
+          ],
+          message: 'Análise de imagens com IA é uma feature exclusiva dos planos Enterprise e Unlimited. Upgrade agora e crie emails ainda mais incríveis!',
+          currentUsage: {
+            credits: state.isLifetimeFree 
+              ? `${state.freeRequestsUsed}/${state.freeRequestsLimit}`
+              : `${state.creditsUsed}/${state.monthlyCredits}`,
+            projects: state.features.maxProjects
+          }
+        }
+      }
 
       // ✅ MENSAGEM ESPECÍFICA PARA FREE VITALÍCIO ESGOTADO
       if (state.isLifetimeFree && state.creditsAvailable === 0) {
@@ -573,7 +606,7 @@ class SubscriptionService {
               benefits: {
                 credits: 50,
                 renewable: true,
-                features: ['folders', 'multi_user', 'html_export', 'email_preview']
+                features: ['ai_image_analysis', 'multi_user', 'html_export', 'email_preview']
               }
             },
             {
@@ -581,7 +614,7 @@ class SubscriptionService {
               benefits: {
                 credits: 'unlimited',
                 renewable: true,
-                features: ['all_features']
+                features: ['ai_image_analysis', 'all_features']
               }
             }
           ],
@@ -609,7 +642,7 @@ class SubscriptionService {
             benefits: {
               credits: 50,
               projects: 100,
-              features: ['folders', 'multi_user', 'html_export', 'email_preview']
+              features: ['ai_image_analysis', 'multi_user', 'html_export', 'email_preview']
             }
           }
         )
@@ -619,7 +652,7 @@ class SubscriptionService {
           benefits: {
             credits: 50,
             projects: 100,
-            features: ['folders', 'multi_user']
+            features: ['ai_image_analysis', 'multi_user']
           }
         })
       }
@@ -631,7 +664,7 @@ class SubscriptionService {
           benefits: {
             credits: 'unlimited',
             projects: 'unlimited',
-            features: ['all']
+            features: ['ai_image_analysis', 'all']
           }
         })
       }

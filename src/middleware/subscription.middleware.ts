@@ -160,6 +160,61 @@ export const requireFeature = (feature: string) => {
 }
 
 /**
+ * ✅ NOVO: Middleware específico para verificar se usuário pode usar IA com análise de imagens
+ */
+export const requireAIImageAnalysis = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(HTTP_STATUS.UNAUTHORIZED).json({ 
+        success: false,
+        error: 'Unauthorized' 
+      })
+      return
+    }
+
+    // Verificar se a requisição contém imagens para análise
+    const hasImages = req.body?.images?.length > 0 || req.body?.imageUrls?.length > 0
+    const hasImageIntents = req.body?.imageIntents?.some((intent: any) => intent.intent === 'analyze')
+    
+    // Se não há imagens para analisar, prosseguir normalmente
+    if (!hasImages && !hasImageIntents) {
+      next()
+      return
+    }
+
+    const canUseAIImages = await subscriptionService.canUseFeature(userId, 'ai_image_analysis')
+    
+    if (!canUseAIImages) {
+      const usageInfo = await subscriptionService.getUsageInfo(userId)
+      const upgradeInfo = await subscriptionService.getUpgradeInfo(userId, 'ai_image_analysis')
+      
+      res.status(HTTP_STATUS.FORBIDDEN).json({
+        success: false,
+        error: 'ai_image_analysis_not_available',
+        message: 'Análise de imagens com IA é uma feature exclusiva dos planos Enterprise e Unlimited',
+        details: {
+          currentPlan: usageInfo?.planType || 'free',
+          requiredFeature: 'ai_image_analysis',
+          upgradeInfo
+        }
+      })
+      return
+    }
+
+    next()
+  } catch (error) {
+    logger.error('[Middleware] Error checking AI image analysis permission:', error)
+    // Em caso de erro, bloquear por segurança
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      error: 'internal_error',
+      message: 'Erro ao verificar permissões de análise de imagens'
+    })
+  }
+}
+
+/**
  * Middleware para verificar limite de projetos
  */
 export const checkProjectLimit = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
@@ -243,6 +298,7 @@ export default {
   requireCredits,
   consumeCredits,
   requireFeature,
+  requireAIImageAnalysis,  // ✅ NOVA FUNÇÃO
   checkProjectLimit,
   addSubscriptionInfo,
   // Compatibilidade

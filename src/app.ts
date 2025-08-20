@@ -32,7 +32,6 @@ import userRoutes from './routes/user.routes'
 import aiRoutes from './routes/ai.routes'
 import uploadRoutes from './routes/upload.routes'
 import subscriptionRoutes from './routes/subscription.routes'
-import folderRoutes from './routes/folder.routes'
 import creditsRoutes from './routes/credits.routes'
 import webhookRoutes from './routes/webhook.routes'
 import translationRoutes from './routes/translation.routes'
@@ -243,7 +242,6 @@ class App {
     this.app.use(`${API_PREFIX}/users`, userRoutes)
     this.app.use(`${API_PREFIX}/upload`, uploadLimiter, uploadRoutes)
     this.app.use(`${API_PREFIX}/subscriptions`, subscriptionRoutes) // Rate limiting já está nas rotas
-    this.app.use(`${API_PREFIX}/folders`, folderRoutes)
     this.app.use(`${API_PREFIX}/credits`, creditsRoutes)
     this.app.use(`${API_PREFIX}/translation`, translationRoutes)
     this.app.use(`${API_PREFIX}/webhooks`, webhookRoutes) // Rotas de webhook com middleware próprio
@@ -262,7 +260,6 @@ class App {
           users: `${API_PREFIX}/users`,
           upload: `${API_PREFIX}/upload`,
           subscriptions: `${API_PREFIX}/subscriptions`,
-          folders: `${API_PREFIX}/folders`,
           credits: `${API_PREFIX}/credits`,
           webhooks: `${API_PREFIX}/webhooks`,
           health: `${API_PREFIX}/health`
@@ -369,7 +366,6 @@ class App {
         console.log(`   🤖 AI (Rate Limited): ${API_PREFIX}/ai/generate`)
         console.log(`   📁 Upload (Rate Limited): ${API_PREFIX}/upload/image`)
         console.log(`   💳 Subscriptions (Optimized): ${API_PREFIX}/subscriptions/plans`)
-        console.log(`   📂 Folders: ${API_PREFIX}/folders`)
         console.log(`   🎯 Credits (Cached): ${API_PREFIX}/credits/info`)
         console.log(`   📊 Debug Tools: ${API_PREFIX}/debug/cache/stats`)
         console.log(`   ⚡ Health (Enhanced): /health`)

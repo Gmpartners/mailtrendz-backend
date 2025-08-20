@@ -22,7 +22,7 @@ export interface AuthRequest extends Request {
     creditsAvailable: number
     features: {
       maxProjects: number
-      hasFolders: boolean
+      hasMultiUser: boolean
       hasHtmlExport: boolean
       hasEmailPreview: boolean
     }

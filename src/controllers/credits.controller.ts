@@ -46,7 +46,6 @@ export const getUserCreditsInfo = asyncHandler(async (req: AuthRequest, res: Res
         freeRequestsLimit: state?.freeRequestsLimit || 3,
         
         features: {
-          hasFolders: usageInfo.features.hasFolders,
           hasMultiUser: usageInfo.features.hasMultiUser,
           hasHtmlExport: usageInfo.features.hasHtmlExport,
           hasEmailPreview: usageInfo.features.hasEmailPreview

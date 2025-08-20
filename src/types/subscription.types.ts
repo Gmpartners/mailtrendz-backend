@@ -15,10 +15,10 @@ export interface SubscriptionState {
   creditsUsed: number
   features: {
     maxProjects: number
-    hasFolders: boolean
     hasMultiUser: boolean
     hasHtmlExport: boolean
     hasEmailPreview: boolean
+    hasAiImageAnalysis: boolean  // ✅ NOVA FEATURE
   }
   isUnlimited: boolean
   stripeCustomerId?: string
@@ -79,10 +79,10 @@ export interface SubscriptionStateRPCResult {
   credits_available: number
   credits_used: number
   max_projects: number
-  has_folders: boolean
   has_multi_user: boolean
   has_html_export: boolean
   has_email_preview: boolean
+  has_ai_image_analysis: boolean  // ✅ NOVA FEATURE
   usage_period_start?: string
   usage_period_end?: string
   is_unlimited: boolean
@@ -106,10 +106,10 @@ export interface UsageInfo {
   }
   features: {
     maxProjects: number
-    hasFolders: boolean
     hasMultiUser: boolean
     hasHtmlExport: boolean
     hasEmailPreview: boolean
+    hasAiImageAnalysis: boolean  // ✅ NOVA FEATURE
   }
   billing: {
     currentPeriodStart?: Date
@@ -125,7 +125,7 @@ export interface UsageInfo {
 
 export interface UpgradeInfo {
   currentPlan: string
-  reason: 'credits' | 'projects' | 'features' | 'free_limit_reached'  // ✅ Novo tipo
+  reason: 'credits' | 'projects' | 'features' | 'free_limit_reached' | 'ai_image_analysis'  // ✅ Novo tipo
   upgradeOptions: Array<{
     planType: string
     benefits: {

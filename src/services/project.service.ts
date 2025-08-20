@@ -54,10 +54,31 @@ class ProjectService {
       let htmlContent = projectData.html || ''
       let subjectContent = projectData.subject || ''
       
-      const shouldGenerateWithAI = (projectData.prompt && projectData.prompt.trim().length > 0) || 
-                                   (projectData.images && projectData.images.length > 0)
+      logger.info('🔍 [PROJECT-SERVICE] Received project data:', {
+        hasName: !!projectData.name,
+        hasHtml: !!projectData.html,
+        htmlLength: projectData.html?.length || 0,
+        hasSubject: !!projectData.subject,
+        hasPrompt: !!projectData.prompt,
+        promptLength: projectData.prompt?.length || 0,
+        userId
+      })
       
-      if (shouldGenerateWithAI) {
+      // 🚨 CORREÇÃO: Só gerar com IA se não tiver HTML já fornecido
+      const hasPreGeneratedContent = htmlContent && htmlContent.trim().length > 0
+      const shouldGenerateWithAI = !hasPreGeneratedContent && (
+        (projectData.prompt && projectData.prompt.trim().length > 0) || 
+        (projectData.images && projectData.images.length > 0)
+      )
+      
+      if (hasPreGeneratedContent) {
+        logger.info('♻️ Using pre-generated HTML content (avoiding duplicate AI generation)', {
+          htmlLength: htmlContent.length,
+          hasSubject: !!subjectContent,
+          subjectLength: subjectContent?.length || 0,
+          userId
+        })
+      } else if (shouldGenerateWithAI) {
         logger.info('🤖 Generating HTML with AI for project creation', {
           hasPrompt: !!projectData.prompt,
           promptLength: projectData.prompt?.length || 0,
@@ -113,6 +134,15 @@ class ProjectService {
             imagesProcessed: iaResponse.metadata?.imagesAnalyzed || 0,
             model: iaResponse.metadata?.model
           })
+          
+          // 🚨 CORREÇÃO: Consumir crédito apenas quando realmente usar IA
+          try {
+            const subscriptionService = require('./subscription.service').default
+            await subscriptionService.consumeCredits(userId, 1, 'ai_generation')
+            logger.info('✅ [PROJECT-CREATION] AI credit consumed after successful generation', { userId })
+          } catch (creditError: any) {
+            logger.error('❌ [PROJECT-CREATION] Failed to consume AI credit:', creditError.message)
+          }
           
         } catch (iaError: any) {
           logger.error('❌ Error generating HTML with IA, using fallback', iaError)
@@ -229,7 +259,11 @@ class ProjectService {
 
       // 🚨 CORREÇÃO CRÍTICA: Criar chat automaticamente e atualizar chat_id
       try {
-        logger.info(`🔗 Creating chat for project: ${project.id}`)
+        logger.info(`🔗 [PROJECT-CREATION] Creating chat for project: ${project.id}`, {
+          projectName: project.name,
+          userId: userId,
+          timestamp: new Date().toISOString()
+        })
         
         const { data: chat, error: chatError } = await supabase
           .from('chats')
@@ -245,7 +279,8 @@ class ProjectService {
               projectId: project.id,
               timestamp: new Date().toISOString(),
               projectName: project.name,
-              projectType: project.type
+              projectType: project.type,
+              userAgent: "backend-api"
             },
             is_active: true
           })
@@ -253,9 +288,21 @@ class ProjectService {
           .single()
 
         if (chatError || !chat) {
-          logger.error('Error creating chat for project:', chatError)
-          throw new Error('Failed to create chat')
+          logger.error('❌ [PROJECT-CREATION] Error creating chat for project:', {
+            error: chatError?.message || 'No chat returned',
+            code: chatError?.code,
+            details: chatError?.details,
+            hint: chatError?.hint,
+            projectId: project.id,
+            projectName: project.name
+          })
+          throw new Error('Failed to create chat - ' + (chatError?.message || 'Unknown error'))
         }
+
+        logger.info(`✅ [PROJECT-CREATION] Chat created successfully: ${chat.id}`, {
+          chatTitle: chat.title,
+          projectId: project.id
+        })
 
         // Atualizar projeto com chat_id
         const { data: updatedProject, error: updateError } = await supabase
@@ -266,31 +313,50 @@ class ProjectService {
           .single()
 
         if (updateError || !updatedProject) {
-          logger.error('Error updating project with chat_id:', updateError)
-          throw new Error('Failed to update project with chat_id')
+          logger.error('❌ [PROJECT-CREATION] Error updating project with chat_id:', {
+            error: updateError?.message || 'No updated project returned',
+            code: updateError?.code,
+            projectId: project.id,
+            chatId: chat.id
+          })
+          
+          // 🚨 FALLBACK CRÍTICO: Se falhar em atualizar o projeto, pelo menos temos o chat
+          logger.warn('⚠️ [PROJECT-CREATION] Using fallback - returning original project with manual chat_id assignment')
+          return {
+            ...project,
+            chat_id: chat.id
+          }
         }
 
         // ✅ CORRIGIDO: Usar type assertion para content e metadata na resposta
         const updatedContent = updatedProject.content as ProjectContent
         const updatedMetadata = updatedProject.metadata as ProjectMetadata
 
-        logger.info(`✅ Project created successfully with chat: ${updatedProject.id} -> chat: ${chat.id}`, {
+        logger.info(`✅ [PROJECT-CREATION] Project created successfully with chat: ${updatedProject.id} -> chat: ${chat.id}`, {
           projectName: updatedProject.name,
           chatId: chat.id,
           htmlLength: updatedContent?.html?.length || 0,
           hasSubject: !!updatedContent?.subject,
-          aiGenerated: updatedMetadata?.aiGenerated
+          aiGenerated: updatedMetadata?.aiGenerated,
+          finalChatId: updatedProject.chat_id
         })
         
         return updatedProject
-      } catch (chatCreationError) {
-        logger.error('Critical error: Failed to create chat for project, but project was created:', {
+      } catch (chatCreationError: any) {
+        logger.error('❌ [PROJECT-CREATION] Critical error: Failed to create chat for project, but project was created:', {
           projectId: project.id,
-          error: chatCreationError
+          projectName: project.name,
+          error: chatCreationError?.message || 'Unknown error',
+          stack: chatCreationError?.stack,
+          userId: userId,
+          willReturnProjectAnyway: true
         })
         
-        // Retornar projeto mesmo sem chat (melhor do que falhar completamente)
-        // O frontend pode criar o chat depois se necessário
+        // 🚨 FALLBACK CRÍTICO: Retornar projeto mesmo sem chat 
+        // Isso permite que o frontend funcione e crie o chat depois se necessário
+        logger.warn('⚠️ [PROJECT-CREATION] Returning project WITHOUT chat due to chat creation failure')
+        logger.warn('⚠️ [PROJECT-CREATION] Frontend should handle this gracefully with ensureProjectHasChat')
+        
         return project
       }
     } catch (error) {
@@ -565,9 +631,6 @@ class ProjectService {
         queryBuilder = queryBuilder.contains('tags', query.tags)
       }
 
-      if (query.folder_id) {
-        queryBuilder = queryBuilder.eq('folder_id', query.folder_id)
-      }
 
       const sortField = query.sortBy || 'updated_at'
       const sortOrder = query.order || 'desc'
@@ -630,7 +693,6 @@ class ProjectService {
       if (updates.tags !== undefined) projectUpdate.tags = updates.tags
       if (updates.isPublic !== undefined) projectUpdate.is_public = updates.isPublic
       if (updates.is_favorite !== undefined) projectUpdate.is_favorite = updates.is_favorite
-      if (updates.folder_id !== undefined) projectUpdate.folder_id = updates.folder_id
 
       if (updates.content) {
         projectUpdate.content = {

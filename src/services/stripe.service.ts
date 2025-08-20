@@ -27,8 +27,8 @@ interface PriceMap {
 // ✅ CORRIGIDO: Mudei 'pro' para 'starter' para corresponder ao schema do banco
 const PRICE_IDS: PriceMap = {
   starter: {
-    monthly: process.env.STRIPE_PRICE_STARTER_MONTHLY || '',
-    yearly: process.env.STRIPE_PRICE_STARTER_YEARLY || ''
+    monthly: process.env.STRIPE_PRICE_PRO_MONTHLY || '',
+    yearly: process.env.STRIPE_PRICE_PRO_YEARLY || ''
   },
   enterprise: {
     monthly: process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY || '',
@@ -248,33 +248,82 @@ class StripeService {
     cancelUrl: string
   ): Promise<string> {
     try {
-      logger.info('Creating checkout session for user:', { userId, priceId })
+      logger.info('🚀 [STRIPE] Creating checkout session', { userId, priceId })
 
-      const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId)
+      // Verificar se o price ID é válido
+      if (!priceId) {
+        throw new Error('Price ID is required')
+      }
+
+      // Buscar dados do usuário
+      logger.info('🔍 [STRIPE] Fetching user auth data...')
+      const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.getUserById(userId)
+      
+      if (authError) {
+        logger.error('❌ [STRIPE] Auth error:', authError)
+        throw new Error(`Auth error: ${authError.message}`)
+      }
       
       if (!authUser?.user) {
+        logger.error('❌ [STRIPE] Auth user not found', { userId })
         throw new Error('Auth user not found')
       }
 
-      const { data: profile } = await supabase
+      logger.info('✅ [STRIPE] Auth user found', { 
+        userId, 
+        email: authUser.user.email,
+        hasEmail: !!authUser.user.email 
+      })
+
+      // Buscar profile (opcional)
+      logger.info('🔍 [STRIPE] Fetching user profile...')
+      const { data: profile, error: profileError } = await supabaseAdmin
         .from('profiles')
-        .select('name')
+        .select('name, email')
         .eq('id', userId)
         .single()
 
-      const userEmail = authUser.user.email
-      const userName = profile?.name || authUser.user.user_metadata?.name || 'User'
+      if (profileError) {
+        logger.warn('⚠️ [STRIPE] Profile not found, will create minimal one', { 
+          userId, 
+          error: profileError.message 
+        })
+        
+        // Criar profile básico se não existir
+        const { error: createError } = await supabaseAdmin
+          .from('profiles')
+          .upsert({
+            id: userId,
+            email: authUser.user.email,
+            name: authUser.user.user_metadata?.name || authUser.user.email?.split('@')[0] || 'User',
+            subscription: 'starter',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'id' })
 
-      logger.info('User data for checkout:', { 
+        if (createError) {
+          logger.error('❌ [STRIPE] Failed to create profile', createError)
+          // Não bloquear checkout por isso
+        } else {
+          logger.info('✅ [STRIPE] Profile created successfully')
+        }
+      }
+
+      const userEmail = authUser.user.email
+      const userName = profile?.name || authUser.user.user_metadata?.name || authUser.user.email?.split('@')[0] || 'User'
+
+      logger.info('📋 [STRIPE] User data for checkout:', { 
         userId, 
         email: userEmail, 
-        name: userName 
+        name: userName,
+        profileExists: !!profile
       })
 
       if (!userEmail) {
         throw new Error('User email not found in auth')
       }
 
+      logger.info('🏪 [STRIPE] Creating Stripe customer...')
       const customerId = await this.createCustomer(userId, userEmail, userName)
 
       const sessionData: any = {
@@ -297,14 +346,35 @@ class StripeService {
         }
       }
 
-      logger.info('Creating Stripe checkout session:', { sessionData })
+      logger.info('💳 [STRIPE] Creating Stripe checkout session...', { 
+        customerId,
+        priceId,
+        successUrl,
+        cancelUrl,
+        metadata: sessionData.metadata
+      })
 
       const session = await stripe.checkout.sessions.create(sessionData)
 
-      logger.info('Checkout session created:', { sessionId: session.id, userId })
+      logger.info('✅ [STRIPE] Checkout session created successfully!', { 
+        sessionId: session.id, 
+        sessionUrl: session.url,
+        userId 
+      })
+      
       return session.url || ''
     } catch (error: any) {
-      logger.error('Error creating checkout session:', error)
+      logger.error('❌ [STRIPE] Error creating checkout session:', {
+        error: {
+          message: error.message,
+          code: error.code,
+          type: error.type,
+          stack: error.stack
+        },
+        userId,
+        priceId,
+        timestamp: new Date().toISOString()
+      })
       throw error
     }
   }
