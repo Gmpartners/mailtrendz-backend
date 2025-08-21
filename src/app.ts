@@ -5,8 +5,15 @@ import compression from 'compression'
 import morgan from 'morgan'
 import cookieParser from 'cookie-parser'
 import dotenv from 'dotenv'
+import path from 'path'
 
-dotenv.config()
+// ✅ CONFIGURAÇÃO DE AMBIENTE DINÂMICA
+const nodeEnv = process.env.NODE_ENV || 'development'
+const envPath = nodeEnv === 'production' ? '.env' : `.env.${nodeEnv}`
+
+dotenv.config({ path: path.resolve(process.cwd(), envPath) })
+
+console.log(`🔧 [CONFIG] Loaded environment: ${nodeEnv} from ${envPath}`)
 import { testConnection } from './config/supabase.config'
 import corsOptions from './config/cors.config'
 import { logger, morganStream } from './utils/logger'
@@ -42,7 +49,7 @@ class App {
 
   constructor() {
     this.app = express()
-    this.port = parseInt(process.env.PORT || '8000') // CORRIGIDO: era 3000, agora é 8000
+    this.port = parseInt(process.env.PORT || '8001') // TEMPORÁRIO: mudando para 8001 para evitar conflito
     
     this.initializeMiddlewares()
     this.initializeRoutes()

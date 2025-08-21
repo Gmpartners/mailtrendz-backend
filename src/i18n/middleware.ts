@@ -59,7 +59,7 @@ export const i18nErrorHandler = (
   error: any, 
   req: Request, 
   res: Response, 
-  next: NextFunction
+  _next: NextFunction
 ): void => {
   const language = req.language || defaultLanguage
   const { t } = require('./config')

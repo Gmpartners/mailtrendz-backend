@@ -68,6 +68,13 @@ router.post('/force-init',
   SubscriptionController.forceUserInitialization
 )
 
+// ✅ NOVA ROTA: Simular pagamento em DEV
+router.post('/simulate-payment',
+  subscriptionLimiter,
+  endpointSpamProtection(5, 60000), // 5 tentativas por minuto
+  SubscriptionController.simulatePayment
+)
+
 // ✅ ROTAS DE CHECKOUT E PAGAMENTO (menos restritivas)
 router.post('/checkout', SubscriptionController.createCheckoutSession)
 router.post('/portal', SubscriptionController.createPortalSession)

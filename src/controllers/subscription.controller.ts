@@ -687,6 +687,90 @@ class SubscriptionController {
     }
   }
 
+  // ✅ NOVO: Simular pagamento em ambiente DEV
+  simulatePayment = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      // APENAS em desenvolvimento
+      if (process.env.NODE_ENV === 'production') {
+        res.status(HTTP_STATUS.FORBIDDEN).json({
+          success: false,
+          message: 'Simulação de pagamento disponível apenas em desenvolvimento'
+        })
+        return
+      }
+
+      if (!req.user) {
+        res.status(HTTP_STATUS.UNAUTHORIZED).json({
+          success: false,
+          message: 'Autenticação requerida'
+        })
+        return
+      }
+
+      const userId = req.user.id
+      
+      logger.info('[SIMULATE-PAYMENT] Simulating successful payment...', { userId })
+
+      const { supabaseAdmin } = await import('../config/supabase.config')
+
+      // Calcular novo período (próximo mês)
+      const now = new Date()
+      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate())
+      
+      // Atualizar subscription para status ativo e período válido
+      const { error: updateError } = await supabaseAdmin
+        .from('subscriptions')
+        .update({
+          status: 'active',
+          current_period_end: nextMonth.toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId)
+
+      if (updateError) {
+        logger.error('[SIMULATE-PAYMENT] Error updating subscription:', updateError)
+        res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+          success: false,
+          message: 'Erro ao simular pagamento: ' + updateError.message
+        })
+        return
+      }
+
+      // Limpar cache do subscription service
+      const subscriptionServiceInstance = subscriptionService as any
+      if (subscriptionServiceInstance.stateCache?.delete) {
+        subscriptionServiceInstance.stateCache.delete(userId)
+      }
+
+      // Verificar estado atualizado
+      const updatedState = await subscriptionService.getState(userId)
+
+      logger.info('[SIMULATE-PAYMENT] Payment simulation completed!', {
+        userId,
+        newStatus: updatedState?.status,
+        newPeriodEnd: updatedState?.currentPeriodEnd
+      })
+
+      res.json({
+        success: true,
+        message: 'Pagamento simulado com sucesso!',
+        data: {
+          userId,
+          status: updatedState?.status || 'active',
+          planType: updatedState?.planType,
+          currentPeriodEnd: updatedState?.currentPeriodEnd,
+          creditsAvailable: updatedState?.creditsAvailable
+        }
+      })
+    } catch (error: any) {
+      logger.error('[SIMULATE-PAYMENT] Error simulating payment:', error)
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro ao simular pagamento: ' + error.message
+      })
+    }
+  }
+
   // ✅ NOVO: Endpoint para forçar inicialização de usuário (para debug/correção)
   forceUserInitialization = async (req: AuthRequest, res: Response): Promise<void> => {
     try {

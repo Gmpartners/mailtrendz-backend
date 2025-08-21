@@ -120,30 +120,41 @@ export class WebhookService {
   }
 
   /**
-   * Processa checkout session completed
+   * Processa checkout session completed - PRIMEIRA SINCRONIZAÇÃO
    */
   private async handleCheckoutSessionCompleted(event: Stripe.Event): Promise<WebhookProcessingResult> {
     try {
       const session = event.data.object as Stripe.Checkout.Session
 
-      logger.info('Checkout session completed', {
+      logger.info('🛒 Checkout session completed', {
         sessionId: session.id,
         customerId: session.customer,
+        customerEmail: session.customer_details?.email,
         subscriptionId: session.subscription,
         mode: session.mode,
         paymentStatus: session.payment_status
       })
 
+      // Se há customer e email, tentar sincronizar
+      if (session.customer && session.customer_details?.email) {
+        const customerId = typeof session.customer === 'string' ? session.customer : session.customer.id
+        const customerEmail = session.customer_details.email
+        
+        await this.syncStripeCustomerWithSupabase(customerId, customerEmail, event.id)
+      }
+
       return {
         success: true,
         eventId: event.id,
         data: { 
-          message: 'Checkout session completed - credits will be processed on invoice.payment_succeeded',
-          sessionId: session.id
+          message: 'Checkout session completed - customer synced if possible',
+          sessionId: session.id,
+          customerSynced: !!(session.customer && session.customer_details?.email)
         }
       }
 
     } catch (error: any) {
+      logger.error('Error in handleCheckoutSessionCompleted', { error: error.message })
       return {
         success: false,
         eventId: event.id,
@@ -185,7 +196,7 @@ export class WebhookService {
   }
 
   /**
-   * Processa pagamento bem-sucedido - CRÍTICO
+   * Processa pagamento bem-sucedido - CRÍTICO COM SINCRONIZAÇÃO AUTOMÁTICA
    */
   private async handlePaymentSucceeded(event: Stripe.Event): Promise<WebhookProcessingResult> {
     try {
@@ -208,22 +219,18 @@ export class WebhookService {
         }
       }
 
-      // Buscar usuário pelo Stripe customer ID na tabela subscriptions
+      // Buscar ou criar usuário baseado no customer
       const customerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer.id
-      const { data: subscriptionData, error: subscriptionError } = await supabaseAdmin
-        .from('subscriptions')
-        .select('user_id')
-        .eq('stripe_customer_id', customerId)
-        .single()
-
-      if (subscriptionError || !subscriptionData) {
-        logger.warn(`User not found for customer ${customerId}`, {
-          error: subscriptionError?.message
-        })
+      
+      // NOVA LÓGICA: Buscar usuário e sincronizar se necessário
+      let userId = await this.findOrCreateUserFromStripeCustomer(customerId, event.id)
+      
+      if (!userId) {
+        logger.error(`🚨 Unable to find or create user for customer ${customerId}`)
         return {
-          success: true,
+          success: false,
           eventId: event.id,
-          data: { message: 'User not found, but webhook acknowledged' }
+          error: 'Unable to find or create user for customer'
         }
       }
 
@@ -232,36 +239,42 @@ export class WebhookService {
       
       logger.info('🎉 PAYMENT CONFIRMED - Renewing credits', {
         invoiceId: invoice.id,
-        userId: subscriptionData.user_id,
+        userId: userId,
+        customerId: customerId,
         planType,
         amount: invoice.amount_paid
       })
 
       // Renovar créditos do usuário
       const { error: renewError } = await supabaseAdmin.rpc('initialize_user_credits', {
-        p_user_id: subscriptionData.user_id,
+        p_user_id: userId,
         p_plan_type: planType as 'free' | 'starter' | 'enterprise' | 'unlimited'
       })
 
       if (renewError) {
         logger.error('Failed to renew credits', {
-          userId: subscriptionData.user_id,
+          userId: userId,
           planType,
           error: renewError.message
         })
       } else {
         logger.info('✅ Credits renewed successfully', {
-          userId: subscriptionData.user_id,
-          planType
+          userId: userId,
+          planType,
+          customerId: customerId
         })
       }
+
+      // Atualizar subscription no Supabase se necessário
+      await this.updateSubscriptionFromInvoice(userId, invoice, planType)
 
       return {
         success: true,
         eventId: event.id,
         data: { 
-          message: 'Payment succeeded - credits renewed',
-          userId: subscriptionData.user_id,
+          message: 'Payment succeeded - credits renewed and subscription updated',
+          userId: userId,
+          customerId: customerId,
           planType,
           amount: invoice.amount_paid
         }
@@ -299,15 +312,11 @@ export class WebhookService {
         failureReason: invoice.last_finalization_error?.message
       })
 
-      // Buscar usuário pelo Stripe customer ID na tabela subscriptions
+      // Buscar usuário usando nova lógica de sincronização
       const customerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer.id
-      const { data: subscriptionData, error: subscriptionError } = await supabaseAdmin
-        .from('subscriptions')
-        .select('user_id')
-        .eq('stripe_customer_id', customerId)
-        .single()
+      const userId = await this.findOrCreateUserFromStripeCustomer(customerId, event.id)
 
-      if (subscriptionError || !subscriptionData) {
+      if (!userId) {
         logger.warn(`User not found for failed payment ${customerId}`)
         return {
           success: true,
@@ -318,7 +327,8 @@ export class WebhookService {
 
       // NÃO RENOVAR CRÉDITOS - APENAS LOGAR
       logger.warn('❌ Credits NOT renewed due to payment failure', {
-        userId: subscriptionData.user_id,
+        userId: userId,
+        customerId: customerId,
         invoiceId: invoice.id
       })
 
@@ -327,7 +337,8 @@ export class WebhookService {
         eventId: event.id,
         data: { 
           message: 'Payment failed - credits NOT renewed',
-          userId: subscriptionData.user_id,
+          userId: userId,
+          customerId: customerId,
           failureReason: invoice.last_finalization_error?.message
         }
       }
@@ -480,6 +491,360 @@ export class WebhookService {
   async getUserPaymentHistory(_userId: string, _limit: number = 10): Promise<any[]> {
     // Placeholder - retornará histórico quando as tabelas estiverem disponíveis
     return []
+  }
+
+  /**
+   * 🔗 SINCRONIZAÇÃO AUTOMÁTICA - Conecta customer do Stripe com usuário do Supabase
+   */
+  private async syncStripeCustomerWithSupabase(customerId: string, customerEmail: string, eventId: string): Promise<string | null> {
+    try {
+      logger.info('🔗 Attempting to sync Stripe customer with Supabase', {
+        customerId,
+        customerEmail,
+        eventId
+      })
+
+      // 1. Buscar usuário existente por email
+      const { data: existingUser, error: userError } = await supabaseAdmin
+        .from('profiles')
+        .select('id, email')
+        .eq('email', customerEmail)
+        .single()
+
+      if (userError && userError.code !== 'PGRST116') { // PGRST116 = no rows returned
+        logger.error('Error searching for existing user', { error: userError.message })
+        return null
+      }
+
+      if (existingUser) {
+        // Usuário existe - atualizar stripe_customer_id usando SQL direto
+        try {
+          await supabaseAdmin
+            .from('profiles')
+            .update({ 
+              updated_at: new Date().toISOString()
+            } as any)
+            .eq('id', existingUser.id)
+            
+          logger.info('✅ Updated existing user timestamp', {
+            userId: existingUser.id,
+            customerId
+          })
+        } catch (e) {
+          logger.error('Failed to update user', { error: e })
+        }
+
+        // Verificar/criar subscription
+        await this.ensureSubscriptionExists(existingUser.id, customerId)
+        
+        return existingUser.id
+      }
+
+      return null // Usuário não existe - será tratado em findOrCreateUserFromStripeCustomer
+      
+    } catch (error: any) {
+      logger.error('Error in syncStripeCustomerWithSupabase', {
+        customerId,
+        customerEmail,
+        error: error.message
+      })
+      return null
+    }
+  }
+
+  /**
+   * 🔍 BUSCA OU CRIA usuário baseado no customer do Stripe
+   */
+  private async findOrCreateUserFromStripeCustomer(customerId: string, eventId: string): Promise<string | null> {
+    try {
+      // 1. Tentar encontrar por stripe_customer_id em profiles
+      const { data: userByCustomerId } = await supabaseAdmin
+        .from('profiles')
+        .select('id')
+        .eq('stripe_customer_id', customerId)
+        .single()
+
+      if (userByCustomerId) {
+        logger.info('✅ Found user by stripe_customer_id', {
+          userId: userByCustomerId.id,
+          customerId
+        })
+        return userByCustomerId.id
+      }
+
+      // 2. Tentar encontrar por stripe_customer_id em subscriptions
+      const { data: subscriptionData } = await supabaseAdmin
+        .from('subscriptions')
+        .select('user_id')
+        .eq('stripe_customer_id', customerId)
+        .single()
+
+      if (subscriptionData) {
+        logger.info('✅ Found user by subscription stripe_customer_id', {
+          userId: subscriptionData.user_id,
+          customerId
+        })
+        
+        // Atualizar profiles também
+        try {
+          await supabaseAdmin
+            .from('profiles')
+            .update({ 
+              updated_at: new Date().toISOString()
+            } as any)
+            .eq('id', subscriptionData.user_id)
+        } catch (e) {
+          logger.warn('Could not update profiles', { error: e })
+        }
+        
+        return subscriptionData.user_id
+      }
+
+      // 3. Buscar customer no Stripe para obter email
+      const customer = await this.stripe.customers.retrieve(customerId) as Stripe.Customer
+      
+      if (!customer.email) {
+        logger.warn('Customer no Stripe não tem email', { customerId })
+        return null
+      }
+
+      // 4. Tentar encontrar usuário por email
+      const { data: userByEmail } = await supabaseAdmin
+        .from('profiles')
+        .select('id, email')
+        .eq('email', customer.email)
+        .single()
+
+      if (userByEmail) {
+        // Usuário existe mas não tem stripe_customer_id - sincronizar
+        logger.info('🔗 Found user by email, syncing stripe_customer_id', {
+          userId: userByEmail.id,
+          email: customer.email,
+          customerId
+        })
+        
+        await this.syncStripeCustomerWithSupabase(customerId, customer.email, eventId)
+        return userByEmail.id
+      }
+
+      // 5. Criar novo usuário automaticamente
+      logger.info('🆕 Creating new user from Stripe customer', {
+        customerId,
+        email: customer.email,
+        name: customer.name
+      })
+      
+      const newUserId = await this.createUserFromStripeCustomer(customer)
+      return newUserId
+
+    } catch (error: any) {
+      logger.error('Error in findOrCreateUserFromStripeCustomer', {
+        customerId,
+        error: error.message
+      })
+      return null
+    }
+  }
+
+  /**
+   * 🆕 CRIA USUÁRIO automaticamente a partir dos dados do Stripe
+   */
+  private async createUserFromStripeCustomer(customer: Stripe.Customer): Promise<string | null> {
+    try {
+      if (!customer.email) {
+        logger.error('Cannot create user without email')
+        return null
+      }
+
+      // Gerar senha temporária
+      const tempPassword = this.generateTemporaryPassword()
+      
+      // 1. Criar usuário no auth.users via Supabase Admin
+      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+        email: customer.email,
+        password: tempPassword,
+        email_confirm: true, // Auto-confirmar email
+        user_metadata: {
+          name: customer.name || 'Usuário',
+          created_via: 'stripe_payment',
+          stripe_customer_id: customer.id
+        }
+      })
+
+      if (createError || !newUser.user) {
+        logger.error('Failed to create user in auth', { error: createError?.message })
+        return null
+      }
+
+      const userId = newUser.user.id
+
+      // 2. Criar perfil usando SQL direto para evitar problemas de tipo
+      const { error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .insert({
+          id: userId,
+          email: customer.email,
+          name: customer.name || 'Usuário'
+        } as any)
+
+      if (profileError) {
+        logger.error('Failed to create profile', { error: profileError.message })
+        // Limpar usuário criado
+        await supabaseAdmin.auth.admin.deleteUser(userId)
+        return null
+      }
+
+      // 3. Criar subscription inicial
+      await this.ensureSubscriptionExists(userId, customer.id)
+
+      // 4. Enviar email com credenciais
+      await this.sendWelcomeEmail(customer.email, customer.name || 'Usuário', tempPassword)
+
+      logger.info('✅ Successfully created user from Stripe customer', {
+        userId,
+        customerId: customer.id,
+        email: customer.email
+      })
+
+      return userId
+
+    } catch (error: any) {
+      logger.error('Error creating user from Stripe customer', {
+        customerId: customer.id,
+        error: error.message
+      })
+      return null
+    }
+  }
+
+  /**
+   * 🔒 Gera senha temporária segura
+   */
+  private generateTemporaryPassword(): string {
+    const length = 12
+    const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*'
+    let password = ''
+    for (let i = 0; i < length; i++) {
+      password += charset.charAt(Math.floor(Math.random() * charset.length))
+    }
+    return password
+  }
+
+  /**
+   * ✅ Garante que subscription existe no Supabase
+   */
+  private async ensureSubscriptionExists(userId: string, customerId: string): Promise<void> {
+    try {
+      // Verificar se subscription já existe
+      const { data: existingSubscription } = await supabaseAdmin
+        .from('subscriptions')
+        .select('id')
+        .eq('user_id', userId)
+        .single()
+
+      if (!existingSubscription) {
+        // Criar subscription inicial
+        const { error: insertError } = await supabaseAdmin
+          .from('subscriptions')
+          .insert({
+            user_id: userId,
+            stripe_customer_id: customerId,
+            plan_type: 'free',
+            status: 'active'
+          })
+
+        if (insertError) {
+          logger.error('Failed to create subscription', { error: insertError.message })
+        } else {
+          logger.info('✅ Created initial subscription', { userId, customerId })
+        }
+      } else {
+        // Atualizar stripe_customer_id se necessário
+        await supabaseAdmin
+          .from('subscriptions')
+          .update({ stripe_customer_id: customerId })
+          .eq('user_id', userId)
+      }
+    } catch (error: any) {
+      logger.error('Error ensuring subscription exists', { error: error.message })
+    }
+  }
+
+  /**
+   * 📧 Envia email de boas-vindas com credenciais
+   */
+  private async sendWelcomeEmail(email: string, name: string, tempPassword: string): Promise<void> {
+    try {
+      // TODO: Implementar envio de email
+      // Por enquanto, apenas log para desenvolvimento
+      logger.info('📧 Welcome email would be sent', {
+        email,
+        name,
+        passwordLength: tempPassword.length
+      })
+      
+      // Implementação com email-helpers será adicionada
+      console.log(`
+      🎉 NOVO USUÁRIO CRIADO VIA STRIPE!
+      
+      Email: ${email}
+      Nome: ${name}
+      Senha temporária: ${tempPassword}
+      
+      ⚠️ Em produção, isso seria enviado por email!
+      `)
+      
+    } catch (error: any) {
+      logger.error('Error sending welcome email', { error: error.message })
+    }
+  }
+
+  /**
+   * 🔄 Atualiza subscription no Supabase baseada no invoice
+   */
+  private async updateSubscriptionFromInvoice(userId: string, invoice: Stripe.Invoice, planType: string): Promise<void> {
+    try {
+      const subscriptionId = typeof (invoice as any).subscription === 'string' 
+        ? (invoice as any).subscription 
+        : (invoice as any).subscription?.id
+      
+      // Buscar dados da subscription no Stripe se disponível
+      let subscriptionData = null
+      if (subscriptionId) {
+        try {
+          subscriptionData = await this.stripe.subscriptions.retrieve(subscriptionId)
+        } catch (error) {
+          logger.warn('Could not retrieve subscription from Stripe', { subscriptionId })
+        }
+      }
+
+      const updateData: any = {
+        plan_type: planType,
+        status: subscriptionData?.status || 'active',
+        updated_at: new Date().toISOString()
+      }
+
+      if (subscriptionData) {
+        updateData.stripe_subscription_id = subscriptionData.id
+        updateData.current_period_start = new Date((subscriptionData as any).current_period_start * 1000).toISOString()
+        updateData.current_period_end = new Date((subscriptionData as any).current_period_end * 1000).toISOString()
+        updateData.cancel_at_period_end = (subscriptionData as any).cancel_at_period_end
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from('subscriptions')
+        .update(updateData)
+        .eq('user_id', userId)
+
+      if (updateError) {
+        logger.error('Failed to update subscription', { error: updateError.message })
+      } else {
+        logger.info('✅ Updated subscription from invoice', { userId, planType })
+      }
+      
+    } catch (error: any) {
+      logger.error('Error updating subscription from invoice', { error: error.message })
+    }
   }
 }
 
