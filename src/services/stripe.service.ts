@@ -130,11 +130,31 @@ class StripeService {
       })
 
       if (existingSubscription?.stripe_customer_id) {
-        logger.info('✅ STEP 4: Found existing customer, returning early', {
+        logger.info('🔍 STEP 4: Found existing customer, validating with Stripe...', {
           userId,
           existingCustomerId: existingSubscription.stripe_customer_id
         })
-        return existingSubscription.stripe_customer_id
+        
+        try {
+          // ✅ VERIFICAR se o customer existe no Stripe live mode
+          const customer = await stripe.customers.retrieve(existingSubscription.stripe_customer_id)
+          logger.info('✅ STEP 4a: Customer validated in Stripe live mode', {
+            userId,
+            customerId: customer.id,
+            customerEmail: customer.deleted ? null : (customer as Stripe.Customer).email
+          })
+          return existingSubscription.stripe_customer_id
+        } catch (stripeError: any) {
+          logger.warn('⚠️ STEP 4b: Customer not found in Stripe live mode, creating new one', {
+            userId,
+            oldCustomerId: existingSubscription.stripe_customer_id,
+            stripeError: stripeError.message,
+            isTestModeError: stripeError.message.includes('test mode')
+          })
+          
+          // Customer existe apenas no test mode, vamos criar um novo
+          // Não retornamos o antigo, continuamos para criar um novo
+        }
       }
 
       // Log antes de criar customer no Stripe
@@ -178,6 +198,16 @@ class StripeService {
         stripe_customer_id: customer.id,
         plan_type: 'free' as 'free' | 'starter' | 'enterprise' | 'unlimited',
         status: 'active'
+      }
+
+      // ✅ Se havia um customer antigo (test mode), loggar a migração
+      if (existingSubscription?.stripe_customer_id) {
+        logger.info('🔄 STEP 7b: Migrating from test mode customer to live mode customer', {
+          userId,
+          oldCustomerId: existingSubscription.stripe_customer_id,
+          newCustomerId: customer.id,
+          migrationReason: 'Test mode customer detected with live mode keys'
+        })
       }
 
       logger.info('🔍 STEP 8: Preparing upsert to subscriptions table', {
@@ -421,6 +451,29 @@ class StripeService {
 
       if (!subscription?.stripe_customer_id) {
         throw new Error('No Stripe customer found for user')
+      }
+
+      // ✅ VERIFICAR se o customer existe no Stripe live mode antes de criar portal
+      try {
+        await stripe.customers.retrieve(subscription.stripe_customer_id)
+      } catch (stripeError: any) {
+        logger.warn('⚠️ Customer not found in live mode for portal, will try to recreate', {
+          userId,
+          customerId: subscription.stripe_customer_id,
+          error: stripeError.message
+        })
+        
+        // Se customer não existe no live mode, tentar recriar
+        const newCustomerId = await this.createCustomer(userId)
+        
+        // Usar o novo customer ID
+        const session = await stripe.billingPortal.sessions.create({
+          customer: newCustomerId,
+          return_url: returnUrl
+        })
+
+        logger.info('Portal session created with new customer:', { userId, newCustomerId })
+        return session.url
       }
 
       const session = await stripe.billingPortal.sessions.create({
