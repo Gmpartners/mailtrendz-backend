@@ -8,9 +8,17 @@ interface TokenCacheEntry {
   expiresAt: number
 }
 
+// ✅ OTIMIZADO: Cache mais inteligente e performático
 class TokenCache {
   private cache = new Map<string, TokenCacheEntry>()
-  private readonly CACHE_DURATION = 5 * 60 * 1000 // 5 minutos
+  private userProfileCache = new Map<string, { data: any; expiresAt: number }>()
+  private usageInfoCache = new Map<string, { data: any; expiresAt: number }>()
+  
+  // ✅ OTIMIZAÇÃO: Cache duration aumentado de 5 para 15 minutos
+  private readonly TOKEN_CACHE_DURATION = 15 * 60 * 1000 // 15 minutos
+  private readonly PROFILE_CACHE_DURATION = 30 * 60 * 1000 // 30 minutos  
+  private readonly USAGE_CACHE_DURATION = 15 * 60 * 1000 // 15 minutos
+  private readonly MAX_CACHE_SIZE = 2000 // Aumentado de 1000
 
   get(token: string): any | null {
     const entry = this.cache.get(token)
@@ -22,15 +30,95 @@ class TokenCache {
   }
 
   set(token: string, payload: any): void {
-    // Limpar cache se ficar muito grande
-    if (this.cache.size > 1000) {
-      this.cache.clear()
+    // ✅ OTIMIZAÇÃO: Cleanup mais inteligente - remover apenas expirados primeiro
+    if (this.cache.size > this.MAX_CACHE_SIZE) {
+      this.cleanupExpired()
+      
+      // Se ainda estiver muito grande, limpar mais antigos
+      if (this.cache.size > this.MAX_CACHE_SIZE * 0.8) {
+        const entries = Array.from(this.cache.entries())
+        entries.sort((a, b) => a[1].expiresAt - b[1].expiresAt)
+        const toDelete = entries.slice(0, Math.floor(entries.length * 0.3))
+        toDelete.forEach(([key]) => this.cache.delete(key))
+      }
     }
     
     this.cache.set(token, {
       payload,
-      expiresAt: Date.now() + this.CACHE_DURATION
+      expiresAt: Date.now() + this.TOKEN_CACHE_DURATION
     })
+  }
+
+  // ✅ NOVO: Cache específico para profile de usuário
+  getUserProfile(userId: string): any | null {
+    const entry = this.userProfileCache.get(userId)
+    if (!entry || Date.now() > entry.expiresAt) {
+      this.userProfileCache.delete(userId)
+      return null
+    }
+    return entry.data
+  }
+
+  setUserProfile(userId: string, data: any): void {
+    this.userProfileCache.set(userId, {
+      data,
+      expiresAt: Date.now() + this.PROFILE_CACHE_DURATION
+    })
+  }
+
+  // ✅ NOVO: Cache específico para usage info
+  getUsageInfo(userId: string): any | null {
+    const entry = this.usageInfoCache.get(userId)
+    if (!entry || Date.now() > entry.expiresAt) {
+      this.usageInfoCache.delete(userId)
+      return null
+    }
+    return entry.data
+  }
+
+  setUsageInfo(userId: string, data: any): void {
+    this.usageInfoCache.set(userId, {
+      data,
+      expiresAt: Date.now() + this.USAGE_CACHE_DURATION
+    })
+  }
+
+  // ✅ NOVO: Invalidar cache específico do usuário
+  invalidateUser(userId: string): void {
+    this.userProfileCache.delete(userId)
+    this.usageInfoCache.delete(userId)
+    
+    // Remover tokens deste usuário também
+    for (const [token, entry] of this.cache.entries()) {
+      if (entry.payload.userId === userId) {
+        this.cache.delete(token)
+      }
+    }
+  }
+
+  private cleanupExpired(): void {
+    const now = Date.now()
+    
+    // Limpar tokens expirados
+    for (const [key, entry] of this.cache.entries()) {
+      if (now > entry.expiresAt) {
+        this.cache.delete(key)
+      }
+    }
+    
+    // Limpar profiles expirados
+    for (const [key, entry] of this.userProfileCache.entries()) {
+      if (now > entry.expiresAt) {
+        this.userProfileCache.delete(key)
+      }
+    }
+    
+    // Limpar usage info expirado
+    for (const [key, entry] of this.usageInfoCache.entries()) {
+      if (now > entry.expiresAt) {
+        this.usageInfoCache.delete(key)
+      }
+    }
   }
 
   delete(token: string): void {
@@ -39,6 +127,17 @@ class TokenCache {
 
   clear(): void {
     this.cache.clear()
+    this.userProfileCache.clear()
+    this.usageInfoCache.clear()
+  }
+
+  // ✅ NOVO: Estatísticas do cache para monitoring
+  getStats(): { tokenCache: number; profileCache: number; usageCache: number } {
+    return {
+      tokenCache: this.cache.size,
+      profileCache: this.userProfileCache.size,
+      usageCache: this.usageInfoCache.size
+    }
   }
 }
 
@@ -124,28 +223,38 @@ class AuthTokenService {
   }
 
   /**
-   * Verificar access token
+   * ✅ OTIMIZADO: Verificar access token com cache inteligente
    */
   async verifyAccessToken(token: string): Promise<TokenPayload | null> {
     try {
-      // ✅ OTIMIZAÇÃO: Verificar cache primeiro
+      // ✅ STEP 1: Verificar cache de token primeiro (evita JWT decode + DB query)
       const cachedPayload = tokenCache.get(token)
       if (cachedPayload) {
         return cachedPayload
       }
 
+      // ✅ STEP 2: Decodificar JWT (falha rápida para tokens inválidos)
       const decoded = jwt.verify(token, this.ACCESS_TOKEN_SECRET) as TokenPayload
       
-      // Verificar se usuário ainda existe e está ativo
-      const { data: profile } = await supabaseAdmin
-        .from('profiles')
-        .select('id, email, subscription')
-        .eq('id', decoded.userId)
-        .single()
-
+      // ✅ STEP 3: Verificar cache de profile antes de consultar DB
+      let profile = tokenCache.getUserProfile(decoded.userId)
+      
       if (!profile) {
-        logger.warn('⚠️ [AUTH-TOKEN] Token valid but user not found:', { userId: decoded.userId })
-        return null
+        // ✅ STEP 4: Buscar perfil no DB apenas se não está em cache
+        const { data: dbProfile } = await supabaseAdmin
+          .from('profiles')
+          .select('id, email, subscription')
+          .eq('id', decoded.userId)
+          .single()
+
+        if (!dbProfile) {
+          logger.warn('⚠️ [AUTH-TOKEN] Token valid but user not found:', { userId: decoded.userId })
+          return null
+        }
+        
+        profile = dbProfile
+        // ✅ CACHE: Armazenar perfil para próximas verificações
+        tokenCache.setUserProfile(decoded.userId, profile)
       }
 
       const payload = {
@@ -154,7 +263,7 @@ class AuthTokenService {
         subscription: profile.subscription || 'free'
       }
 
-      // ✅ OTIMIZAÇÃO: Cachear resultado para próximas verificações
+      // ✅ CACHE: Armazenar token verificado para próximas verificações
       tokenCache.set(token, payload)
 
       return payload
@@ -232,85 +341,77 @@ class AuthTokenService {
   }
 
   /**
-   * Armazenar refresh token no banco com rotação
+   * ✅ OTIMIZADO: Armazenar refresh token - operações desnecessárias removidas
    */
   private async storeRefreshToken(userId: string, refreshToken: string): Promise<void> {
     try {
-      // Calcular expiração
+      // ✅ OTIMIZAÇÃO: Calcular expiração apenas uma vez
       const decoded = jwt.decode(refreshToken) as any
       const expiresAt = new Date(decoded.exp * 1000)
 
-      // Primeira tentativa: Limpar tokens expirados para evitar acúmulo
-      await this.cleanupExpiredRefreshTokens(userId)
+      // ✅ OTIMIZAÇÃO: Inserção direta sem cleanup prévia (será feita async depois)
+      const { error } = await (supabaseAdmin as any)
+        .from('user_refresh_tokens')
+        .insert({
+          user_id: userId,
+          token: refreshToken,
+          expires_at: expiresAt.toISOString(),
+          created_at: new Date().toISOString(),
+          is_revoked: false
+        })
 
-      // Inserir novo refresh token com retry em caso de duplicata
-      let insertError: any = null
-      let retryCount = 0
-      const maxRetries = 3
-
-      while (retryCount < maxRetries) {
-        const { error } = await (supabaseAdmin as any)
-          .from('user_refresh_tokens')
-          .insert({
-            user_id: userId,
-            token: refreshToken,
-            expires_at: expiresAt.toISOString(),
-            created_at: new Date().toISOString(),
-            is_revoked: false
-          })
-
-        if (!error) {
-          // Sucesso - sair do loop
-          insertError = null
-          break
-        }
-
-        insertError = error
-
-        // Se for erro de constraint duplicada, tentar novamente com novo token
+      if (error) {
+        // ✅ SIMPLIFICADO: Se falhar, apenas logar e tentar uma vez
         if (error.code === '23505' && error.constraint === 'user_refresh_tokens_token_key') {
-          logger.warn('⚠️ [AUTH-TOKEN] Duplicate token detected, regenerating...', {
-            userId,
-            attempt: retryCount + 1
-          })
+          logger.warn('⚠️ [AUTH-TOKEN] Duplicate token - cleaning up and retrying once', { userId })
           
-          // Regenerar token com novo timestamp e randomness
-          const now = Date.now()
-          const randomValue = Math.random().toString(36).substring(2, 15)
+          // Limpar tokens expirados e tentar uma vez
+          await this.cleanupExpiredRefreshTokens(userId)
           
-          const payload = {
-            userId,
-            email: decoded.email,
-            subscription: decoded.subscription || 'free',
-            tokenType: 'refresh',
-            nonce: randomValue,
-            timestamp: now
+          const retryResult = await (supabaseAdmin as any)
+            .from('user_refresh_tokens')
+            .insert({
+              user_id: userId,
+              token: refreshToken,
+              expires_at: expiresAt.toISOString(),
+              created_at: new Date().toISOString(),
+              is_revoked: false
+            })
+          
+          if (retryResult.error) {
+            logger.error('❌ [AUTH-TOKEN] Failed to store refresh token after cleanup:', retryResult.error)
+            throw retryResult.error
           }
-          
-          refreshToken = jwt.sign(payload, this.REFRESH_TOKEN_SECRET, {
-            expiresIn: this.REFRESH_TOKEN_EXPIRES_IN,
-            issuer: 'mailtrendz-backend',
-            subject: userId,
-            jwtid: `refresh_${now}_${randomValue}_retry${retryCount}`
-          })
-          
-          retryCount++
         } else {
-          // Outro tipo de erro - não fazer retry
-          break
+          logger.error('❌ [AUTH-TOKEN] Failed to store refresh token:', error)
+          throw error
         }
       }
 
-      if (insertError) {
-        logger.error('❌ [AUTH-TOKEN] Failed to store refresh token after retries:', insertError)
-        throw insertError
-      }
-
-      // Limpar refresh tokens antigos (manter apenas os 5 mais recentes)
-      await this.cleanupOldRefreshTokens(userId)
+      // ✅ OTIMIZAÇÃO: Cleanup assíncrono (não bloquear resposta)
+      this.asyncCleanupOldTokens(userId).catch(cleanupError => {
+        logger.warn('⚠️ [AUTH-TOKEN] Async cleanup warning (não crítico):', cleanupError.message)
+      })
+      
     } catch (error) {
       logger.error('❌ [AUTH-TOKEN] Error in storeRefreshToken:', error)
       throw error
+    }
+  }
+
+  /**
+   * ✅ NOVO: Cleanup assíncrono para não bloquear resposta
+   */
+  private async asyncCleanupOldTokens(userId: string): Promise<void> {
+    try {
+      // Executar limpezas em paralelo
+      await Promise.all([
+        this.cleanupExpiredRefreshTokens(userId),
+        this.cleanupOldRefreshTokens(userId)
+      ])
+    } catch (error) {
+      // Falha silenciosa - não é crítica para o fluxo principal
+      logger.debug('Debug: Async cleanup error (non-critical):', error)
     }
   }
 
@@ -457,6 +558,31 @@ class AuthTokenService {
       logger.error('❌ [AUTH-TOKEN] Error validating Supabase token:', error)
       return null
     }
+  }
+
+  // ✅ MÉTODOS PÚBLICOS DE CACHE para uso no controller
+  getCachedProfile(userId: string): any | null {
+    return tokenCache.getUserProfile(userId)
+  }
+
+  setCachedProfile(userId: string, profile: any): void {
+    tokenCache.setUserProfile(userId, profile)
+  }
+
+  getCachedUsage(userId: string): any | null {
+    return tokenCache.getUsageInfo(userId)
+  }
+
+  setCachedUsage(userId: string, usage: any): void {
+    tokenCache.setUsageInfo(userId, usage)
+  }
+
+  invalidateUserCache(userId: string): void {
+    tokenCache.invalidateUser(userId)
+  }
+
+  getCacheStats(): { tokenCache: number; profileCache: number; usageCache: number } {
+    return tokenCache.getStats()
   }
 }
 

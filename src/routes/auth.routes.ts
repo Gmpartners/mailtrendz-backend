@@ -18,6 +18,8 @@ const router = Router()
 router.post('/register', authLimiter, validateRegister, AuthController.register)
 router.post('/login', authLimiter, validateLogin, AuthController.login)
 router.post('/social-login', authLimiter, AuthController.socialLogin)
+// ✅ NOVA ROTA OTIMIZADA: Ultra-fast social login
+router.post('/social-login-ultra', authLimiter, AuthController.socialLoginUltraFast)
 
 // ✅ ROTAS DE TOKEN ATUALIZADAS - suporte para cookies seguros
 router.post('/refresh-token', AuthController.refreshToken) // Legacy

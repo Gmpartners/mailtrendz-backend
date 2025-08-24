@@ -8,6 +8,7 @@ import subscriptionService from '../services/subscription.service'
 import ipTrackingService from '../services/ip-tracking.service'
 import secureDbService from '../services/secure-db.service'
 import authTokenService from '../services/auth-token.service'
+import optimizedAuthService from '../services/optimized-auth.service'
 
 class AuthController {
   register = asyncHandler(async (req: any, res: Response) => {
@@ -96,12 +97,15 @@ class AuthController {
     res.json(result)
   })
 
+  // ✅ OTIMIZADO: Social login com operações em batch e cache inteligente
   socialLogin = asyncHandler(async (req: any, res: Response) => {
     const { supabaseUserId, email, name, avatar, provider } = req.body
     const ipAddress = ipTrackingService.extractRealIp(req)
     const userAgent = req.headers['user-agent']
-
-    logger.info('🔐 [SOCIAL LOGIN] Starting authentication:', { 
+    
+    const startTime = Date.now()
+    
+    logger.info('🚀 [SOCIAL LOGIN OPTIMIZED] Starting fast authentication:', { 
       supabaseUserId, 
       email, 
       provider,
@@ -110,129 +114,93 @@ class AuthController {
     })
 
     try {
-      // ✅ SECURE: Usar secureDbService para verificação de perfil
-      let profile = await secureDbService.getUserProfile(supabaseUserId)
-      let isNewUser = false
-
-      // 🆕 Usuário não tem perfil - criar novo
-      if (!profile) {
-        isNewUser = true
-        logger.info('🆕 [SOCIAL LOGIN] Creating new profile:', { supabaseUserId, email })
-        
-        profile = await secureDbService.createUserProfile(supabaseUserId, {
-          name: name || email.split('@')[0],
-          email,
-          avatar,
-          subscription: 'starter', // ✅ Mudado para starter (conforme logs do usuário)
-          preferences: {
-            defaultIndustry: null,
-            defaultTone: 'profissional',
-            emailSignature: null
-          }
-        })
-        
-        logger.info('✅ [SOCIAL LOGIN] Profile created successfully:', { userId: profile.id })
-        
-        // ✅ NOVO: Garantir inicialização completa para novos usuários
-        try {
-          logger.info('🔧 [SOCIAL LOGIN] Ensuring complete user initialization...')
-          await secureDbService.initializeNewUser(supabaseUserId)
-          logger.info('✅ [SOCIAL LOGIN] User fully initialized')
-        } catch (initError) {
-          logger.error('⚠️ [SOCIAL LOGIN] Initialization warning (continuing):', initError)
-          // Não bloqueia o login se inicialização falhar
-        }
-        
-      } else {
-        // 🔄 Usuário existente - atualizar avatar se necessário
-        logger.info('🔄 [SOCIAL LOGIN] Existing user, checking for updates:', { userId: profile.id })
-        
-        if (avatar && avatar !== profile.avatar) {
-          logger.info('🖼️ [SOCIAL LOGIN] Updating avatar:', { oldAvatar: profile.avatar, newAvatar: avatar })
-          
-          try {
-            const updatedProfile = await secureDbService.updateUserAvatar(supabaseUserId, avatar)
-            profile = updatedProfile
-            logger.info('✅ [SOCIAL LOGIN] Avatar updated successfully')
-          } catch (updateError) {
-            logger.warn('⚠️ [SOCIAL LOGIN] Failed to update avatar:', updateError)
-          }
-        }
-      }
-
-      // 🎯 Inicialização para novos usuários
-      if (isNewUser) {
-        try {
-          logger.info('🚀 [SOCIAL LOGIN] Initializing new user resources:', { supabaseUserId })
-          await secureDbService.initializeNewUser(supabaseUserId)
-        } catch (error: any) {
-          logger.error('⚠️ [SOCIAL LOGIN] Warning - initialization error:', error)
-          // Não quebra o fluxo, apenas loga o aviso
-        }
-      }
-
-      // 🌐 Rastrear IP do usuário
-      try {
-        logger.info('🌐 [SOCIAL LOGIN] Attempting IP tracking:', {
-          userId: supabaseUserId,
-          ipAddress,
-          userAgent,
-          provider,
-          isNewUser
-        })
-        
-        await ipTrackingService.trackUserIp({
-          userId: supabaseUserId,
-          ipAddress,
-          userAgent,
-          provider,
-          isSignup: isNewUser
-        })
-        
-        logger.info('✅ [SOCIAL LOGIN] IP tracking completed')
-      } catch (ipError: any) {
-        logger.error('⚠️ [SOCIAL LOGIN] IP tracking error:', {
-          error: ipError.message,
-          stack: ipError.stack
-        })
-        // Não bloqueia o login se falhar o tracking
-      }
-
-      // 💰 Obter informações de uso e créditos
-      logger.info('💰 [SOCIAL LOGIN] Fetching usage info:', { userId: supabaseUserId })
-      const usageInfo = await subscriptionService.getUsageInfo(supabaseUserId)
+      // ✅ STEP 1: Verificar cache primeiro (evita DB query)
+      const cachedProfile = authTokenService.getCachedProfile(supabaseUserId)
+      const cachedUsage = authTokenService.getCachedUsage(supabaseUserId)
       
+      let profile = cachedProfile
+      let usageInfo = cachedUsage
+      let isNewUser = false
+      
+      // ✅ STEP 2: Se não tem cache, executar batch de operações em paralelo
+      if (!profile || !usageInfo) {
+        logger.info('📊 [SOCIAL LOGIN] Cache miss - executing batch operations')
+        
+        const [
+          profileResult,
+          usageResult
+        ] = await Promise.allSettled([
+          // Query 1: Profile (com fallback para criação)
+          this.getOrCreateUserProfile(supabaseUserId, { email, name, avatar }),
+          // Query 2: Usage info (com cache se disponível)
+          usageInfo || subscriptionService.getUsageInfo(supabaseUserId)
+        ])
+        
+        // Processar resultado do profile
+        if (profileResult.status === 'fulfilled') {
+          profile = profileResult.value.profile
+          isNewUser = profileResult.value.isNewUser
+        } else {
+          throw new Error(`Profile operation failed: ${profileResult.reason}`)
+        }
+        
+        // Processar resultado do usage
+        if (usageResult.status === 'fulfilled') {
+          usageInfo = usageResult.value
+        } else {
+          // Fallback para usage se falhar
+          logger.warn('⚠️ [SOCIAL LOGIN] Usage fetch failed, using fallback')
+          usageInfo = null
+        }
+        
+        // ✅ CACHE: Armazenar resultados para próximas requisições
+        if (profile) authTokenService.setCachedProfile(supabaseUserId, profile)
+        if (usageInfo) authTokenService.setCachedUsage(supabaseUserId, usageInfo)
+      } else {
+        logger.info('⚡ [SOCIAL LOGIN] Using cached data - skipping DB queries')
+      }
+      
+      // ✅ STEP 3: Operações assíncronas não-críticas (não bloquear resposta)
+      this.handleAsyncSocialLoginTasks({
+        supabaseUserId,
+        ipAddress,
+        userAgent,
+        provider,
+        isNewUser,
+        avatar: avatar !== profile?.avatar ? avatar : null
+      }).catch(asyncError => {
+        logger.warn('⚠️ [SOCIAL LOGIN] Async tasks warning (não crítico):', asyncError.message)
+      })
+      
+      // ✅ STEP 4: Preparar dados de créditos otimizado
       const creditsBalance = usageInfo ? {
         available: usageInfo.usage.available,
         used: usageInfo.usage.used,
         total: usageInfo.usage.total,
         unlimited: usageInfo.usage.unlimited,
         resetAt: usageInfo.billing.currentPeriodEnd
-      } : {
-        // Fallback para novos usuários
-        available: 3,
-        used: 0,
-        total: 3,
-        unlimited: false,
-        resetAt: null
-      }
+      } : this.getDefaultCreditsBalance()
 
-      // ✅ NOVO: Criar tokens padronizados para login social
+      // ✅ STEP 5: Criar tokens (operação rápida)
       const tokenPair = await authTokenService.createTokenPair(
         profile.id,
-        profile.email || email, // Usar email do payload se profile.email for null
-        profile.subscription || 'free' // Garantir que não seja null
+        profile.email || email,
+        profile.subscription || 'free'
       )
 
-      // Definir cookies seguros
+      // ✅ STEP 6: Definir cookies seguros
       this.setCookies(res, tokenPair)
-
-      logger.info('✅ [SOCIAL LOGIN] Authentication successful:', { 
+      
+      const totalTime = Date.now() - startTime
+      
+      logger.info('✅ [SOCIAL LOGIN OPTIMIZED] Fast authentication completed:', { 
         userId: profile.id, 
         provider,
         isNewUser,
         subscription: profile.subscription,
-        creditsAvailable: creditsBalance.available
+        creditsAvailable: creditsBalance.available,
+        totalTime: `${totalTime}ms`,
+        usedCache: !!cachedProfile
       })
 
       // 🎉 Resposta de sucesso com tokens padronizados
@@ -284,6 +252,139 @@ class AuthController {
       })
 
       // Re-throw para ser capturado pelo asyncHandler
+      throw error
+    }
+  })
+
+  // ✅ ULTRA OTIMIZADO: Social login com stored procedure (máxima performance)
+  socialLoginUltraFast = asyncHandler(async (req: any, res: Response) => {
+    const { supabaseUserId, email, name, avatar, provider } = req.body
+    const ipAddress = ipTrackingService.extractRealIp(req)
+    const userAgent = req.headers['user-agent']
+    
+    const startTime = Date.now()
+    
+    logger.info('⚡ [SOCIAL LOGIN ULTRA] Starting ultra-fast authentication:', { 
+      supabaseUserId, 
+      email, 
+      provider,
+      hasAvatar: !!avatar,
+      ipAddress 
+    })
+
+    try {
+      // ✅ STEP 1: Usar service otimizado (stored procedure + cache)
+      const authResult = await optimizedAuthService.handleSocialLoginOptimized({
+        supabaseUserId,
+        email,
+        name,
+        avatar,
+        provider
+      })
+
+      const { profile, usage, isNewUser, fromCache } = authResult
+
+      // ✅ STEP 2: Operações assíncronas (não bloquear resposta)
+      if (!fromCache) {
+        // Apenas executar tarefas async se não veio do cache
+        this.handleUltraFastAsyncTasks({
+          supabaseUserId,
+          ipAddress,
+          userAgent,
+          provider,
+          isNewUser
+        }).catch(asyncError => {
+          logger.warn('⚠️ [SOCIAL LOGIN ULTRA] Async tasks warning (não crítico):', asyncError.message)
+        })
+      }
+      
+      // ✅ STEP 3: Preparar dados de créditos (otimizado)
+      const creditsBalance = usage ? {
+        available: usage.usage.available,
+        used: usage.usage.used,
+        total: usage.usage.total,
+        unlimited: usage.usage.unlimited,
+        resetAt: usage.billing.currentPeriodEnd
+      } : this.getDefaultCreditsBalance()
+
+      // ✅ STEP 4: Criar tokens (operação rápida)
+      const tokenPair = await authTokenService.createTokenPair(
+        profile.id,
+        profile.email || email,
+        profile.subscription || 'free'
+      )
+
+      // ✅ STEP 5: Definir cookies seguros
+      this.setCookies(res, tokenPair)
+      
+      const totalTime = Date.now() - startTime
+      
+      logger.info('✅ [SOCIAL LOGIN ULTRA] Ultra-fast authentication completed:', { 
+        userId: profile.id, 
+        provider,
+        isNewUser,
+        fromCache,
+        subscription: profile.subscription,
+        creditsAvailable: creditsBalance.available,
+        totalTime: `${totalTime}ms`,
+        performance: totalTime < 100 ? 'EXCELLENT' : totalTime < 300 ? 'GOOD' : 'NEEDS_OPTIMIZATION'
+      })
+
+      // 🎉 Resposta de sucesso ultra-rápida
+      res.json({
+        success: true,
+        message: `Login ultra-rápido com ${provider} realizado com sucesso`,
+        data: {
+          user: {
+            id: profile.id,
+            name: profile.name,
+            email: profile.email,
+            avatar: profile.avatar,
+            subscription: profile.subscription,
+            apiUsage: {
+              currentMonth: creditsBalance.used,
+              limit: profile.subscription === 'free' ? 50 : 
+                     profile.subscription === 'starter' ? 500 : 
+                     profile.subscription === 'enterprise' ? 5000 : -1,
+              percentage: creditsBalance.total > 0 ? 
+                         Math.round((creditsBalance.used / creditsBalance.total) * 100) : 0,
+              resetDate: creditsBalance.resetAt || 
+                        new Date(new Date().setMonth(new Date().getMonth() + 1, 1)).toISOString()
+            },
+            preferences: profile.preferences || {
+              defaultIndustry: null,
+              defaultTone: 'profissional',
+              emailSignature: null
+            },
+            isEmailVerified: true,
+            lastLoginAt: new Date().toISOString(),
+            createdAt: profile.created_at,
+            updatedAt: profile.updated_at
+          },
+          creditsBalance,
+          accessToken: tokenPair.accessToken,
+          refreshToken: tokenPair.refreshToken,
+          expiresIn: tokenPair.expiresIn,
+          // ✅ MÉTRICAS DE PERFORMANCE para monitoring
+          _performance: {
+            totalTime: `${totalTime}ms`,
+            fromCache,
+            cacheStats: fromCache ? authTokenService.getCacheStats() : null
+          }
+        }
+      })
+
+    } catch (error: any) {
+      const errorTime = Date.now() - startTime
+      logger.error('💥 [SOCIAL LOGIN ULTRA] Critical error:', {
+        error: error.message,
+        stack: error.stack,
+        supabaseUserId,
+        email,
+        provider,
+        errorTime: `${errorTime}ms`
+      })
+
       throw error
     }
   })
@@ -543,6 +644,121 @@ class AuthController {
       maxAge: tokenPair.expiresIn * 1000,
       path: '/'
     })
+  }
+
+  // ✅ MÉTODO AUXILIAR: Get ou criar perfil de usuário otimizado
+  private async getOrCreateUserProfile(userId: string, userData: { email: string, name?: string, avatar?: string }) {
+    try {
+      // Tentar buscar perfil existente primeiro
+      let profile = await secureDbService.getUserProfile(userId)
+      let isNewUser = false
+
+      if (!profile) {
+        // Criar novo perfil
+        isNewUser = true
+        profile = await secureDbService.createUserProfile(userId, {
+          name: userData.name || userData.email.split('@')[0],
+          email: userData.email,
+          avatar: userData.avatar,
+          subscription: 'starter',
+          preferences: {
+            defaultIndustry: null,
+            defaultTone: 'profissional',
+            emailSignature: null
+          }
+        })
+      } else if (userData.avatar && userData.avatar !== profile.avatar) {
+        // Atualizar avatar se necessário
+        try {
+          profile = await secureDbService.updateUserAvatar(userId, userData.avatar)
+        } catch (updateError) {
+          logger.warn('⚠️ [AUTH] Avatar update failed (não crítico):', updateError)
+        }
+      }
+
+      return { profile, isNewUser }
+    } catch (error) {
+      logger.error('❌ [AUTH] Profile operation failed:', error)
+      throw error
+    }
+  }
+
+  // ✅ MÉTODO AUXILIAR: Tarefas assíncronas do social login
+  private async handleAsyncSocialLoginTasks(params: {
+    supabaseUserId: string
+    ipAddress: string
+    userAgent: string
+    provider: string
+    isNewUser: boolean
+    avatar?: string | null
+  }): Promise<void> {
+    const tasks = []
+
+    // Task 1: IP tracking (apenas para novos usuários ou sem cache recente)
+    tasks.push(
+      ipTrackingService.trackUserIp({
+        userId: params.supabaseUserId,
+        ipAddress: params.ipAddress,
+        userAgent: params.userAgent,
+        provider: params.provider,
+        isSignup: params.isNewUser
+      }).catch(error => logger.debug('IP tracking async error:', error))
+    )
+
+    // Task 2: Inicialização para novos usuários
+    if (params.isNewUser) {
+      tasks.push(
+        secureDbService.initializeNewUser(params.supabaseUserId)
+          .catch(error => logger.debug('User initialization async error:', error))
+      )
+    }
+
+    // Executar todas as tasks em paralelo sem bloquear
+    await Promise.allSettled(tasks)
+  }
+
+  // ✅ MÉTODO AUXILIAR: Async tasks ultra-rápidas (ainda menos operações)
+  private async handleUltraFastAsyncTasks(params: {
+    supabaseUserId: string
+    ipAddress: string
+    userAgent: string
+    provider: string
+    isNewUser: boolean
+  }): Promise<void> {
+    const tasks = []
+
+    // ✅ OTIMIZAÇÃO: IP tracking apenas para novos usuários
+    if (params.isNewUser) {
+      tasks.push(
+        ipTrackingService.trackUserIp({
+          userId: params.supabaseUserId,
+          ipAddress: params.ipAddress,
+          userAgent: params.userAgent,
+          provider: params.provider,
+          isSignup: true
+        }).catch(error => logger.debug('IP tracking ultra-fast async error:', error))
+      )
+    }
+
+    // ✅ LIMPEZA DE TOKENS: Usar stored procedure assíncrona
+    tasks.push(
+      optimizedAuthService.asyncCleanupUserTokens(params.supabaseUserId)
+        .catch(error => logger.debug('Token cleanup ultra-fast async error:', error))
+    )
+
+    // Executar em paralelo sem esperar
+    await Promise.allSettled(tasks)
+  }
+
+  // ✅ MÉTODO AUXILIAR: Créditos padrão para fallback
+  private getDefaultCreditsBalance() {
+    return {
+      available: 3,
+      used: 0,
+      total: 3,
+      unlimited: false,
+      resetAt: null
+    }
   }
 }
 
