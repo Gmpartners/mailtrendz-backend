@@ -10,21 +10,35 @@ class MemoryCacheService {
   private cache = new Map<string, CacheItem<any>>()
   private readonly defaultTTL = 5 * 60 * 1000 // 5 minutos padrão
 
-  // Cache para tokens de autenticação (TTL menor para segurança)
+  // 🚀 OTIMIZAÇÃO: Cache de autenticação com TTL balanceado
   private authCache = new Map<string, CacheItem<any>>()
-  private readonly authTTL = 2 * 60 * 1000 // 2 minutos para auth
+  private readonly authTTL = 3 * 60 * 1000 // 3 minutos para auth (aumentado de 2m)
 
-  // Cache para dados de subscription (TTL maior para dados estáveis)
+  // 📊 SMART CACHE: Subscription com TTL sincronizado com frontend
   private subscriptionCache = new Map<string, CacheItem<any>>()
-  private readonly subscriptionTTL = 10 * 60 * 1000 // 10 minutos para subscription
+  private readonly subscriptionTTL = 2 * 60 * 1000 // 2 minutos sincronizado
+  
+  // 🎯 PERFORMANCE METRICS: Cache hit/miss tracking
+  private metrics = {
+    hits: 0,
+    misses: 0,
+    sets: 0,
+    evictions: 0,
+    lastCleanup: Date.now()
+  }
 
   constructor() {
-    // Limpeza automática a cada 5 minutos
+    // 🚀 OTIMIZAÇÃO: Limpeza mais frequente para melhor performance
     setInterval(() => {
       this.cleanup()
-    }, 5 * 60 * 1000)
+    }, 3 * 60 * 1000) // 3 minutos (reduzido de 5m)
 
-    logger.info('🧠 [CACHE] Memory cache service initialized')
+    // 📊 METRICS: Log performance stats every 10 minutes
+    setInterval(() => {
+      this.logPerformanceStats()
+    }, 10 * 60 * 1000)
+
+    logger.info('🧠 [CACHE-PERF] Enhanced memory cache service initialized')
   }
 
   // ========== CACHE GERAL ==========
@@ -36,7 +50,10 @@ class MemoryCacheService {
       createdAt: Date.now()
     })
 
-    logger.debug('📝 [CACHE] Data cached:', { 
+    // 📊 METRICS: Track cache operations
+    this.metrics.sets++
+
+    logger.debug('📝 [CACHE-PERF] Data cached:', { 
       key: key.substring(0, 30) + '...', 
       ttl: ttl || this.defaultTTL,
       size: this.cache.size 
@@ -47,16 +64,22 @@ class MemoryCacheService {
     const item = this.cache.get(key)
     
     if (!item) {
+      // 📊 METRICS: Track cache miss
+      this.metrics.misses++
       return null
     }
 
     if (Date.now() > item.expiresAt) {
       this.cache.delete(key)
-      logger.debug('⏰ [CACHE] Expired item removed:', { key: key.substring(0, 30) + '...' })
+      this.metrics.evictions++
+      logger.debug('⏰ [CACHE-PERF] Expired item removed:', { key: key.substring(0, 30) + '...' })
       return null
     }
 
-    logger.debug('✅ [CACHE] Cache hit:', { 
+    // 📊 METRICS: Track cache hit
+    this.metrics.hits++
+    
+    logger.debug('✅ [CACHE-PERF] Cache hit:', { 
       key: key.substring(0, 30) + '...', 
       age: Date.now() - item.createdAt 
     })
@@ -221,8 +244,11 @@ class MemoryCacheService {
     return token.slice(-10)
   }
 
-  // Estatísticas do cache
+  // 📊 ENHANCED: Estatísticas detalhadas do cache com performance metrics
   getStats(): any {
+    const totalOperations = this.metrics.hits + this.metrics.misses
+    const hitRate = totalOperations > 0 ? (this.metrics.hits / totalOperations * 100).toFixed(2) : '0.00'
+    
     return {
       general: {
         size: this.cache.size,
@@ -236,10 +262,50 @@ class MemoryCacheService {
         size: this.subscriptionCache.size,
         ttl: this.subscriptionTTL
       },
+      performance: {
+        hitRate: `${hitRate}%`,
+        hits: this.metrics.hits,
+        misses: this.metrics.misses,
+        sets: this.metrics.sets,
+        evictions: this.metrics.evictions,
+        totalOperations
+      },
       memory: {
         used: process.memoryUsage().heapUsed / 1024 / 1024,
         total: process.memoryUsage().heapTotal / 1024 / 1024
       }
+    }
+  }
+  
+  // 📈 PERFORMANCE LOGGING: Método para log periódico de performance
+  private logPerformanceStats(): void {
+    const stats = this.getStats()
+    
+    logger.info('📊 [CACHE-PERF] Performance Statistics:', {
+      cacheSize: {
+        general: stats.general.size,
+        auth: stats.auth.size,
+        subscription: stats.subscription.size
+      },
+      performance: stats.performance,
+      memoryUsage: `${stats.memory.used.toFixed(1)}MB / ${stats.memory.total.toFixed(1)}MB`
+    })
+    
+    // Reset metrics periodically to avoid overflow
+    if (stats.performance.totalOperations > 10000) {
+      this.resetMetrics()
+      logger.debug('[CACHE-PERF] Metrics reset after reaching 10k operations')
+    }
+  }
+  
+  // 🔄 METRICS RESET: Reset performance counters
+  private resetMetrics(): void {
+    this.metrics = {
+      hits: 0,
+      misses: 0,
+      sets: 0,
+      evictions: 0,
+      lastCleanup: Date.now()
     }
   }
 }

@@ -15,9 +15,11 @@ function isValidSubscriptionType(planType: string): planType is SubscriptionType
 }
 
 class SubscriptionService {
-  // Cache simples para evitar múltiplas consultas
+  // 🚀 OTIMIZAÇÃO CACHE: Sincronizado com frontend para melhor performance
   private stateCache = new Map<string, { data: SubscriptionState; timestamp: number }>()
-  private readonly CACHE_TTL = 30000 // 30 segundos
+  
+  // 📊 SMART CACHE: Optimized TTL for subscription state
+  private readonly CACHE_TTL_SUBSCRIPTION = 120000 // 2 minutes for subscription data
   
   /**
    * Obter estado completo da assinatura do usuário
@@ -25,11 +27,22 @@ class SubscriptionService {
    */
   async getState(userId: string): Promise<SubscriptionState | null> {
     try {
-      // Verificar cache primeiro
+      // 🚀 SMART CACHE: Verificar cache primeiro com TTL inteligente
       const cached = this.stateCache.get(userId)
-      if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-        logger.debug('[SubscriptionService] Returning cached state for user:', userId)
+      const now = Date.now()
+      
+      if (cached && (now - cached.timestamp < this.CACHE_TTL_SUBSCRIPTION)) {
+        logger.debug('[SubscriptionService-PERF] Returning cached state for user:', userId)
         return cached.data
+      }
+      
+      // 📈 PERFORMANCE METRICS: Log cache miss for monitoring
+      if (cached && (now - cached.timestamp >= this.CACHE_TTL_SUBSCRIPTION)) {
+        logger.debug('[SubscriptionService-PERF] Cache expired, fetching fresh data', {
+          userId,
+          cacheAge: now - cached.timestamp,
+          ttl: this.CACHE_TTL_SUBSCRIPTION
+        })
       }
       
       logger.debug('[SubscriptionService] Getting fresh state for user:', userId)
