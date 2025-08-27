@@ -39,22 +39,13 @@ class IpTrackingService {
       // Em desenvolvimento, converter ::1 para 127.0.0.1
       const normalizedIp = ipAddress === '::1' ? '127.0.0.1' : ipAddress
 
-      // Verificar se o IP já está em uso por outro usuário (apenas para signup com email)
-      if (isSignup && (!provider || provider === 'email')) {
-        const { data: existingTracking } = await supabaseAdmin
-          .from('user_ip_tracking')
-          .select('user_id')
-          .eq('ip_address', normalizedIp)
-          .neq('user_id', userId)
-          .single()
-
-        if (existingTracking) {
-          throw new ApiError(
-            'Este IP já está em uso por outra conta',
-            HTTP_STATUS.FORBIDDEN
-          )
-        }
-      }
+      // ✅ IP BLOCKING REMOVIDO - Apenas registrar para auditoria
+      logger.info('IP tracking for audit purposes only:', {
+        userId,
+        normalizedIp,
+        isSignup,
+        provider
+      })
 
       // Registrar ou atualizar o tracking
       const { error: upsertError } = await supabaseAdmin
