@@ -19,8 +19,8 @@ export const getEnvironmentUrls = (): EnvironmentUrls => {
 
   if (isDevelopment) {
     return {
-      frontend: process.env.FRONTEND_URL_DEV || 'http://localhost:5173',
-      backend: process.env.BACKEND_URL_DEV || 'http://localhost:8000',
+      frontend: process.env.FRONTEND_URL || 'http://localhost:5173',
+      backend: process.env.BACKEND_URL || 'http://localhost:8001',
       isDevelopment: true
     }
   }

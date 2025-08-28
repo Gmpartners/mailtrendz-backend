@@ -8,9 +8,10 @@
     "npm": ">=8.0.0"
   },
   "scripts": {
-    "dev": "nodemon --exec ts-node src/server.ts",
+    "dev": "NODE_ENV=development nodemon --exec ts-node src/server.ts",
+    "dev:prod": "NODE_ENV=production nodemon --exec ts-node src/server.ts",
     "build": "tsc --noEmitOnError false --skipLibCheck true",
-    "start": "node dist/server.js",
+    "start": "NODE_ENV=production node dist/server.js",
     "start:production": "npm run build && npm run start",
     "prepare": "npm run build",
     "initialize-credits": "ts-node scripts/initialize-credits.ts",

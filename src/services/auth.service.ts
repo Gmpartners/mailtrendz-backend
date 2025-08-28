@@ -378,6 +378,104 @@ class AuthService {
     }
   }
 
+  async socialLogin(userData: {
+    supabaseUserId: string
+    email: string
+    name?: string
+    avatar?: string
+    provider: string
+  }) {
+    try {
+      logger.info('🚀 [AUTH] Starting social login', {
+        userId: userData.supabaseUserId,
+        provider: userData.provider
+      })
+
+      // Get or create user profile
+      let { data: profile, error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .select('*')
+        .eq('id', userData.supabaseUserId)
+        .single()
+
+      let isNewUser = false
+
+      if (profileError || !profile) {
+        // Create new user profile
+        isNewUser = true
+        const { data: newProfile, error: createError } = await supabaseAdmin
+          .from('profiles')
+          .insert({
+            id: userData.supabaseUserId,
+            email: userData.email,
+            name: userData.name || userData.email.split('@')[0],
+            avatar: userData.avatar,
+            subscription: 'starter',
+            preferences: {
+              defaultIndustry: null,
+              defaultTone: 'profissional',
+              emailSignature: null
+            }
+          })
+          .select('*')
+          .single()
+
+        if (createError) throw createError
+        profile = newProfile
+      } else {
+        // Update avatar if provided and different
+        if (userData.avatar && userData.avatar !== profile.avatar) {
+          const { data: updatedProfile } = await supabaseAdmin
+            .from('profiles')
+            .update({ 
+              avatar: userData.avatar,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', userData.supabaseUserId)
+            .select('*')
+            .single()
+          
+          if (updatedProfile) profile = updatedProfile
+        }
+      }
+
+      // Get usage info
+      const usageInfo = await subscriptionService.getUsageInfo(userData.supabaseUserId)
+      const creditsBalance = usageInfo ? {
+        available: usageInfo.usage.available,
+        used: usageInfo.usage.used,
+        total: usageInfo.usage.total,
+        unlimited: usageInfo.usage.unlimited,
+        resetAt: usageInfo.billing.currentPeriodEnd
+      } : {
+        available: 50,
+        used: 0,
+        total: 50,
+        unlimited: false,
+        resetAt: null
+      }
+
+      logger.info('✅ [AUTH] Social login completed', {
+        userId: profile.id,
+        provider: userData.provider,
+        isNewUser
+      })
+
+      return {
+        success: true,
+        message: `Login com ${userData.provider} realizado com sucesso`,
+        data: {
+          user: profile,
+          creditsBalance
+        }
+      }
+    } catch (error) {
+      logger.error('❌ [AUTH] Social login failed:', error)
+      if (error instanceof ApiError) throw error
+      throw new ApiError('Erro no login social', HTTP_STATUS.INTERNAL_SERVER_ERROR)
+    }
+  }
+
   static validatePasswordStrength(password: string) {
     const minLength = 8
     const hasUpperCase = /[A-Z]/.test(password)

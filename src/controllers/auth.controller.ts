@@ -4,7 +4,6 @@ import AuthService, { AuthService as AuthServiceClass } from '../services/auth.s
 import { HTTP_STATUS } from '../utils/constants'
 import { asyncHandler } from '../middleware/error.middleware'
 import { logger } from '../utils/logger'
-import subscriptionService from '../services/subscription.service'
 import ipTrackingService from '../services/ip-tracking.service'
 import secureDbService from '../services/secure-db.service'
 import authTokenService from '../services/auth-token.service'
@@ -81,95 +80,76 @@ class AuthController {
     res.json(result)
   })
 
-  // ✅ SIMPLIFICADO: Social login com fluxo único e direto
+  // ✅ SIMPLIFICADO: Social login unificado usando AuthService
   socialLogin = asyncHandler(async (req: any, res: Response) => {
     const { supabaseUserId, email, name, avatar, provider } = req.body
     const ipAddress = ipTrackingService.extractRealIp(req)
     const userAgent = req.headers['user-agent']
     
-    logger.info('🚀 [SOCIAL LOGIN] Starting authentication:', { 
-      supabaseUserId, 
-      email, 
-      provider
-    })
-
     try {
-      // ✅ STEP 1: Get or create user profile
-      const { profile, isNewUser } = await this.getOrCreateUserProfile(supabaseUserId, { email, name, avatar })
+      // ✅ Usar serviço unificado
+      const result = await AuthService.socialLogin({
+        supabaseUserId,
+        email,
+        name,
+        avatar,
+        provider
+      })
+
+      // ✅ Create tokens
+      const tokenPair = await authTokenService.createTokenPair(
+        result.data.user.id,
+        result.data.user.email || email,
+        result.data.user.subscription || 'starter'
+      )
+
+      // ✅ Set secure cookies
+      this.setCookies(res, tokenPair)
       
-      // ✅ STEP 2: Get usage info
-      const usageInfo = await subscriptionService.getUsageInfo(supabaseUserId)
-      
-      // ✅ STEP 3: Background tasks (não bloquear)
+      // ✅ Background tasks (não bloquear)
       this.handleAsyncSocialLoginTasks({
         supabaseUserId,
         ipAddress,
         userAgent,
         provider,
-        isNewUser,
+        isNewUser: !result.data.user.created_at || new Date(result.data.user.created_at).getTime() > (Date.now() - 60000),
         avatar
       }).catch(asyncError => {
         logger.debug('Async tasks completed with warning:', asyncError.message)
-      })
-      
-      // ✅ STEP 4: Prepare credits data
-      const creditsBalance = usageInfo ? {
-        available: usageInfo.usage.available,
-        used: usageInfo.usage.used,
-        total: usageInfo.usage.total,
-        unlimited: usageInfo.usage.unlimited,
-        resetAt: usageInfo.billing.currentPeriodEnd
-      } : this.getDefaultCreditsBalance()
-
-      // ✅ STEP 5: Create tokens
-      const tokenPair = await authTokenService.createTokenPair(
-        profile.id,
-        profile.email || email,
-        profile.subscription || 'starter'
-      )
-
-      // ✅ STEP 6: Set secure cookies
-      this.setCookies(res, tokenPair)
-      
-      logger.info('✅ [SOCIAL LOGIN] Authentication completed:', { 
-        userId: profile.id, 
-        provider,
-        isNewUser,
-        subscription: profile.subscription
       })
 
       // 🎉 Success response
       res.json({
         success: true,
-        message: `Login com ${provider} realizado com sucesso`,
+        message: result.message,
         data: {
           user: {
-            id: profile.id,
-            name: profile.name,
-            email: profile.email,
-            avatar: profile.avatar,
-            subscription: profile.subscription,
+            id: result.data.user.id,
+            name: result.data.user.name,
+            email: result.data.user.email,
+            avatar: result.data.user.avatar,
+            subscription: result.data.user.subscription,
             apiUsage: {
-              currentMonth: creditsBalance.used,
-              limit: profile.subscription === 'free' ? 50 : 
-                     profile.subscription === 'starter' ? 500 : 
-                     profile.subscription === 'enterprise' ? 5000 : -1,
-              percentage: creditsBalance.total > 0 ? 
-                         Math.round((creditsBalance.used / creditsBalance.total) * 100) : 0,
-              resetDate: creditsBalance.resetAt || 
+              currentMonth: result.data.creditsBalance.used,
+              limit: result.data.user.subscription === 'free' ? 50 : 
+                     result.data.user.subscription === 'starter' ? 500 : 
+                     result.data.user.subscription === 'enterprise' ? 5000 : -1,
+              percentage: result.data.creditsBalance.total > 0 ? 
+                         Math.round((result.data.creditsBalance.used / result.data.creditsBalance.total) * 100) : 0,
+              resetDate: result.data.creditsBalance.resetAt || 
                         new Date(new Date().setMonth(new Date().getMonth() + 1, 1)).toISOString()
             },
-            preferences: profile.preferences || {
+            preferences: result.data.user.preferences || {
               defaultIndustry: null,
               defaultTone: 'profissional',
               emailSignature: null
             },
             isEmailVerified: true,
             lastLoginAt: new Date().toISOString(),
-            createdAt: profile.created_at,
-            updatedAt: profile.updated_at
+            createdAt: result.data.user.created_at,
+            updatedAt: result.data.user.updated_at
           },
-          creditsBalance,
+          creditsBalance: result.data.creditsBalance,
           accessToken: tokenPair.accessToken,
           refreshToken: tokenPair.refreshToken,
           expiresIn: tokenPair.expiresIn
@@ -447,42 +427,6 @@ class AuthController {
     })
   }
 
-  // ✅ MÉTODO AUXILIAR: Get ou criar perfil de usuário otimizado
-  private async getOrCreateUserProfile(userId: string, userData: { email: string, name?: string, avatar?: string }) {
-    try {
-      // Tentar buscar perfil existente primeiro
-      let profile = await secureDbService.getUserProfile(userId)
-      let isNewUser = false
-
-      if (!profile) {
-        // Criar novo perfil
-        isNewUser = true
-        profile = await secureDbService.createUserProfile(userId, {
-          name: userData.name || userData.email.split('@')[0],
-          email: userData.email,
-          avatar: userData.avatar,
-          subscription: 'starter',
-          preferences: {
-            defaultIndustry: null,
-            defaultTone: 'profissional',
-            emailSignature: null
-          }
-        })
-      } else if (userData.avatar && userData.avatar !== profile.avatar) {
-        // Atualizar avatar se necessário
-        try {
-          profile = await secureDbService.updateUserAvatar(userId, userData.avatar)
-        } catch (updateError) {
-          logger.warn('⚠️ [AUTH] Avatar update failed (não crítico):', updateError)
-        }
-      }
-
-      return { profile, isNewUser }
-    } catch (error) {
-      logger.error('❌ [AUTH] Profile operation failed:', error)
-      throw error
-    }
-  }
 
   // ✅ MÉTODO AUXILIAR: Tarefas assíncronas do social login
   private async handleAsyncSocialLoginTasks(params: {
@@ -495,7 +439,7 @@ class AuthController {
   }): Promise<void> {
     const tasks = []
 
-    // Task 1: IP tracking (apenas para novos usuários ou sem cache recente)
+    // Task 1: IP tracking
     tasks.push(
       ipTrackingService.trackUserIp({
         userId: params.supabaseUserId,
@@ -518,18 +462,6 @@ class AuthController {
     await Promise.allSettled(tasks)
   }
 
-  // ✅ REMOVIDO: handleUltraFastAsyncTasks - Não mais necessário
-
-  // ✅ MÉTODO AUXILIAR: Créditos padrão para fallback
-  private getDefaultCreditsBalance() {
-    return {
-      available: 3,
-      used: 0,
-      total: 3,
-      unlimited: false,
-      resetAt: null
-    }
-  }
 }
 
 export default new AuthController()
