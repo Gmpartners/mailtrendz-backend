@@ -162,11 +162,54 @@ export const authenticateToken = async (
   }
 }
 
-// ✅ OTIMIZAÇÃO CRÍTICA: Helper function with PARALLEL queries
+// ✅ OTIMIZAÇÃO CRÍTICA: Helper function with PARALLEL queries + CACHE
 async function getProfileWithSubscription(userId: string) {
   try {
-    // 🚀 PERFORMANCE BOOST: Execute both queries in parallel instead of sequential
-    // This reduces response time by ~300-500ms per authenticated request
+    // 🚀 STEP 1: Tentar cache primeiro (evita DB queries)
+    const cachedProfile = authTokenService.getCachedProfile(userId)
+    const cachedUsage = authTokenService.getCachedUsage(userId)
+    
+    if (cachedProfile && cachedUsage) {
+      if (process.env.NODE_ENV === 'development') {
+        logger.debug('⚡ [AUTH-PERF] Profile loaded from cache (0ms)', { userId })
+      }
+      return {
+        ...cachedProfile,
+        subscriptionState: cachedUsage
+      }
+    }
+
+    // 🚀 STEP 2: Se cache parcial, usar o que tem e buscar o resto
+    if (cachedProfile || cachedUsage) {
+      const startTime = Date.now()
+      
+      const [profile, subscriptionState] = await Promise.all([
+        cachedProfile || secureDbService.getUserProfile(userId),
+        cachedUsage || subscriptionService.getState(userId)
+      ])
+
+      if (!profile) {
+        throw new Error(`Profile not found for user: ${userId}`)
+      }
+
+      // Cachear o que estava faltando
+      if (!cachedProfile) authTokenService.setCachedProfile(userId, profile)
+      if (!cachedUsage) authTokenService.setCachedUsage(userId, subscriptionState)
+
+      const responseTime = Date.now() - startTime
+      if (process.env.NODE_ENV === 'development') {
+        logger.debug(`⚡ [AUTH-PERF] Profile partial cache hit (${responseTime}ms)`, { userId })
+      }
+
+      return {
+        ...profile,
+        subscriptionState
+      }
+    }
+
+    // 🚀 STEP 3: Cache miss - buscar tudo em paralelo
+    const startTime = Date.now()
+    
     const [profile, subscriptionState] = await Promise.all([
       secureDbService.getUserProfile(userId),
       subscriptionService.getState(userId)
@@ -176,12 +219,20 @@ async function getProfileWithSubscription(userId: string) {
       throw new Error(`Profile not found for user: ${userId}`)
     }
 
+    // Cachear resultado
+    authTokenService.setCachedProfile(userId, profile)
+    authTokenService.setCachedUsage(userId, subscriptionState)
+
+    const responseTime = Date.now() - startTime
+    if (process.env.NODE_ENV === 'development') {
+      logger.debug(`⚡ [AUTH-PERF] Profile cache miss (${responseTime}ms)`, { userId })
+    }
+
     return {
       ...profile,
       subscriptionState
     }
   } catch (error: any) {
-    // Log performance metrics for monitoring
     logger.debug('🔍 [AUTH-PERF] getProfileWithSubscription error:', { userId, error: error?.message || 'Unknown error' })
     throw error
   }

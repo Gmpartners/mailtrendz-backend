@@ -14,40 +14,43 @@ router.post('/webhook', SubscriptionController.handleStripeWebhook)
 // ✅ ENDPOINT DE EMERGÊNCIA - SÓ DEV (sem autenticação)
 router.post('/emergency-user-fix', SubscriptionController.emergencyUserFix)
 
+// ✅ DEBUG ENDPOINTS - SÓ DESENVOLVIMENTO (removido por enquanto)
+// router.get('/debug/cache-stats', SubscriptionController.getCacheStats)
+
 // ✅ MIDDLEWARE DE AUTENTICAÇÃO
 router.use(authenticateToken)
 
-// ✅ ROTAS DE ASSINATURA COM RATE LIMITING AJUSTADO
+// ✅ ROTAS DE ASSINATURA SEM RATE LIMITING PARA DESENVOLVIMENTO
 router.get('/current', 
-  subscriptionLimiter,
-  endpointSpamProtection(10, 60000), // Aumentado para 10 requisições por minuto
+  // subscriptionLimiter, // Removido para dev
+  // endpointSpamProtection(10, 60000), // Removido para dev
   SubscriptionController.getCurrentSubscription
 )
 
 router.get('/credits', 
-  subscriptionLimiter,
-  endpointSpamProtection(10, 60000), // Aumentado para 10 requisições por minuto
+  // subscriptionLimiter, // Removido para dev
+  // endpointSpamProtection(10, 60000), // Removido para dev
   SubscriptionController.getCurrentCredits
 )
 
 // ✅ NOVA ROTA - Obter uso mensal detalhado
 router.get('/monthly-usage',
-  subscriptionLimiter,
-  endpointSpamProtection(10, 60000),
+  // subscriptionLimiter, // Removido para dev
+  // endpointSpamProtection(10, 60000), // Removido para dev
   SubscriptionController.getMonthlyUsage
 )
 
 // ✅ NOVA ROTA - Obter histórico de uso
 router.get('/usage-history',
-  subscriptionLimiter,
-  endpointSpamProtection(5, 60000), // 5 requisições por minuto
+  // subscriptionLimiter, // Removido para dev
+  // endpointSpamProtection(5, 60000), // Removido para dev
   SubscriptionController.getUsageHistory
 )
 
 // ✅ NOVA ROTA - Verificar limite antes de consumir
 router.get('/check-limit',
-  subscriptionLimiter,
-  endpointSpamProtection(15, 60000), // 15 requisições por minuto
+  // subscriptionLimiter, // Removido para dev
+  // endpointSpamProtection(15, 60000), // Removido para dev
   SubscriptionController.checkLimit
 )
 

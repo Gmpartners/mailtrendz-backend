@@ -18,8 +18,8 @@ class SubscriptionService {
   // 🚀 OTIMIZAÇÃO CACHE: Sincronizado com frontend para melhor performance
   private stateCache = new Map<string, { data: SubscriptionState; timestamp: number }>()
   
-  // 📊 SMART CACHE: Optimized TTL for subscription state
-  private readonly CACHE_TTL_SUBSCRIPTION = 120000 // 2 minutes for subscription data
+  // 📊 SMART CACHE: Optimized TTL for development (super fast cache)
+  private readonly CACHE_TTL_SUBSCRIPTION = process.env.NODE_ENV === 'development' ? 300000 : 120000 // 5 min dev, 2 min prod
   
   /**
    * Obter estado completo da assinatura do usuário

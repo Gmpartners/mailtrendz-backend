@@ -14,11 +14,11 @@ class TokenCache {
   private userProfileCache = new Map<string, { data: any; expiresAt: number }>()
   private usageInfoCache = new Map<string, { data: any; expiresAt: number }>()
   
-  // ✅ OTIMIZAÇÃO: Cache duration aumentado de 5 para 15 minutos
-  private readonly TOKEN_CACHE_DURATION = 15 * 60 * 1000 // 15 minutos
-  private readonly PROFILE_CACHE_DURATION = 30 * 60 * 1000 // 30 minutos  
-  private readonly USAGE_CACHE_DURATION = 15 * 60 * 1000 // 15 minutos
-  private readonly MAX_CACHE_SIZE = 2000 // Aumentado de 1000
+  // ✅ OTIMIZAÇÃO: Cache duration otimizado para localhost
+  private readonly TOKEN_CACHE_DURATION = 30 * 60 * 1000 // 30 minutos (aumentado)
+  private readonly PROFILE_CACHE_DURATION = 60 * 60 * 1000 // 1 hora (aumentado)  
+  private readonly USAGE_CACHE_DURATION = 30 * 60 * 1000 // 30 minutos (aumentado)
+  private readonly MAX_CACHE_SIZE = 5000 // Aumentado para desenvolvimento
 
   get(token: string): any | null {
     const entry = this.cache.get(token)
