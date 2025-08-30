@@ -861,6 +861,49 @@ class SubscriptionController {
     }
   }
 
+  // ✅ DEBUG: Cache stats para desenvolvimento
+  getCacheStats = async (_req: Request, res: Response): Promise<void> => {
+    try {
+      if (process.env.NODE_ENV === 'production') {
+        res.status(HTTP_STATUS.FORBIDDEN).json({
+          success: false,
+          message: 'Endpoint disponível apenas em desenvolvimento'
+        })
+        return
+      }
+
+      const subscriptionServiceInstance = subscriptionService as any
+      const cacheSize = subscriptionServiceInstance.stateCache?.size || 0
+      
+      // Estatísticas de memória
+      const memoryUsage = process.memoryUsage()
+      
+      res.json({
+        success: true,
+        data: {
+          subscription: {
+            cacheSize,
+            cacheTTL: subscriptionServiceInstance.CACHE_TTL_SUBSCRIPTION || 120000
+          },
+          memory: {
+            rss: `${Math.round(memoryUsage.rss / 1024 / 1024)}MB`,
+            heapTotal: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)}MB`,
+            heapUsed: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB`,
+            external: `${Math.round(memoryUsage.external / 1024 / 1024)}MB`
+          },
+          uptime: `${Math.round(process.uptime())}s`,
+          nodeEnv: process.env.NODE_ENV || 'unknown'
+        }
+      })
+    } catch (error: any) {
+      logger.error('Error getting cache stats:', error)
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: 'Erro ao obter estatísticas do cache'
+      })
+    }
+  }
+
   // ✅ ENDPOINT DE EMERGÊNCIA - SÓ PARA DEV (sem autenticação)
   emergencyUserFix = async (_req: Request, res: Response): Promise<void> => {
     try {

@@ -462,6 +462,27 @@ class AuthController {
     await Promise.allSettled(tasks)
   }
 
+  // ✅ NOVO: Debug endpoint para estatísticas de cache
+  getCacheStats = asyncHandler(async (_req: any, res: Response) => {
+    const stats = authTokenService.getCacheStats()
+    const memoryUsage = process.memoryUsage()
+    
+    res.json({
+      success: true,
+      data: {
+        cache: stats,
+        memory: {
+          rss: `${Math.round(memoryUsage.rss / 1024 / 1024)}MB`,
+          heapTotal: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)}MB`,
+          heapUsed: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB`,
+          external: `${Math.round(memoryUsage.external / 1024 / 1024)}MB`
+        },
+        uptime: `${Math.round(process.uptime())}s`,
+        nodeEnv: process.env.NODE_ENV || 'unknown'
+      }
+    })
+  })
+
 }
 
 export default new AuthController()

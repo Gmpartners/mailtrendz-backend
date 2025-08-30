@@ -29,6 +29,7 @@ router.get('/verify-email/:token', validateObjectId('token'), AuthController.ver
 router.post('/validate-password', AuthController.validatePassword)
 router.get('/health', AuthController.healthCheck)
 router.get('/debug/ip', DebugController.checkIpExtraction)
+router.get('/debug/cache-stats', AuthController.getCacheStats)
 
 // Rotas protegidas (requerem autenticação)
 router.use(authenticateToken)
