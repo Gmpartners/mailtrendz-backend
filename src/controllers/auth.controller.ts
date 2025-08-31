@@ -4,7 +4,6 @@ import AuthService, { AuthService as AuthServiceClass } from '../services/auth.s
 import { HTTP_STATUS } from '../utils/constants'
 import { asyncHandler } from '../middleware/error.middleware'
 import { logger } from '../utils/logger'
-import ipTrackingService from '../services/ip-tracking.service'
 import secureDbService from '../services/secure-db.service'
 import authTokenService from '../services/auth-token.service'
 // ✅ REMOVIDO: optimizedAuthService não mais necessário
@@ -12,49 +11,18 @@ import authTokenService from '../services/auth-token.service'
 class AuthController {
   register = asyncHandler(async (req: any, res: Response) => {
     const userData: RegisterDto = req.body
-    const ip = ipTrackingService.extractRealIp(req)
-    const userAgent = req.headers['user-agent']
-
-    // ✅ IP BLOCKING REMOVIDO - Permitir múltiplas contas por IP
-
-    const result = await AuthService.register(userData, ip)
-
-    // Rastrear IP após registro bem-sucedido
-    if (result.success && result.data?.user?.id) {
-      try {
-        await ipTrackingService.trackUserIp({
-          userId: result.data.user.id,
-          ipAddress: ip,
-          userAgent,
-          isSignup: true
-        })
-      } catch (error) {
-        logger.error('Failed to track IP after registration:', error)
-      }
-    }
+    const result = await AuthService.register(userData)
 
     res.status(HTTP_STATUS.CREATED).json(result)
   })
 
   login = asyncHandler(async (req: any, res: Response) => {
     const credentials: LoginDto = req.body
-    const ip = ipTrackingService.extractRealIp(req)
-    const userAgent = req.headers['user-agent']
+    const result = await AuthService.login(credentials)
 
-    // ✅ IP BLOCKING REMOVIDO - Permitir logins múltiplos por IP
-
-    const result = await AuthService.login(credentials, ip)
-
-    // Rastrear IP após login bem-sucedido
+    // Create tokens and set cookies for successful login
     if (result.success && result.data?.user?.id) {
       try {
-        await ipTrackingService.trackUserIp({
-          userId: result.data.user.id,
-          ipAddress: ip,
-          userAgent,
-          provider: 'email'
-        })
-
         // ✅ NOVO: Criar tokens padronizados e definir cookies seguros
         const tokenPair = await authTokenService.createTokenPair(
           result.data.user.id,
@@ -73,7 +41,7 @@ class AuthController {
         } as any
 
       } catch (error) {
-        logger.error('Failed to track IP or create tokens after login:', error)
+        logger.error('Failed to create tokens after login:', error)
       }
     }
 
@@ -83,8 +51,26 @@ class AuthController {
   // ✅ SIMPLIFICADO: Social login unificado usando AuthService
   socialLogin = asyncHandler(async (req: any, res: Response) => {
     const { supabaseUserId, email, name, avatar, provider } = req.body
-    const ipAddress = ipTrackingService.extractRealIp(req)
-    const userAgent = req.headers['user-agent']
+    
+    // ✅ VALIDAR UUID DO SUPABASE
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    if (!supabaseUserId || !uuidRegex.test(supabaseUserId)) {
+      logger.error('❌ [SOCIAL LOGIN] Invalid UUID:', {
+        supabaseUserId,
+        typeof: typeof supabaseUserId,
+        length: supabaseUserId?.length
+      })
+      
+      res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: 'ID de usuário inválido. Tente fazer login novamente.',
+        error: {
+          code: 'INVALID_USER_ID',
+          details: 'Supabase user ID deve ser um UUID válido'
+        }
+      })
+      return
+    }
     
     try {
       // ✅ Usar serviço unificado
@@ -109,8 +95,6 @@ class AuthController {
       // ✅ Background tasks (não bloquear)
       this.handleAsyncSocialLoginTasks({
         supabaseUserId,
-        ipAddress,
-        userAgent,
         provider,
         isNewUser: !result.data.user.created_at || new Date(result.data.user.created_at).getTime() > (Date.now() - 60000),
         avatar
@@ -431,26 +415,13 @@ class AuthController {
   // ✅ MÉTODO AUXILIAR: Tarefas assíncronas do social login
   private async handleAsyncSocialLoginTasks(params: {
     supabaseUserId: string
-    ipAddress: string
-    userAgent: string
     provider: string
     isNewUser: boolean
     avatar?: string | null
   }): Promise<void> {
     const tasks = []
 
-    // Task 1: IP tracking
-    tasks.push(
-      ipTrackingService.trackUserIp({
-        userId: params.supabaseUserId,
-        ipAddress: params.ipAddress,
-        userAgent: params.userAgent,
-        provider: params.provider,
-        isSignup: params.isNewUser
-      }).catch(error => logger.debug('IP tracking async error:', error))
-    )
-
-    // Task 2: Inicialização para novos usuários
+    // Task: Inicialização para novos usuários
     if (params.isNewUser) {
       tasks.push(
         secureDbService.initializeNewUser(params.supabaseUserId)

@@ -28,7 +28,7 @@ router.post('/reset-password', authLimiter, validatePasswordUpdate, AuthControll
 router.get('/verify-email/:token', validateObjectId('token'), AuthController.verifyEmail)
 router.post('/validate-password', AuthController.validatePassword)
 router.get('/health', AuthController.healthCheck)
-router.get('/debug/ip', DebugController.checkIpExtraction)
+router.get('/debug/system', DebugController.getSystemInfo)
 router.get('/debug/cache-stats', AuthController.getCacheStats)
 
 // Rotas protegidas (requerem autenticação)

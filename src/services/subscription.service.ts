@@ -402,18 +402,10 @@ class SubscriptionService {
     try {
       logger.debug('[SubscriptionService] Consuming credits via unified system:', { userId, amount, operation })
 
-      // ✅ USAR FUNÇÃO ESPECÍFICA PARA CHAT AI
-      let rpcFunction: string
-      let rpcParams: any
-
-      if (operation === 'ai_chat' || operation === 'chat_ai_processing') {
-        rpcFunction = 'consume_ai_chat_credit'
-        rpcParams = { p_user_id: userId }
-        logger.info('[SubscriptionService] Using AI chat specific credit consumption:', { userId, operation })
-      } else {
-        rpcFunction = 'consume_credit'
-        rpcParams = { p_user_id: userId, p_amount: amount }
-      }
+      // ✅ USAR SEMPRE A FUNÇÃO UNIFICADA QUE FUNCIONA CORRETAMENTE
+      const rpcFunction = 'consume_credit_unified'
+      const rpcParams = { p_user_id: userId, p_amount: amount, p_operation: operation }
+      logger.info('[SubscriptionService] Using unified credit consumption function:', { userId, operation, amount })
 
       const { data, error } = await supabase.rpc(rpcFunction as any, rpcParams)
 
@@ -427,29 +419,30 @@ class SubscriptionService {
       // Limpar cache após consumo de créditos
       this.stateCache.delete(userId)
 
-      // ✅ CORREÇÃO: RPC retorna array, pegar primeiro elemento
-      const result = Array.isArray(data) ? data[0] : data
-      if (!result || typeof result !== 'object') {
-        logger.error('[SubscriptionService] Invalid response format:', { data, result, isArray: Array.isArray(data) })
+      // ✅ CORREÇÃO: consume_credit_unified retorna JSONB diretamente
+      if (!data || typeof data !== 'object') {
+        logger.error('[SubscriptionService] Invalid response format:', { data, type: typeof data })
         return {
           success: false,
           error: 'invalid_response_format'
         }
       }
 
-      // ✅ CORREÇÃO: Mapear resposta correta do RPC
+      logger.info('[SubscriptionService] Unified function response:', data)
+
+      // ✅ MAPEAR RESPOSTA DA FUNÇÃO UNIFICADA
       return {
-        success: result.success || false,
-        remaining: result.credits_remaining || 0,
-        error: result.error_message || null,
-        unlimited: false, // Enterprise plan has limits
-        consumed: amount,
-        totalUsed: 0, // Can be calculated later if needed
-        isFreePlan: false, // Enterprise user
-        isLifetimeFree: false,
-        planType: 'enterprise',
-        monthlyLimit: 50, // Enterprise limit
-        resetDate: undefined
+        success: data.success || false,
+        remaining: data.remaining || 0,
+        error: data.error || null,
+        unlimited: data.unlimited || false,
+        consumed: data.consumed || amount,
+        totalUsed: data.total_used || 0,
+        isFreePlan: data.plan_type === 'free',
+        isLifetimeFree: data.plan_type === 'free_lifetime',
+        planType: data.plan_type || 'unknown',
+        monthlyLimit: data.monthly_limit || 0,
+        resetDate: data.reset_date
       }
     } catch (error) {
       logger.error('[SubscriptionService] Error consuming credits:', error)

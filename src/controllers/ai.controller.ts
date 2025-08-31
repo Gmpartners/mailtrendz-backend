@@ -347,12 +347,13 @@ const validateEmail = async (req: AuthRequest, res: Response): Promise<void> => 
 
 const processChat = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    // ✅ CORRIGIDO: Garantir que userId não seja undefined
     const userId = req.user!.id
     const { 
       message, 
       chat_id, 
-      project_id, 
+      project_id,
+      html,
+      operation,
       images = [],
       imageUrls = [] 
     } = req.body
@@ -370,23 +371,21 @@ const processChat = async (req: AuthRequest, res: Response): Promise<void> => {
     }
 
     try {
-      // ✅ BUSCAR HTML EXISTENTE DO PROJETO
-      let existingHTML: string | undefined
-      if (project_id) {
-        const { data: project, error } = await supabase
-          .from('projects')
-          .select('content')
-          .eq('id', project_id)
-          .single()
-        
-        if (!error && project?.content && typeof project.content === 'object' && 'html' in project.content) {
-          existingHTML = project.content.html as string
-          logger.info('HTML existente encontrado para modificação:', { 
-            projectId: project_id, 
-            htmlLength: existingHTML?.length || 0
-          })
-        }
-      }
+      // ✅ USAR HTML-RESOLVER PARA BUSCAR HTML ATUAL
+      const HTMLResolver = require('../utils/html-resolver').default
+      const existingHTML = html || await HTMLResolver.getCurrentHTML(project_id, chat_id)
+      
+      // ✅ DETERMINAR OPERAÇÃO USANDO LÓGICA SIMPLIFICADA
+      const finalOperation = HTMLResolver.determineOperation(message, !!existingHTML, operation)
+      
+      logger.info('[AI-CONTROLLER] Processando chat', { 
+        chatId: chat_id,
+        projectId: project_id,
+        hasExistingHTML: !!existingHTML,
+        htmlLength: existingHTML?.length || 0,
+        operation: finalOperation,
+        messageLength: message.length
+      })
 
       const iaResponse = await iaService.generateHTML({
         userInput: message,
@@ -396,8 +395,9 @@ const processChat = async (req: AuthRequest, res: Response): Promise<void> => {
           chat_id,
           project_id,
           isChat: true,
-          existingHTML, // ✅ ADICIONAR HTML EXISTENTE
-          isModification: !!existingHTML // ✅ INDICAR SE É MODIFICAÇÃO
+          existingHTML,
+          operation: finalOperation,
+          isModification: finalOperation !== 'create'
         },
         userId
       })
@@ -410,27 +410,35 @@ const processChat = async (req: AuthRequest, res: Response): Promise<void> => {
       // ✅ SALVAR MENSAGENS NO BANCO
       if (chat_id) {
         try {
+          // 🔧 CORREÇÃO: Usar supabaseAdmin com type assertion para contornar limitações TypeScript
+          const supabaseAdmin = require('../config/supabase.config').supabaseAdmin
+          
           // Salvar mensagem do usuário
-          await supabase
-            .from('chat_messages')
+          await (supabaseAdmin as any)
+            .from('messages')
             .insert({
               chat_id: chat_id,
               role: 'user',
               content: message,
-              metadata: {
+              artifacts: {
                 images: finalImageUrls?.length || 0,
                 imageIntents: imageIntents?.map(i => i.intent) || []
               }
             })
 
-          // Salvar resposta da IA
-          await supabase
-            .from('chat_messages')
+          // 🔧 CORREÇÃO: Salvar resposta da IA com artifacts HTML padronizado
+          await (supabaseAdmin as any)
+            .from('messages')
             .insert({
               chat_id: chat_id,
-              role: 'ai',
+              role: 'assistant',
               content: iaResponse.response,
-              metadata: {
+              artifacts: iaResponse.html ? {
+                id: Date.now().toString(),
+                type: 'html', // 🔧 USAR 'html' EM VEZ DE 'text'
+                title: 'Email HTML Gerado',
+                content: iaResponse.html
+              } : {
                 ...iaResponse.metadata,
                 hasHtml: !!iaResponse.html,
                 htmlLength: iaResponse.html?.length || 0
@@ -443,31 +451,12 @@ const processChat = async (req: AuthRequest, res: Response): Promise<void> => {
         }
       }
 
-      // ✅ SALVAR HTML MODIFICADO NO PROJETO
+      // ✅ SALVAR HTML USANDO HTML-RESOLVER
       if (project_id && iaResponse.html) {
         try {
-          const { error } = await supabase
-            .from('projects')
-            .update({
-              content: {
-                html: iaResponse.html,
-                subject: iaResponse.subject,
-                text: iaResponse.html.replace(/<[^>]*>/g, '').substring(0, 300) // Extract text preview
-              },
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', project_id)
-
-          if (!error) {
-            logger.info('HTML do projeto atualizado com sucesso', { 
-              project_id, 
-              htmlLength: iaResponse.html.length 
-            })
-          } else {
-            logger.error('Erro ao atualizar projeto:', error)
-          }
+          await HTMLResolver.saveProjectHTML(project_id, iaResponse.html, iaResponse.subject)
         } catch (updateError) {
-          logger.error('Erro ao atualizar projeto:', updateError)
+          logger.error('[AI-CONTROLLER] Erro ao salvar HTML via HTMLResolver:', updateError)
         }
       }
 
@@ -701,6 +690,10 @@ export const testConnection = async (_req: Request, res: Response): Promise<void
     })
   }
 }
+
+// 🗑️ REMOVIDO: Usar ChatController.getLatestHTMLFromMessagesOptimized() em vez de função duplicada
+
+// 🗑️ REMOVIDO: Função duplicada - usar ChatController.getLatestHTMLFromMessagesOptimized()
 
 const AIController = {
   generateEmail,

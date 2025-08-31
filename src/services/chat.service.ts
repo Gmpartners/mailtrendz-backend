@@ -4,14 +4,55 @@ import { CreateChatDto, CreateMessageDto, normalizeMessageRole, ChatMessageRole 
 import { ApiError } from '../utils/api-error'
 import { HTTP_STATUS, ERROR_CODES } from '../utils/constants'
 import { logger } from '../utils/logger'
+import HTMLResolver from '../utils/html-resolver'
 
 type Chat = Database['public']['Tables']['chats']['Row']
-type ChatMessage = Database['public']['Tables']['chat_messages']['Row']
+
+// Interface local para a tabela messages (contorna problema de tipagem)
+interface ChatMessage {
+  id: string
+  chat_id: string | null
+  content: string
+  role: string
+  metadata?: any | null
+  artifacts?: any | null
+  created_at: string | null
+}
 
 // Constante com roles válidos
 const VALID_CHAT_ROLES: ChatMessageRole[] = ['user', 'ai', 'assistant', 'system'];
 
 class ChatService {
+  async getLatestHTMLContent(chatId: string, userId?: string): Promise<string | null> {
+    try {
+      logger.info('[CHAT-SERVICE] Usando HTMLResolver para buscar HTML', { chatId, userId })
+      
+      // ✅ USAR HTML-RESOLVER (FONTE ÚNICA DE VERDADE)
+      const html = await HTMLResolver.getCurrentHTML(undefined, chatId)
+      
+      if (html) {
+        logger.info('[CHAT-SERVICE] HTML encontrado via HTMLResolver', {
+          chatId,
+          htmlLength: html.length
+        })
+        return html
+      }
+      
+      logger.info('[CHAT-SERVICE] Nenhum HTML encontrado', { chatId })
+      return null
+      
+    } catch (error) {
+      logger.error('❌ Erro crítico na busca de HTML:', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        chatId,
+        userId,
+        stack: error instanceof Error ? error.stack : undefined
+      })
+      return null
+    }
+  }
+
+
   async createChat(userId: string, data: CreateChatDto, userToken?: string): Promise<Chat> {
     try {
       const supabase = getSupabaseWithAuth(userToken)
@@ -250,9 +291,10 @@ class ChatService {
       // ✅ USAR CLIENTE COM CONTEXTO DE USUÁRIO
       const supabase = getSupabaseWithAuth(userToken)
 
-      const { data: messages, error } = await supabase
+      // ✅ CORRIGIDO: Usar tabela 'chat_messages' que existe no banco
+      const { data: messages, error } = await (supabase as any)
         .from('chat_messages')
-        .select('*')
+        .select('id, chat_id, content, role, metadata, created_at')
         .eq('chat_id', chatId)
         .order('created_at', { ascending: true })
         .limit(limit)
@@ -301,20 +343,29 @@ class ChatService {
         chatId,
         role,
         contentLength: messageData.content?.length || 0,
+        hasArtifacts: !!messageData.artifacts,
         hasUserToken: !!userToken
       });
 
       // ✅ USAR CLIENTE COM CONTEXTO DE USUÁRIO
       const supabase = getSupabaseWithAuth(userToken)
 
-      const { data: message, error } = await supabase
+      // ✅ PREPARAR DADOS COM METADATA (não artifacts - tabela chat_messages só tem metadata)
+      const messagePayload = {
+        chat_id: chatId,
+        role: role,
+        content: messageData.content,
+        metadata: {
+          ...messageData.metadata,
+          // Se artifacts foi fornecido, mover para dentro de metadata
+          ...(messageData.artifacts && { artifacts: messageData.artifacts })
+        }
+      }
+
+      // ✅ CORRIGIDO: Usar tabela 'chat_messages' que existe no banco
+      const { data: message, error } = await (supabase as any)
         .from('chat_messages')
-        .insert({
-          chat_id: chatId,
-          role: role, // Usar role validado
-          content: messageData.content,
-          metadata: messageData.metadata || {}
-        })
+        .insert(messagePayload)
         .select()
         .single()
 
@@ -326,6 +377,7 @@ class ChatService {
           chatId,
           userId,
           role,
+          hasArtifacts: !!messageData.artifacts,
           hasUserToken: !!userToken
         })
         throw new ApiError('Erro ao adicionar mensagem', HTTP_STATUS.INTERNAL_SERVER_ERROR)
@@ -344,7 +396,8 @@ class ChatService {
       logger.info('Message added successfully:', {
         messageId: message.id,
         chatId,
-        role
+        role,
+        hasArtifacts: !!message.artifacts
       });
 
       return message
@@ -449,10 +502,10 @@ class ChatService {
           title,
           created_at,
           updated_at,
-          chat_messages!inner(content)
+          messages!inner(content)
         `)
         .eq('user_id', userId)
-        .or(`title.ilike.%${query}%`, { foreignTable: 'chat_messages' })
+        .or(`title.ilike.%${query}%`, { foreignTable: 'messages' })
         .order('updated_at', { ascending: false })
         .limit(20)
 

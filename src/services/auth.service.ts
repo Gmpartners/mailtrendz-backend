@@ -11,7 +11,7 @@ import { getRedirectUrl } from '../utils/url-helper'
 type Profile = Database['public']['Tables']['profiles']['Row']
 
 class AuthService {
-  async register(userData: RegisterDto, ip: string) {
+  async register(userData: RegisterDto) {
     try {
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email: userData.email,
@@ -65,7 +65,7 @@ class AuthService {
         resetAt: usageInfo.billing.currentPeriodEnd
       } : null
 
-      logger.info(`New user registered: ${userData.email} from IP: ${ip}`)
+      logger.info(`New user registered: ${userData.email}`)
 
       return {
         success: true,
@@ -84,7 +84,7 @@ class AuthService {
     }
   }
 
-  async login(credentials: LoginDto, ip: string) {
+  async login(credentials: LoginDto) {
     try {
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: credentials.email,
@@ -122,7 +122,7 @@ class AuthService {
         resetAt: usageInfo.billing.currentPeriodEnd
       } : null
 
-      logger.info(`User logged in: ${credentials.email} from IP: ${ip}`)
+      logger.info(`User logged in: ${credentials.email}`)
 
       return {
         success: true,
@@ -448,9 +448,10 @@ class AuthService {
         unlimited: usageInfo.usage.unlimited,
         resetAt: usageInfo.billing.currentPeriodEnd
       } : {
-        available: 50,
+        // ✅ CORREÇÃO: Usuários novos devem ser FREE (3 créditos), não starter (50)
+        available: 3,
         used: 0,
-        total: 50,
+        total: 3,
         unlimited: false,
         resetAt: null
       }

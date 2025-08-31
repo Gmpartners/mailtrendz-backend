@@ -160,7 +160,7 @@ interface TokenPair {
 class AuthTokenService {
   private readonly ACCESS_TOKEN_SECRET = process.env.JWT_SECRET || 'your-secret-key'
   private readonly REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key'
-  private readonly ACCESS_TOKEN_EXPIRES_IN = '15m'
+  private readonly ACCESS_TOKEN_EXPIRES_IN = '2h'
   private readonly REFRESH_TOKEN_EXPIRES_IN = '7d'
 
   /**

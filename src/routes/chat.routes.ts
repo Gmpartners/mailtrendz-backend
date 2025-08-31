@@ -125,4 +125,11 @@ router.get(
   ChatController.getChatHealth
 )
 
+// ✅ NOVA ROTA - Buscar último HTML do chat
+router.get(
+  '/:chatId/latest-html',
+  param('chatId').isUUID().withMessage('Chat ID inválido'),
+  ChatController.getLatestHTML
+)
+
 export default router

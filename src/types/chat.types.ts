@@ -91,9 +91,10 @@ export interface SendMessageDto {
 export interface CreateMessageDto {
   chatId: string
   content: string
-  type?: 'user' | 'ai' | 'system'
+  type?: 'user' | 'ai' | 'assistant' | 'system'
   images?: MessageImage[]
   metadata?: any
+  artifacts?: any
 }
 
 export interface UpdateChatDto {

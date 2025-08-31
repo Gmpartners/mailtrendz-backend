@@ -9,6 +9,20 @@ export interface IARequest {
   userId?: string
   imageUrls?: string[]
   imageIntents?: Array<{ url: string; intent: 'analyze' | 'include' }>
+  // ✨ NOVA ARQUITETURA: Suporte a operações específicas
+  operation?: 'create' | 'edit' | 'analyze'
+  editContext?: {
+    currentHtml?: string
+    targetElement?: {
+      selector?: string
+      originalText?: string
+      newText?: string
+      elementType?: 'text' | 'color' | 'style' | 'layout' | 'content'
+      position?: any
+    }
+    preserveStructure?: boolean
+    priority?: 'speed' | 'quality' | 'balanced'
+  }
 }
 
 export interface IAResponse {
@@ -81,197 +95,220 @@ class IAService {
   }
 
   private getSystemPrompt(
-    hasExistingHTML: boolean, 
-    imageUrls?: string[],
-    imageIntents?: Array<{ url: string; intent: 'analyze' | 'include' }>,
-    isModification?: boolean,
-    projectContext?: any,
-    chatHistory?: Array<{role: string, content: string, timestamp: string}>
+    hasExistingHTML: boolean,
+    isModification: boolean = false,
+    operation?: 'create' | 'edit' | 'analyze',
+    editContext?: any
   ): string {
     
-    // 🔥 DETERMINAR TIPO DE OPERAÇÃO
-    const operationType = isModification ? 'MODIFICAÇÃO DE EMAIL EXISTENTE' : 'CRIAÇÃO DE NOVO EMAIL'
+    // ✨ PROMPTS ULTRA-OTIMIZADOS POR OPERAÇÃO E CONTEXTO
+    const getOptimizedPrompt = () => {
+      // 🎯 MODO EDIÇÃO CIRÚRGICA - Para mudanças específicas
+      if (operation === 'edit' && editContext?.targetElement) {
+        const { targetElement, preserveStructure, priority } = editContext
+        
+        return `🎯 MODO EDIÇÃO CIRÚRGICA - ${priority?.toUpperCase() || 'BALANCED'} PRIORITY
+
+🚨 CONTEXTO ESPECÍFICO:
+- Elemento alvo: ${targetElement.elementType || 'text'}
+- Texto original: "${targetElement.originalText}"
+- Novo texto: "${targetElement.newText}"
+- Preservar estrutura: ${preserveStructure ? 'SIM' : 'NÃO'}
+- Seletor: ${targetElement.selector || 'não especificado'}
+
+🔧 INSTRUÇÕES ULTRA-ESPECÍFICAS:
+1. Encontre EXATAMENTE o texto "${targetElement.originalText}" no HTML
+2. Substitua POR "${targetElement.newText}"
+3. NÃO altere cores, fontes, espaçamento ou qualquer CSS
+4. NÃO altere estrutura HTML (divs, tables, etc)
+5. NÃO altere outros textos ou conteúdos
+6. Mantenha classes CSS, IDs e atributos idênticos
+
+${priority === 'speed' ? '⚡ MODO RÁPIDO: Mudança cirúrgica apenas no texto especificado' : ''}${priority === 'quality' ? '🎨 MODO QUALIDADE: Garanta que a mudança se integra perfeitamente' : ''}`
+      }
+      
+      // 🔧 MODO EDIÇÃO GERAL - Para HTML existente
+      if (operation === 'edit' && hasExistingHTML) {
+        return `🔧 MODO EDIÇÃO ULTRA-PRECISA - PRESERVAÇÃO TOTAL DA INTEGRIDADE VISUAL
+
+🚨 REGRAS ABSOLUTAS INQUEBRÁVEIS:
+1. VOCÊ ESTÁ EDITANDO UM EMAIL EXISTENTE - JAMAIS RECRIE DO ZERO
+2. PRESERVE 100% da estrutura HTML (divs, tables, sections, spans)
+3. PRESERVE 100% dos estilos CSS (cores, fontes, tamanhos, espaçamentos)
+4. PRESERVE 100% do layout, posicionamento e aparência visual
+5. PRESERVE 100% de classes CSS, IDs e atributos
+6. ALTERE SOMENTE o texto/conteúdo ESPECÍFICO mencionado na instrução
+
+🔍 PROCESSO CIRÚRGICO DE EDIÇÃO:
+1. ANALISE: Leia todo o HTML atual linha por linha
+2. IDENTIFIQUE: Localize EXATAMENTE o elemento que precisa ser alterado
+3. MODIFIQUE: Altere APENAS o conteúdo específico solicitado
+4. VERIFIQUE: Garanta que NADA MAIS foi alterado
+5. RETORNE: O HTML completo com apenas a modificação solicitada
+
+❌ ABSOLUTAMENTE PROIBIDO (ZERO TOLERÂNCIA):
+- Recriar qualquer parte da estrutura HTML
+- Alterar cores, fontes, tamanhos não mencionados
+- Reorganizar, mover ou remover elementos existentes
+- Adicionar novos elementos visuais não solicitados
+- Modificar classes CSS, estilos inline ou IDs
+- Alterar background-colors, padding, margin
+- Mudar qualquer aspecto visual do design
+- Reformatar ou "melhorar" o HTML existente
+
+⚠️ LEMBRE-SE: Sua única missão é fazer a alteração específica pedida mantendo TUDO MAIS idêntico ao original!`
+      }
+      
+      // 📊 MODO ANÁLISE - Para melhorias sutis
+      if (operation === 'analyze' && hasExistingHTML) {
+        return `📊 MODO ANÁLISE - MELHORAR HTML EXISTENTE
+        
+🎯 OBJETIVO: Melhorar o HTML existente mantendo sua essência
+- Analise o HTML atual e sugira melhorias sutis
+- Mantenha a estrutura e design principal
+- Foque em otimizações e refinamentos
+- Preserve o conteúdo existente`
+      }
+      
+      // 🆕 MODO CRIAÇÃO - Para novo email
+      return `🆕 MODO CRIAÇÃO - NOVO EMAIL HTML
+
+🎯 OBJETIVO: Criar um email HTML profissional do zero
+- Estrutura clean e responsiva
+- Design moderno e profissional
+- Compatível com clientes de email
+- CSS inline para máxima compatibilidade`
+    }
     
-    let basePrompt = `Você é um especialista em criação de HTML para emails marketing.
+    return `Você é um especialista em HTML para emails.
 
-🎯 TIPO DE OPERAÇÃO: ${operationType}
+🚨 REGRA ABSOLUTA: RETORNE APENAS HTML PURO, NADA MAIS!
 
-${projectContext ? `
-📊 CONTEXTO DO PROJETO:
-- Nome: ${projectContext.name}
-- Descrição: ${projectContext.description}
-- Tipo: ${projectContext.type}
-- Status: ${projectContext.status}
-- Assunto atual: ${projectContext.subject || 'Não definido'}
-- Criado em: ${projectContext.createdAt}
-- Última atualização: ${projectContext.updatedAt}
-- Prompt original: ${projectContext.metadata?.originalPrompt || 'Não especificado'}
-- Versão: ${projectContext.metadata?.version || 1}
-- Gerado por IA: ${projectContext.metadata?.aiGenerated ? 'Sim' : 'Não'}
-` : ''}
+${getOptimizedPrompt()}
 
-${chatHistory && chatHistory.length > 0 ? `
-💬 HISTÓRICO DA CONVERSA (últimas mensagens):
-${chatHistory.map((msg, index) => `${index + 1}. ${msg.role.toUpperCase()}: ${msg.content}`).join('\n')}
+⚠️ INSTRUÇÕES CRÍTICAS:
+1. RESPOSTA = APENAS HTML (nenhum texto antes/depois)
+2. HTML em linha única, sem quebras de linha
+3. CSS dentro de <style> no <head>
+4. Font-size padrão: 18px para melhor legibilidade
+5. NUNCA use emojis no HTML final
+6. NUNCA use URLs de exemplo (example.com, etc)
+7. Se não há imagens fornecidas, NÃO inclua <img>
+8. ${isModification ? 'CRUCIAL: EDITE apenas o solicitado, preserve tudo mais' : 'Crie estrutura completa e profissional'}
 
-📝 ANÁLISE DO HISTÓRICO:
-- Total de mensagens: ${chatHistory.length}
-- Última atividade: ${chatHistory[chatHistory.length - 1]?.timestamp}
-- Padrão: ${chatHistory.filter(m => m.role === 'user').length} solicitações do usuário
-` : ''}
+🚫 ABSOLUTAMENTE PROIBIDO:
+- Frases como "HTML gerado com sucesso", "Email modificado", etc
+- Explicações ou comentários
+- Conversas ou texto antes/depois do HTML
+- Emojis dentro do HTML
+- Recriar HTML do zero quando deveria apenas editar
 
-${isModification ? `
-🚨 INSTRUÇÕES CRÍTICAS PARA MODIFICAÇÃO:
-1. Você está MODIFICANDO um email que já existe
-2. ANALISE cuidadosamente o HTML fornecido
-3. IDENTIFIQUE exatamente o que o usuário quer alterar
-4. MANTENHA absolutamente tudo que não foi explicitamente solicitado para mudar
-5. Se o usuário pedir algo que já existe no email, confirme ou faça ajustes mínimos
-6. PRESERVE toda a estrutura, cores, textos e elementos não mencionados
-7. Sua resposta deve conter APENAS O HTML, sem nenhum texto adicional
-8. Se a modificação solicitada já estiver presente, explique isso educadamente
-
-🔍 PROCESSO DE MODIFICAÇÃO:
-- Leia o HTML atual completamente
-- Identifique os elementos específicos mencionados pelo usuário
-- Modifique APENAS esses elementos
-- Mantenha o resto 100% idêntico
-` : `
-🆕 INSTRUÇÕES PARA CRIAÇÃO:
-1. Você está CRIANDO um novo email do zero
-2. Use as informações do contexto do projeto como base
-3. Siga as melhores práticas de email marketing
-4. Crie um design profissional e atrativo
-5. Sua resposta deve conter APENAS O HTML, sem nenhum texto adicional
-`}
-
-🎨 INSTRUÇÕES TÉCNICAS:
-1. A RESPOSTA DEVE SER UMA ÚNICA LINHA DE HTML SEM QUEBRAS DE LINHA
-2. Coloque todo o CSS dentro de uma única tag <style> no <head>
-3. IMPORTANTE: Defina o font-size base como 18px no body
-4. Para cabeçalhos: h1 = 30px, h2 = 24px, h3 = 22px
-5. Para botões: font-size de 20px ou maior
-6. Use divs para layout, evite tabelas complexas
-7. Cores devem ser harmoniosas e profissionais
-8. NUNCA use emojis no HTML (🚫 ❌ ✅ 🔥 etc.)
-9. Ano atual: 2025
-10. Retorne apenas o HTML, sem explicações adicionais
-11. NUNCA inclua frases como "HTML gerado com sucesso" ou similares
-12. NUNCA use URLs de exemplo como "exemplo.com" ou "example.com"
-13. Se não houver imagens fornecidas, NÃO inclua tags <img> no HTML
-
-${hasExistingHTML ? `
-📄 IMPORTANTE: Um HTML existente será fornecido para modificação
-` : ''}
-
-${imageUrls && imageUrls.length > 0 ? `
-🖼️ IMAGENS FORNECIDAS: ${imageUrls.length} imagem(ns)
-- Processar conforme instruções específicas de cada imagem
-- Incluir ou analisar conforme indicado
-` : ''}
-
-${imageIntents && imageIntents.length > 0 ? `
-🔍 INSTRUÇÕES ESPECÍFICAS PARA IMAGENS:
-${imageIntents.filter(i => i.intent === 'analyze').length > 0 ? `
-- IMAGENS PARA ANALISAR (usar como referência, NÃO incluir no HTML):
-${imageIntents.filter(i => i.intent === 'analyze').map((img, i) => `  ${i + 1}. ${img.url}`).join('\n')}` : ''}
-${imageIntents.filter(i => i.intent === 'include').length > 0 ? `
-- IMAGENS PARA INCLUIR NO HTML (usar estas URLs exatas):
-${imageIntents.filter(i => i.intent === 'include').map((img, i) => `  ${i + 1}. ${img.url}`).join('\n')}` : ''}
-` : ''}
-
-⚠️ LEMBRE-SE: Retorne APENAS o HTML puro, sem nenhum texto adicional antes ou depois!`
-
-    return basePrompt
+✅ PERMITIDO:
+- APENAS HTML puro e válido
+- Modificações precisas quando solicitadas`
   }
 
   private buildMessageContent(
     userInput: string, 
     existingHTML?: string, 
     imageUrls?: string[],
-    imageIntents?: Array<{ url: string; intent: 'analyze' | 'include' }>,
-    chatHistory?: Array<{role: string, content: string, timestamp: string}>,
-    projectContext?: any
+    operation?: 'create' | 'edit' | 'analyze',
+    editContext?: any
   ): any {
-    let enhancedInput = userInput
     
-    // 🔥 ADICIONAR CONTEXTO DO PROJETO
-    if (projectContext) {
-      enhancedInput += `
+    // ✨ PROMPTS ULTRA-ESPECÍFICOS POR OPERAÇÃO
+    let prompt = ''
+    
+    if (operation === 'edit' && editContext?.targetElement) {
+      // 🎯 PROMPT CIRÚRGICO PARA EDIÇÕES ESPECÍFICAS
+      const { targetElement } = editContext
+      prompt = `🎯 EDIÇÃO CIRÚRGICA ESPECÍFICA:
 
-📊 CONTEXTO DO PROJETO:
-Nome: ${projectContext.name}
-Descrição: ${projectContext.description}
-Tipo: ${projectContext.type}
-Status: ${projectContext.status}`
-    }
-    
-    // 🔥 ADICIONAR RESUMO DO HISTÓRICO
-    if (chatHistory && chatHistory.length > 0) {
-      const userMessages = chatHistory.filter(m => m.role === 'user')
-      const aiMessages = chatHistory.filter(m => m.role === 'ai')
+TAREFA: Substitua EXATAMENTE "${targetElement.originalText}" por "${targetElement.newText}"
+
+REGRAS CRÍTICAS:
+- Encontre o texto "${targetElement.originalText}" no HTML abaixo
+- Substitua por "${targetElement.newText}"  
+- NÃO altere mais NADA (cores, fontes, estrutura)
+- Retorne o HTML completo com apenas essa mudança
+
+HTML ATUAL:
+${existingHTML || 'HTML não fornecido'}`
       
-      enhancedInput += `
+    } else if (operation === 'edit' && existingHTML) {
+      // 🔧 PROMPT ULTRA-RIGOROSO PARA EDIÇÃO COM PRESERVAÇÃO TOTAL
+      prompt = `🔧 EDIÇÃO CIRÚRGICA - PRESERVAÇÃO INTEGRAL:
 
-💬 CONTEXTO DA CONVERSA:
-- Mensagens anteriores: ${chatHistory.length}
-- Solicitações do usuário: ${userMessages.length}
-- Respostas da IA: ${aiMessages.length}
+INSTRUÇÃO ESPECÍFICA: ${userInput}
 
-📝 ÚLTIMAS INTERAÇÕES:
-${chatHistory.slice(-3).map(msg => `${msg.role.toUpperCase()}: ${msg.content}`).join('\n')}
+🚨 PROTOCOLO DE EDIÇÃO ULTRA-RIGOROSO:
+1. ANÁLISE COMPLETA: Examine cada elemento do HTML atual abaixo
+2. IDENTIFICAÇÃO PRECISA: Localize EXATAMENTE onde fazer a alteração
+3. MODIFICAÇÃO CIRÚRGICA: Altere SOMENTE o solicitado na instrução
+4. VERIFICAÇÃO TOTAL: Confirme que NADA MAIS foi alterado
+5. PRESERVAÇÃO ABSOLUTA: Mantenha cores, fontes, layout, estrutura, classes CSS, IDs, estilos inline
 
-🎯 INSTRUÇÃO: Considere todo este contexto ao processar a nova solicitação.`
-    }
-    
-    // 🔥 ADICIONAR HTML EXISTENTE COM DESTAQUE
-    if (existingHTML) {
-      enhancedInput += `
+❌ ZERO ALTERAÇÕES PERMITIDAS EM:
+- Estrutura HTML (tags, hierarquia, aninhamento)
+- Estilos CSS (cores, fontes, tamanhos, espaçamentos)
+- Classes CSS e IDs existentes
+- Atributos de elementos (style, class, id)
+- Layout e posicionamento visual
+- Background colors, borders, padding, margin
+- Qualquer elemento visual não mencionado na instrução
 
-🚨 HTML ATUAL DO PROJETO (PARA MODIFICAÇÃO):
-${existingHTML}
+✅ ALTERE APENAS:
+- O conteúdo de texto ESPECÍFICO mencionado na instrução
+- Nada mais além disso
 
-⚠️ INSTRUÇÃO CRÍTICA: 
-- Este é o HTML que está atualmente no projeto
-- Modifique APENAS os elementos mencionados na solicitação
-- Mantenha TODO o resto exatamente igual
-- NÃO recrie o email do zero`
-    }
-    
-    // 🔥 PROCESSAR IMAGENS
-    if (imageIntents && imageIntents.length > 0) {
-      const analyzeImages = imageIntents.filter(i => i.intent === 'analyze')
-      const includeImages = imageIntents.filter(i => i.intent === 'include')
+HTML ATUAL PARA EDITAR (PRESERVE TUDO EXCETO O ESPECIFICAMENTE SOLICITADO):
+${existingHTML}`
       
-      if (analyzeImages.length > 0) {
-        enhancedInput += `
+    } else if (operation === 'analyze' && existingHTML) {
+      // 📊 PROMPT PARA ANÁLISE E MELHORIA
+      prompt = `📊 ANÁLISE E MELHORIA:
 
-🔍 IMAGENS PARA ANALISAR (usar como referência, NÃO incluir no HTML):
-${analyzeImages.map((img, i) => `${i + 1}. ${img.url} - Use como inspiração para conteúdo`).join('\n')}`
-      }
+INSTRUÇÃO: ${userInput}
+
+OBJETIVO: Analise e melhore o HTML mantendo sua essência
+- Preserve o design e estrutura principal
+- Faça melhorias sutis conforme solicitado
+- Mantenha o conteúdo existente
+
+HTML ATUAL:
+${existingHTML}`
       
-      if (includeImages.length > 0) {
-        enhancedInput += `
+    } else {
+      // 🆕 PROMPT PARA CRIAÇÃO NOVA
+      prompt = `🆕 CRIAÇÃO DE NOVO EMAIL:
 
-📸 IMAGENS PARA INCLUIR NO HTML (usar estas URLs exatas):
-${includeImages.map((img, i) => `${i + 1}. ${img.url} - Incluir no HTML`).join('\n')}`
-      }
-    } else if (imageUrls && imageUrls.length > 0) {
-      enhancedInput += `
+INSTRUÇÃO: ${userInput}
 
-📸 IMAGENS FORNECIDAS (incluir no HTML):
-${imageUrls.map((url, i) => `${i + 1}. ${url}`).join('\n')}`
+OBJETIVO: Crie um email HTML profissional do zero
+- Estrutura responsiva e moderna
+- Compatível com clientes de email  
+- CSS inline para máxima compatibilidade${existingHTML ? `
+
+HTML DE REFERÊNCIA (não copie, apenas inspire-se):
+${existingHTML}` : ''}`
+    }
+
+    // 🔥 ADICIONAR IMAGENS SE FORNECIDAS
+    if (imageUrls && imageUrls.length > 0) {
+      prompt += `
+
+IMAGENS: ${imageUrls.join(', ')}`
     }
 
     // 🔥 RETORNAR CONTENT ESTRUTURADO
     if (!imageUrls || imageUrls.length === 0) {
-      return enhancedInput
+      return prompt
     }
 
     const content: any[] = [
       {
         type: 'text',
-        text: enhancedInput
+        text: prompt
       }
     ]
 
@@ -313,32 +350,65 @@ ${imageUrls.map((url, i) => `${i + 1}. ${url}`).join('\n')}`
     return cleanedHtml
   }
 
-  // 🔥 NOVA FUNÇÃO: Remover texto indesejado do HTML
-  private removeUnwantedText(html: string): string {
-    // Remover frases comuns que a IA pode adicionar
-    const unwantedPhrases = [
-      /HTML gerado com sucesso[^<]*/gi,
-      /HTML modificado com sucesso[^<]*/gi,
-      /Email processado com sucesso[^<]*/gi,
-      /^[^<]*HTML[^<]*sucesso[^<]*!/gi
+  // 🔥 FUNÇÃO DEFINITIVA: Extrair APENAS HTML da resposta da IA
+  private extractOnlyHTML(response: string): string {
+    let html = response.trim()
+    
+    // 1. Remover qualquer texto antes do HTML
+    const htmlStartPatterns = [
+      /<!DOCTYPE\s+html/i,
+      /<html[^>]*>/i,
+      /<head>/i,
+      /<body[^>]*>/i
     ]
     
-    let cleanedHtml = html
-    
-    unwantedPhrases.forEach(pattern => {
-      cleanedHtml = cleanedHtml.replace(pattern, '')
-    })
-    
-    // Garantir que o HTML comece com uma tag válida
-    cleanedHtml = cleanedHtml.trim()
-    if (!cleanedHtml.startsWith('<')) {
-      const firstTagIndex = cleanedHtml.indexOf('<')
-      if (firstTagIndex > 0) {
-        cleanedHtml = cleanedHtml.substring(firstTagIndex)
+    for (const pattern of htmlStartPatterns) {
+      const match = html.match(pattern)
+      if (match) {
+        const startIndex = html.indexOf(match[0])
+        html = html.substring(startIndex)
+        break
       }
     }
     
-    return cleanedHtml
+    // 2. Remover qualquer texto depois do HTML
+    const htmlEndPatterns = [
+      /<\/html>/i,
+      /<\/body>/i
+    ]
+    
+    for (const pattern of htmlEndPatterns) {
+      const matches = [...html.matchAll(new RegExp(pattern.source, 'gi'))]
+      if (matches.length > 0) {
+        const lastMatch = matches[matches.length - 1]
+        const endIndex = lastMatch.index! + lastMatch[0].length
+        html = html.substring(0, endIndex)
+        break
+      }
+    }
+    
+    // 3. Remover frases de resposta que a IA pode adicionar
+    const unwantedPhrases = [
+      /^[^<]*(?:HTML|email).*?(?:gerado|modificado|criado).*?(?:sucesso|êxito)[^<]*/gi,
+      /^[^<]*Desculpe.*?HTML.*?[^<]*/gi,
+      /^[^<]*Aqui está.*?[^<]*/gi,
+      /[^>]*HTML.*?sucesso.*?[^<]*/gi
+    ]
+    
+    unwantedPhrases.forEach(pattern => {
+      html = html.replace(pattern, '')
+    })
+    
+    // 4. Garantir que começa com tag HTML válida
+    html = html.trim()
+    if (!html.startsWith('<')) {
+      const firstTagIndex = html.indexOf('<')
+      if (firstTagIndex > 0) {
+        html = html.substring(firstTagIndex)
+      }
+    }
+    
+    return html
   }
 
   public async generateHTML(request: IARequest): Promise<IAResponse> {
@@ -365,18 +435,15 @@ ${imageUrls.map((url, i) => `${i + 1}. ${url}`).join('\n')}`
         request.userInput, 
         hasExistingHTML ? existingHTML : undefined,
         request.imageUrls,
-        request.imageIntents,
-        request.context?.chatHistory,
-        request.context?.projectContext
+        request.operation,
+        request.editContext
       )
 
       const systemPrompt = this.getSystemPrompt(
         hasExistingHTML, 
-        request.imageUrls, 
-        request.imageIntents,
-        request.context?.isModification || false,
-        request.context?.projectContext,
-        request.context?.chatHistory
+        request.context?.isModification,
+        request.operation,
+        request.editContext
       )
       
       const response = await this.client.post('/chat/completions', {
@@ -392,7 +459,8 @@ ${imageUrls.map((url, i) => `${i + 1}. ${url}`).join('\n')}`
           }
         ],
         max_tokens: 4096,
-        temperature: 0.7
+        // ✨ TEMPERATURA ULTRA-OTIMIZADA POR OPERAÇÃO
+        temperature: request.operation === 'edit' ? 0.1 : 0.7 // Mínima criatividade para edições para máxima precisão
       })
 
       if (!response.data?.choices?.[0]?.message?.content) {
@@ -401,10 +469,10 @@ ${imageUrls.map((url, i) => `${i + 1}. ${url}`).join('\n')}`
 
       let html = response.data.choices[0].message.content.trim()
       
-      // 🔥 LIMPAR O HTML
+      // 🔥 LIMPEZA AGRESSIVA - SÓ HTML
+      html = this.extractOnlyHTML(html)
       html = this.cleanHTML(html)
       html = this.removeEmojis(html)
-      html = this.removeUnwantedText(html) // Nova função para remover texto indesejado
       
       // 🔥 PROCESSAR IMAGENS
       const includeImages = request.imageIntents?.filter(i => i.intent === 'include') || []
@@ -455,11 +523,7 @@ ${imageUrls.map((url, i) => `${i + 1}. ${url}`).join('\n')}`
       return {
         html,
         subject: this.extractSubject(request.userInput, existingHTML),
-        response: hasExistingHTML 
-          ? 'Email modificado com sucesso!'
-          : request.imageUrls && request.imageUrls.length > 0 
-            ? `Email criado com sucesso! ${request.imageUrls.length} imagem(ns) processada(s).`
-            : 'Email criado com sucesso!',
+        response: '', // 🔥 RESPOSTA VAZIA - SÓ HTML IMPORTA
         metadata: {
           model: this.model,
           processingTime,
@@ -555,16 +619,41 @@ ${imageUrls.map((url, i) => `${i + 1}. ${url}`).join('\n')}`
     imageUrls?: string[],
     imageIntents?: Array<{ url: string; intent: 'analyze' | 'include' }>
   ): Promise<IAResponse> {
-    const modificationPrompt = existingHTML 
-      ? `Modifique este HTML seguindo as instruções: "${instructions}"\n\nHTML atual:\n${existingHTML}`
-      : instructions
+    // 🔧 PROMPT ULTRA-RIGOROSO PARA PRESERVAR INTEGRIDADE VISUAL
+    const strictModificationPrompt = `🔧 EDIÇÃO PRECISA - PRESERVAR INTEGRIDADE VISUAL TOTAL
+
+INSTRUÇÃO DO USUÁRIO: "${instructions}"
+
+🚨 REGRAS ABSOLUTAS PARA MODIFICAÇÃO:
+1. ANÁLISE PRIMEIRO: Examine cuidadosamente o HTML atual
+2. IDENTIFIQUE: Exatamente o que precisa ser alterado conforme a instrução
+3. EXECUTE: APENAS essa alteração específica
+4. PRESERVE: 100% da estrutura, cores, fontes, layout e estilos existentes
+5. MANTENHA: Todos os elementos visuais intactos
+
+❌ ESTRITAMENTE PROIBIDO:
+- Recriar ou alterar a estrutura HTML existente
+- Modificar cores, fontes ou estilos não solicitados
+- Reorganizar elementos ou layout
+- Adicionar/remover elementos não pedidos na instrução
+- Alterar classes CSS, IDs ou atributos existentes
+- Mudar o design visual geral do email
+
+✅ PERMITIDO APENAS:
+- A alteração ESPECÍFICA mencionada na instrução
+- Correções de sintaxe HTML se necessário
+- Manter compatibilidade com clientes de email
+
+HTML ATUAL PARA MODIFICAR (PRESERVE TUDO EXCETO O SOLICITADO):
+${existingHTML}`
 
     return this.generateHTML({
-      userInput: modificationPrompt,
+      userInput: strictModificationPrompt,
       context: { 
         isModification: true,
         existingHTML: existingHTML 
       },
+      operation: 'edit', // 🔧 Usar operação específica para edição
       imageUrls,
       imageIntents
     })

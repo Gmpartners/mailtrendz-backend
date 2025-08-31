@@ -80,15 +80,18 @@ function trackConnection(type: 'admin' | 'user', increment: boolean = true) {
   }
 }
 
-// 🎯 OPTIMIZED: Smart client selection with connection pooling awareness
-export function getSupabaseWithAuth(_userToken?: string) {
-  // Track admin client usage
+// 🎯 SECURE: Admin client with proper user validation in business logic
+export function getSupabaseWithAuth(userToken?: string) {
+  // 🔒 ESTRATÉGIA SEGURA: Usar admin client mas validar userId no código
+  // Isso evita problemas de token incompatível enquanto mantém segurança
+  
   trackConnection('admin')
   
-  // 📊 PERFORMANCE: Monitor and optimize client usage
-  logger.debug('🚀 [SUPABASE-PERF] Using optimized admin client', {
+  logger.debug('🔒 [SUPABASE-SECURE] Using admin client with user validation', {
+    hasUserToken: !!userToken,
+    tokenPrefix: userToken ? userToken.substring(0, 10) + '...' : 'none',
     adminConnections: connectionPool.adminConnections,
-    userConnections: connectionPool.userConnections
+    strategy: 'admin_with_validation'
   })
   
   return supabaseAdmin
