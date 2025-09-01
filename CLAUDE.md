@@ -188,3 +188,207 @@ Required environment variables:
 - `OPENROUTER_API_KEY` for AI services
 - `JWT_SECRET` for additional token signing
 - `NODE_ENV`, `PORT`, `APP_URL`
+
+## 🚀 Deploy & Production
+
+### Server Access (SSH)
+```bash
+# Acessar servidor de produção
+ssh root@213.199.35.254
+# Senha: mc/xB37WemUf
+```
+
+### Estrutura do Servidor
+```
+/root/mailtrendz-backend/     # Backend (Node.js + PM2)
+/root/mailtrendz-frontend/    # Frontend (React build)
+/var/www/mailtrendz/         # Arquivos servidos pelo Nginx
+```
+
+### Processo de Deploy Completo
+
+#### 1. Deploy do Backend
+```bash
+# No servidor (SSH)
+cd /root/mailtrendz-backend
+
+# Resolver conflitos se houver
+git stash
+
+# Atualizar código
+git pull origin master
+
+# Reiniciar serviço
+pm2 restart backend-mailtrendz
+
+# Verificar status
+pm2 status
+pm2 logs backend-mailtrendz --lines 20
+```
+
+#### 2. Deploy do Frontend
+```bash
+# No servidor (SSH)
+cd /root/mailtrendz-frontend
+
+# Atualizar código
+git pull origin main
+
+# Build para produção
+npm run build
+
+# Backup da versão atual
+cp -r /var/www/mailtrendz /var/www/mailtrendz-backup-$(date +%Y%m%d_%H%M%S)
+
+# Copiar novos arquivos
+cp -r /root/mailtrendz-frontend/dist/* /var/www/mailtrendz/
+
+# Ajustar permissões
+chown -R www-data:www-data /var/www/mailtrendz/
+chmod -R 755 /var/www/mailtrendz/
+
+# Testar e recarregar Nginx
+nginx -t
+systemctl reload nginx
+```
+
+#### 3. Verificação Pós-Deploy
+```bash
+# Verificar status dos serviços
+pm2 status
+systemctl status nginx
+
+# Verificar logs
+pm2 logs backend-mailtrendz --lines 10
+tail -f /var/log/nginx/access.log
+
+# Testar endpoints
+curl -X GET http://localhost:8000/health
+curl -X GET http://localhost/health
+```
+
+### Configurações de Produção
+
+#### Nginx Configuration
+- **Frontend**: Servido via Nginx em `/var/www/mailtrendz/`
+- **Backend**: Proxy reverso para `localhost:8000`
+- **SSL**: Configurado com certificados (se aplicável)
+
+#### PM2 Configuration
+- **Processo**: `backend-mailtrendz`
+- **Modo**: `cluster` 
+- **Porta**: `8000`
+- **Arquivo de configuração**: `.env.production`
+
+#### Stripe Webhooks (Produção)
+- **URL**: `https://api.mailtrendz.com/api/v1/webhooks/stripe`
+- **Secret**: `whsec_YEfQYA6bJ9k9QibPjUPokZf0z35vYvlO`
+- **Webhook ID**: `we_1S2ZcKLIDpwN7e9FSytV9UDg`
+
+**Eventos configurados:**
+- `checkout.session.completed`
+- `customer.subscription.created/updated/deleted`  
+- `invoice.payment_succeeded/failed/paid/created/finalized`
+- `customer.created/updated`
+- `charge.succeeded`
+- `payment_intent.succeeded`
+- `payment_method.attached`
+
+### Comandos de Manutenção
+
+#### Monitoramento
+```bash
+# Status geral do sistema
+pm2 monit
+
+# Uso de recursos
+htop
+df -h
+free -h
+
+# Logs em tempo real
+pm2 logs backend-mailtrendz --follow
+tail -f /var/log/nginx/error.log
+```
+
+#### Backup
+```bash
+# Backup automático antes de deploy
+cp -r /var/www/mailtrendz /var/www/mailtrendz-backup-$(date +%Y%m%d_%H%M%S)
+
+# Backup do banco (via Supabase Dashboard)
+# Backup dos .env files
+cp /root/mailtrendz-backend/.env.production /root/backups/env-backend-$(date +%Y%m%d).backup
+```
+
+#### Rollback
+```bash
+# Se algo der errado, fazer rollback
+# Backend
+cd /root/mailtrendz-backend
+git reset --hard HEAD~1
+pm2 restart backend-mailtrendz
+
+# Frontend
+cp -r /var/www/mailtrendz-backup-YYYYMMDD_HHMMSS/* /var/www/mailtrendz/
+systemctl reload nginx
+```
+
+### URLs de Produção
+- **Frontend**: https://mailtrendz.com
+- **API Backend**: https://api.mailtrendz.com
+- **Health Check**: https://mailtrendz.com/health
+- **API Health**: https://api.mailtrendz.com/health
+
+### Troubleshooting
+
+#### Backend não inicia
+```bash
+# Verificar logs
+pm2 logs backend-mailtrendz
+pm2 describe backend-mailtrendz
+
+# Verificar porta
+netstat -tlnp | grep :8000
+lsof -i :8000
+
+# Reiniciar forçado
+pm2 delete backend-mailtrendz
+pm2 start ecosystem.config.js
+```
+
+#### Frontend não carrega
+```bash
+# Verificar Nginx
+nginx -t
+systemctl status nginx
+systemctl restart nginx
+
+# Verificar arquivos
+ls -la /var/www/mailtrendz/
+cat /var/www/mailtrendz/index.html
+```
+
+#### Webhooks não funcionam
+```bash
+# Testar conectividade
+curl -X POST https://api.mailtrendz.com/api/v1/webhooks/stripe \
+  -H "Content-Type: application/json" \
+  -d '{"test": true}'
+
+# Verificar logs de webhook
+pm2 logs backend-mailtrendz | grep webhook
+```
+
+### 🔒 Segurança
+- Sempre usar HTTPS em produção
+- Manter secrets seguros nos arquivos .env
+- Backup regular de dados críticos
+- Monitoramento de logs para atividades suspeitas
+- Atualizações regulares de dependências
+
+### ⚡ Performance
+- Cache invalidation automático implementado
+- Otimização de build do frontend
+- Compressão Gzip no Nginx
+- PM2 cluster mode para melhor performance
