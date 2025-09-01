@@ -422,13 +422,29 @@ IMAGENS: ${imageUrls.join(', ')}`
       const existingHTML = request.context?.existingHTML
       const hasExistingHTML = !!(existingHTML && existingHTML.trim())
 
-      logger.info(`Gerando HTML com IA - Input: ${request.userInput.substring(0, 50)}...`, {
+      // 🚀 SOLUÇÃO DEFINITIVA: VALIDAÇÃO CRÍTICA ANTES DE PROCESSAR
+      if (hasExistingHTML && (!request.operation || request.operation === 'create')) {
+        logger.warn('🚨 [IA-SERVICE] CORREÇÃO AUTOMÁTICA: HTML existente detectado mas operação incorreta', {
+          hasHTML: hasExistingHTML,
+          htmlLength: existingHTML?.length,
+          originalOperation: request.operation,
+          userInput: request.userInput.substring(0, 100)
+        })
+        // Forçar operação EDIT quando há HTML existente
+        request.operation = 'edit'
+      }
+
+      logger.info('🎯 [IA-SERVICE] SOLUÇÃO DEFINITIVA - Processando com contexto robusto', {
         hasImages: !!(request.imageUrls && request.imageUrls.length > 0),
         imageCount: request.imageUrls?.length || 0,
         imageIntents: request.imageIntents?.map(i => i.intent),
         model: this.model,
         hasExistingHTML,
-        existingHTMLLength: existingHTML?.length || 0
+        existingHTMLLength: existingHTML?.length || 0,
+        operation: request.operation,
+        htmlSource: request.context?.htmlSource || 'unknown',
+        userInput: request.userInput.substring(0, 100),
+        willPreserveContext: hasExistingHTML && request.operation === 'edit'
       })
       
       const userContent = this.buildMessageContent(
@@ -511,13 +527,30 @@ IMAGENS: ${imageUrls.join(', ')}`
       
       const processingTime = Date.now() - startTime
       
-      logger.info(`HTML gerado com sucesso em ${processingTime}ms`, {
+      // 🚀 LOG DEFINITIVO DE SUCESSO COM VALIDAÇÃO DE CONTEXTO
+      logger.info('🎯 [IA-SERVICE] SOLUÇÃO DEFINITIVA CONCLUÍDA', {
+        success: true,
+        processingTime: `${processingTime}ms`,
+        // INFORMAÇÕES DE CONTEXTO
+        hasExistingHTML,
+        existingHTMLLength: existingHTML?.length || 0,
+        outputHTMLLength: html?.length || 0,
+        htmlSizeChange: hasExistingHTML ? 
+          `${existingHTML?.length || 0} → ${html?.length || 0}` : 
+          `novo: ${html?.length || 0}`,
+        operation: request.operation,
+        contextPreserved: hasExistingHTML && request.operation === 'edit',
+        // INFORMAÇÕES TÉCNICAS
         imagesProcessed: request.imageUrls?.length || 0,
         imagesAnalyzed: request.imageIntents?.filter(i => i.intent === 'analyze').length || 0,
         imagesIncluded: request.imageIntents?.filter(i => i.intent === 'include').length || 0,
         model: this.model,
         htmlContainsImages: html.includes('<img'),
-        wasModification: hasExistingHTML
+        temperature: request.operation === 'edit' ? 0.1 : 0.7,
+        // VALIDAÇÃO FINAL
+        problemSolved: hasExistingHTML ? 
+          (request.operation === 'edit' ? 'CONTEXTO-PRESERVADO' : 'POSSÍVEL-PROBLEMA') :
+          'CRIAÇÃO-NOVA-OK'
       })
       
       return {

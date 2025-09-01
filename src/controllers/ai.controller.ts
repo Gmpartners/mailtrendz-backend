@@ -371,33 +371,84 @@ const processChat = async (req: AuthRequest, res: Response): Promise<void> => {
     }
 
     try {
-      // ✅ USAR HTML-RESOLVER PARA BUSCAR HTML ATUAL
+      // 🚀 SOLUÇÃO DEFINITIVA: VALIDAÇÃO E CONTEXTO ROBUSTO
       const HTMLResolver = require('../utils/html-resolver').default
-      const existingHTML = html || await HTMLResolver.getCurrentHTML(project_id, chat_id)
       
-      // ✅ DETERMINAR OPERAÇÃO USANDO LÓGICA SIMPLIFICADA
-      const finalOperation = HTMLResolver.determineOperation(message, !!existingHTML, operation)
+      // ✅ PRIORIZAR HTML DO FRONTEND (mais confiável e atualizado)
+      let existingHTML = html
+      let htmlSource = 'none'
       
-      logger.info('[AI-CONTROLLER] Processando chat', { 
+      if (html && html.trim().length > 0) {
+        htmlSource = 'frontend'
+        logger.info('🎯 [SOLUÇÃO-DEFINITIVA] HTML recebido do frontend', {
+          htmlLength: html.length,
+          chatId: chat_id,
+          projectId: project_id,
+          source: htmlSource
+        })
+      } else {
+        // Fallback: buscar via HTMLResolver apenas se não veio do frontend
+        existingHTML = await HTMLResolver.getCurrentHTML(project_id, chat_id)
+        if (existingHTML) {
+          htmlSource = 'backend-resolver'
+          logger.info('🔄 [SOLUÇÃO-DEFINITIVA] HTML obtido via HTMLResolver (fallback)', {
+            htmlLength: existingHTML.length,
+            chatId: chat_id,
+            projectId: project_id,
+            source: htmlSource
+          })
+        } else {
+          logger.info('⚠️ [SOLUÇÃO-DEFINITIVA] Nenhum HTML encontrado - será criação nova', {
+            chatId: chat_id,
+            projectId: project_id,
+            source: htmlSource
+          })
+        }
+      }
+      
+      // ✅ DETERMINAR OPERAÇÃO ROBUSTA
+      const hasExistingHTML = !!(existingHTML && existingHTML.trim().length > 0)
+      let finalOperation = operation || HTMLResolver.determineOperation(message, hasExistingHTML)
+      
+      // 🚀 VALIDAÇÃO CRÍTICA: Alertar se há discrepância
+      if (hasExistingHTML && finalOperation === 'create') {
+        logger.warn('🚨 [SOLUÇÃO-DEFINITIVA] ALERTA: HTML encontrado mas operação é CREATE', {
+          hasHTML: hasExistingHTML,
+          htmlLength: existingHTML?.length,
+          operation: finalOperation,
+          htmlSource,
+          message: message.substring(0, 100)
+        })
+        // Forçar operação EDIT se há HTML
+        finalOperation = 'edit'
+      }
+      
+      logger.info('📋 [SOLUÇÃO-DEFINITIVA] CONTEXTO PROCESSADO', { 
         chatId: chat_id,
         projectId: project_id,
-        hasExistingHTML: !!existingHTML,
+        hasExistingHTML,
         htmlLength: existingHTML?.length || 0,
-        operation: finalOperation,
-        messageLength: message.length
+        htmlSource,
+        inputOperation: operation,
+        finalOperation,
+        messageLength: message.length,
+        messagePreview: message.substring(0, 100),
+        contextPreserved: hasExistingHTML && finalOperation === 'edit'
       })
 
       const iaResponse = await iaService.generateHTML({
         userInput: message,
         imageUrls: finalImageUrls,
         imageIntents: imageIntents,
+        operation: finalOperation, // ✅ CRÍTICO: Operação correta passada para IA
         context: {
           chat_id,
           project_id,
           isChat: true,
           existingHTML,
           operation: finalOperation,
-          isModification: finalOperation !== 'create'
+          isModification: finalOperation !== 'create',
+          htmlSource // ✅ INFO: Origem do HTML para debugging
         },
         userId
       })

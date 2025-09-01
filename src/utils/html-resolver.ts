@@ -183,32 +183,69 @@ export class HTMLResolver {
   }
   
   /**
-   * Determina operação baseada no contexto
+   * 🚀 SOLUÇÃO DEFINITIVA: Determina operação baseada no contexto
    */
   static determineOperation(message: string, hasExistingHTML: boolean, frontendOperation?: string): 'create' | 'edit' | 'improve' {
-    // Se o frontend especificou a operação, confiar nele
-    if (frontendOperation && ['create', 'edit', 'improve'].includes(frontendOperation)) {
-      logger.info('[HTML-RESOLVER] Usando operação do frontend', { 
+    logger.info('[HTML-RESOLVER] 🎯 DETERMINANDO OPERAÇÃO', {
+      message: message.substring(0, 100),
+      hasExistingHTML,
+      frontendOperation
+    })
+    
+    // REGRA ABSOLUTA #1: Se não há HTML, sempre criar
+    if (!hasExistingHTML) {
+      logger.info('[HTML-RESOLVER] ✅ Operação CREATE (sem HTML existente)')
+      return 'create'
+    }
+    
+    // REGRA ABSOLUTA #2: Se frontend especificou operação válida com HTML, usar
+    if (frontendOperation && ['edit', 'improve'].includes(frontendOperation) && hasExistingHTML) {
+      logger.info('[HTML-RESOLVER] ✅ Usando operação do frontend', { 
         operation: frontendOperation, 
         hasExistingHTML 
       })
       return frontendOperation as 'create' | 'edit' | 'improve'
     }
     
-    // Lógica simplificada baseada em conteúdo existente
-    if (!hasExistingHTML) {
-      return 'create'
-    }
+    // REGRA ABSOLUTA #3: Se tem HTML, verificar intenção de modificação
+    const messageLower = message.toLowerCase()
     
-    // Se tem HTML existente, verificar palavras-chave de edição
-    const editKeywords = ['mude', 'altere', 'troque', 'edite', 'modifique', 'corrija', 'ajuste', 'substitua']
-    const hasEditIntent = editKeywords.some(word => message.toLowerCase().includes(word))
+    // Palavras-chave que indicam EDIÇÃO específica
+    const editKeywords = [
+      'mude', 'altere', 'troque', 'edite', 'modifique', 'corrija', 'ajuste', 'substitua', 'remova',
+      'adicione', 'insira', 'coloque', 'tire', 'delete', 'exclua', 'change', 'modify', 'edit',
+      'update', 'fix', 'correct', 'replace', 'remove', 'add', 'insert', 'delete', 'exclude'
+    ]
+    
+    // Palavras-chave que indicam MELHORIA geral
+    const improveKeywords = [
+      'melhore', 'aprimore', 'optimize', 'refine', 'enhance', 'improve', 'polish', 'refactor',
+      'otimize', 'refine', 'aperfeiçoe', 'revise', 'revise', 'update'
+    ]
+    
+    const hasEditIntent = editKeywords.some(word => messageLower.includes(word))
+    const hasImproveIntent = improveKeywords.some(word => messageLower.includes(word))
     
     if (hasEditIntent) {
+      logger.info('[HTML-RESOLVER] ✅ Operação EDIT detectada', {
+        detectedKeywords: editKeywords.filter(word => messageLower.includes(word))
+      })
       return 'edit'
     }
     
-    return 'improve'
+    if (hasImproveIntent) {
+      logger.info('[HTML-RESOLVER] ✅ Operação IMPROVE detectada', {
+        detectedKeywords: improveKeywords.filter(word => messageLower.includes(word))
+      })
+      return 'improve'
+    }
+    
+    // REGRA DEFAULT: Se tem HTML mas não há palavras-chave específicas, considerar EDIÇÃO
+    // (mais seguro para preservar contexto)
+    logger.info('[HTML-RESOLVER] ✅ Operação EDIT (default com HTML existente)', {
+      reason: 'HTML existente sem palavras-chave específicas - preservar contexto'
+    })
+    return 'edit'
   }
 }
 

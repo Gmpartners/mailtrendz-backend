@@ -49,6 +49,72 @@ const directEmailValidation = [
 router.get('/health', AIController.getHealthStatus)
 router.get('/test-connection', AIController.testConnection)
 
+// 🚀 SOLUÇÃO DEFINITIVA: Endpoints de debug para contexto
+router.get('/debug/context/:chatId', async (req, res) => {
+  try {
+    const { chatId } = req.params
+    const HTMLResolver = require('../utils/html-resolver').default
+    
+    const projectHTML = await HTMLResolver.getCurrentHTML(undefined, chatId)
+    const chatHTML = await HTMLResolver.getChatHTML(chatId)
+    
+    res.json({
+      success: true,
+      message: '🎯 Debug de contexto HTML',
+      data: {
+        chatId,
+        context: {
+          hasProjectHTML: !!projectHTML,
+          projectHTMLLength: projectHTML?.length || 0,
+          projectHTMLPreview: projectHTML?.substring(0, 500) || null,
+          hasChatHTML: !!chatHTML,
+          chatHTMLLength: chatHTML?.length || 0,
+          chatHTMLPreview: chatHTML?.substring(0, 500) || null,
+          hasAnyContext: !!(projectHTML || chatHTML),
+          source: projectHTML ? 'project' : (chatHTML ? 'chat' : 'none')
+        },
+        timestamp: new Date().toISOString()
+      }
+    })
+  } catch (error: any) {
+    res.json({
+      success: false,
+      message: 'Erro ao debuggar contexto',
+      error: error.message
+    })
+  }
+})
+
+router.get('/debug/project-context/:projectId', async (req, res) => {
+  try {
+    const { projectId } = req.params
+    const HTMLResolver = require('../utils/html-resolver').default
+    
+    const projectHTML = await HTMLResolver.getCurrentHTML(projectId)
+    
+    res.json({
+      success: true,
+      message: '🎯 Debug de contexto do projeto',
+      data: {
+        projectId,
+        context: {
+          hasHTML: !!projectHTML,
+          htmlLength: projectHTML?.length || 0,
+          htmlPreview: projectHTML?.substring(0, 500) || null,
+          willPreserveContext: !!projectHTML
+        },
+        timestamp: new Date().toISOString()
+      }
+    })
+  } catch (error: any) {
+    res.json({
+      success: false,
+      message: 'Erro ao debuggar contexto do projeto',
+      error: error.message
+    })
+  }
+})
+
 // Endpoints de teste sem autenticação (para desenvolvimento)
 router.post('/test-generate', generateEmailValidation, AIController.generateEmail)
 router.post('/test-modify', modifyEmailValidation, AIController.modifyEmail)
