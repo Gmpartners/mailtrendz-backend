@@ -174,7 +174,7 @@ class SubscriptionService {
   /**
    * ✅ NOVO: Garantir que um usuário tenha dados inicializados
    */
-  private async ensureUserInitialized(userId: string): Promise<boolean> {
+  async ensureUserInitialized(userId: string): Promise<boolean> {
     try {
       logger.info('[SubscriptionService] Initializing missing user data...', { userId })
 
@@ -208,7 +208,7 @@ class SubscriptionService {
             id: userId,
             email: email,
             name: name,
-            subscription: 'starter', // Usar 'starter' pois logs mostram que usuário tem esta subscription
+            subscription: 'free', // Novos usuários começam com plano free
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })
@@ -844,11 +844,43 @@ class SubscriptionService {
       }
 
       logger.info('[SubscriptionService] Successfully synced subscription')
+      
+      // ✅ NOVO: Limpar cache após sincronização
+      this.invalidateUserCache(userId)
+      
       return true
     } catch (error) {
       logger.error('[SubscriptionService] Error syncing subscription:', error)
       return false
     }
+  }
+
+  /**
+   * ✅ NOVO: Invalidar cache de um usuário específico
+   * Usado quando dados de subscription são atualizados via webhook
+   */
+  invalidateUserCache(userId: string): void {
+    const hadCache = this.stateCache.has(userId)
+    this.stateCache.delete(userId)
+    
+    logger.info('[SubscriptionService] Cache invalidated for user', {
+      userId,
+      hadCache,
+      service: 'mailtrendz-backend'
+    })
+  }
+
+  /**
+   * ✅ NOVO: Limpar todo o cache (útil para debug)
+   */
+  clearAllCache(): void {
+    const cacheSize = this.stateCache.size
+    this.stateCache.clear()
+    
+    logger.info('[SubscriptionService] All cache cleared', {
+      clearedEntries: cacheSize,
+      service: 'mailtrendz-backend'
+    })
   }
 }
 

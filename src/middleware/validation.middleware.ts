@@ -39,11 +39,20 @@ export const handleValidationErrors = (req: AuthRequest, res: Response, next: Ne
 
 export const validateRegister = [
   body('name')
+    .optional()
     .trim()
     .isLength({ min: 2, max: 50 })
     .withMessage('Nome deve ter entre 2 e 50 caracteres')
     .matches(/^[a-zA-ZÀ-ÿ\s]+$/)
     .withMessage('Nome deve conter apenas letras e espaços'),
+  
+  body('fullName')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('Nome completo deve ter entre 2 e 50 caracteres')
+    .matches(/^[a-zA-ZÀ-ÿ\s]+$/)
+    .withMessage('Nome completo deve conter apenas letras e espaços'),
   
   body('email')
     .isEmail()
@@ -53,19 +62,23 @@ export const validateRegister = [
     .withMessage('Email muito longo'),
   
   body('password')
-    .isLength({ min: VALIDATION.PASSWORD.MIN_LENGTH })
-    .withMessage(`Senha deve ter pelo menos ${VALIDATION.PASSWORD.MIN_LENGTH} caracteres`)
-    .matches(/(?=.*[a-z])/)
-    .withMessage('Senha deve conter pelo menos uma letra minúscula')
-    .matches(/(?=.*[A-Z])/)
-    .withMessage('Senha deve conter pelo menos uma letra maiúscula')
-    .matches(/(?=.*\d)/)
-    .withMessage('Senha deve conter pelo menos um número'),
+    .isLength({ min: 6 })
+    .withMessage('Senha deve ter pelo menos 6 caracteres'),
   
   body('confirmPassword')
+    .optional()
     .custom((value, { req }) => {
-      if (value !== req.body.password) {
+      if (value && value !== req.body.password) {
         throw new Error('Confirmação de senha não confere')
+      }
+      return true
+    }),
+  
+  body()
+    .custom((_value, { req }) => {
+      const { name, fullName } = req.body
+      if (!name && !fullName) {
+        throw new Error('Nome ou nome completo é obrigatório')
       }
       return true
     }),

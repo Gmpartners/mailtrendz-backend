@@ -391,7 +391,7 @@ class SubscriptionController {
     }
   }
 
-  // Criar sessão de checkout
+  // 🔧 FIX: Criar sessão de checkout com validações robustas
   createCheckoutSession = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       if (!req.user) {
@@ -404,16 +404,42 @@ class SubscriptionController {
 
       const { priceId } = req.body
 
-      if (!priceId) {
+      // 🔧 FIX: Validações melhoradas
+      if (!priceId || typeof priceId !== 'string') {
         res.status(HTTP_STATUS.BAD_REQUEST).json({
           success: false,
-          message: 'Price ID é obrigatório'
+          message: 'Price ID é obrigatório e deve ser uma string válida'
         })
         return
       }
 
-      const successUrl = `${process.env.FRONTEND_URL}/dashboard?success=true`
-      const cancelUrl = `${process.env.FRONTEND_URL}/dashboard?canceled=true`
+      if (!priceId.startsWith('price_')) {
+        res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Price ID deve ter formato Stripe válido (price_xxx)'
+        })
+        return
+      }
+
+      // 🔧 FIX: Validar variáveis de ambiente
+      const frontendUrl = process.env.FRONTEND_URL
+      if (!frontendUrl) {
+        logger.error('❌ [CHECKOUT] FRONTEND_URL not configured')
+        res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+          success: false,
+          message: 'Configuração de ambiente incompleta'
+        })
+        return
+      }
+
+      const successUrl = `${frontendUrl}/dashboard?success=true`
+      const cancelUrl = `${frontendUrl}/dashboard?canceled=true`
+      
+      logger.info('💳 [CHECKOUT] Creating session for user', { 
+        userId: req.user.id, 
+        priceId,
+        frontendUrl: frontendUrl.substring(0, 30) + '...' 
+      })
 
       const sessionUrl = await StripeService.createCheckoutSession(
         req.user.id,

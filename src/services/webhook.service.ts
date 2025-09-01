@@ -1,6 +1,7 @@
 import Stripe from 'stripe'
 import { logger } from '../utils/logger'
 import { supabaseAdmin } from '../config/supabase.config'
+import subscriptionService from './subscription.service'
 
 interface WebhookProcessingResult {
   success: boolean
@@ -63,6 +64,34 @@ export class WebhookService {
 
     logger.info('Processing webhook event', { eventId, eventType })
 
+    // 🔥 PRIMEIRO: Salvar evento na tabela para auditoria (usando any para contornar TypeScript)
+    try {
+      const { error: insertError } = await (supabaseAdmin as any)
+        .from('webhook_events')
+        .insert({
+          stripe_event_id: eventId,
+          event_type: eventType,
+          raw_data: event,
+          signature_verified: true,
+          processed: false,
+          processing_attempts: 0
+        })
+      
+      if (insertError && !insertError.message?.includes('duplicate key')) {
+        logger.error('Failed to save webhook event', {
+          eventId,
+          eventType,
+          error: insertError.message
+        })
+      }
+    } catch (saveError: any) {
+      logger.error('Failed to save webhook event', {
+        eventId,
+        eventType,
+        error: saveError.message
+      })
+    }
+
     try {
       // Processar baseado no tipo de evento
       let result: WebhookProcessingResult
@@ -91,6 +120,21 @@ export class WebhookService {
           result = await this.handleNotificationEvent(event)
           break
         
+        // 🔥 NOVOS HANDLERS PARA EVENTOS IMPORTANTES
+        case 'invoice.paid':
+          result = await this.handleInvoicePaid(event)
+          break
+          
+        case 'customer.created':
+        case 'customer.updated':
+          result = await this.handleCustomerEvent(event)
+          break
+          
+        case 'charge.succeeded':
+        case 'payment_intent.succeeded':
+          result = await this.handlePaymentEvent(event)
+          break
+        
         default:
           logger.warn('Unhandled webhook event type', { eventId, eventType })
           result = {
@@ -98,6 +142,26 @@ export class WebhookService {
             eventId,
             data: { message: 'Event type not handled but acknowledged' }
           }
+      }
+
+      // 🔥 MARCAR COMO PROCESSADO (usando any para contornar TypeScript)
+      try {
+        const { error: updateError } = await (supabaseAdmin as any)
+          .from('webhook_events')
+          .update({ processed: true, processing_attempts: 1 })
+          .eq('stripe_event_id', eventId)
+        
+        if (updateError) {
+          logger.warn('Failed to update webhook event status', {
+            eventId,
+            error: updateError.message
+          })
+        }
+      } catch (updateError: any) {
+        logger.warn('Failed to update webhook event status', {
+          eventId,
+          error: updateError.message
+        })
       }
 
       logger.info('Webhook event processed successfully', { eventId, eventType })
@@ -262,6 +326,14 @@ export class WebhookService {
           userId: userId,
           planType,
           customerId: customerId
+        })
+        
+        // ✅ NOVO: Invalidar cache após renovação de créditos
+        subscriptionService.invalidateUserCache(userId)
+        logger.info('🔄 Subscription cache invalidated after credit renewal', {
+          userId,
+          planType,
+          service: 'mailtrendz-backend'
         })
       }
 
@@ -1245,10 +1317,83 @@ export class WebhookService {
         logger.error('Failed to update subscription', { error: updateError.message })
       } else {
         logger.info('✅ Updated subscription from invoice', { userId, planType })
+        
+        // ✅ NOVO: Invalidar cache após atualizar subscription
+        subscriptionService.invalidateUserCache(userId)
+        logger.info('🔄 Subscription cache invalidated after subscription update', {
+          userId,
+          planType,
+          service: 'mailtrendz-backend'
+        })
       }
       
     } catch (error: any) {
       logger.error('Error updating subscription from invoice', { error: error.message })
+    }
+  }
+
+  /**
+   * 🔥 NOVO: Handle invoice.paid - Similar ao payment_succeeded
+   */
+  private async handleInvoicePaid(event: Stripe.Event): Promise<WebhookProcessingResult> {
+    logger.info('Processing invoice.paid event', { eventId: event.id })
+    return await this.handlePaymentSucceeded(event)
+  }
+
+  /**
+   * 🔥 NOVO: Handle customer events (created/updated)
+   */
+  private async handleCustomerEvent(event: Stripe.Event): Promise<WebhookProcessingResult> {
+    try {
+      const customer = event.data.object as Stripe.Customer
+      
+      logger.info('Customer event received', {
+        eventId: event.id,
+        customerId: customer.id,
+        email: customer.email,
+        eventType: event.type
+      })
+
+      // Se for customer.created com email, tentar criar usuário
+      if (event.type === 'customer.created' && customer.email) {
+        await this.findOrCreateUserFromStripeCustomer(customer.id, event.id)
+      }
+
+      return {
+        success: true,
+        eventId: event.id,
+        data: { customerId: customer.id, email: customer.email }
+      }
+    } catch (error: any) {
+      return {
+        success: false,
+        eventId: event.id,
+        error: error.message
+      }
+    }
+  }
+
+  /**
+   * 🔥 NOVO: Handle payment events (charge.succeeded, payment_intent.succeeded)
+   */
+  private async handlePaymentEvent(event: Stripe.Event): Promise<WebhookProcessingResult> {
+    try {
+      logger.info('Payment event received', {
+        eventId: event.id,
+        eventType: event.type
+      })
+
+      return {
+        success: true,
+        eventId: event.id,
+        data: { message: 'Payment event logged' }
+      }
+    } catch (error: any) {
+      return {
+        success: false,
+        eventId: event.id,
+        error: error.message
+      }
     }
   }
 }

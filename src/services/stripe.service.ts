@@ -24,19 +24,20 @@ interface PriceMap {
   }
 }
 
-// ✅ CORRIGIDO: Mudei 'pro' para 'starter' para corresponder ao schema do banco
+// 🔧 FIX: Price IDs corrigidos e com fallback para live mode
 const PRICE_IDS: PriceMap = {
   starter: {
-    monthly: process.env.STRIPE_PRICE_PRO_MONTHLY || '',
-    yearly: process.env.STRIPE_PRICE_PRO_YEARLY || ''
+    // 🔧 FIX: Usar variáveis consistentes ou fallback para live mode
+    monthly: process.env.STRIPE_PRICE_STARTER_MONTHLY || process.env.STRIPE_PRICE_PRO_MONTHLY || 'price_1RvjVfLIDpwN7e9F8T0CENMT',
+    yearly: process.env.STRIPE_PRICE_STARTER_YEARLY || process.env.STRIPE_PRICE_PRO_YEARLY || 'price_1RvjVcLIDpwN7e9FTfR0kdOR'
   },
   enterprise: {
-    monthly: process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY || '',
-    yearly: process.env.STRIPE_PRICE_ENTERPRISE_YEARLY || ''
+    monthly: process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY || 'price_1RvjVaLIDpwN7e9FdwUz9j1i',
+    yearly: process.env.STRIPE_PRICE_ENTERPRISE_YEARLY || 'price_1RvjVYLIDpwN7e9Ff2Xh2Aee'
   },
   unlimited: {
-    monthly: process.env.STRIPE_PRICE_UNLIMITED_MONTHLY || '',
-    yearly: process.env.STRIPE_PRICE_UNLIMITED_YEARLY || ''
+    monthly: process.env.STRIPE_PRICE_UNLIMITED_MONTHLY || 'price_1RvjVWLIDpwN7e9Fr4Mnt9LI',
+    yearly: process.env.STRIPE_PRICE_UNLIMITED_YEARLY || 'price_1RvjVRLIDpwN7e9FGLJ6ZxtI'
   }
 }
 
@@ -102,173 +103,124 @@ const PLAN_FEATURES = {
 class StripeService {
   async createCustomer(userId: string, email?: string, name?: string): Promise<string> {
     try {
-      logger.info('🔍 STEP 1: Starting createCustomer method', {
-        userId,
-        email,
-        name,
-        timestamp: new Date().toISOString()
-      })
+      logger.info('🔍 [STRIPE] Creating customer for user', { userId, email: email?.substring(0, 5) + '***' })
 
-      // Log antes de verificar subscription existente
-      logger.info('🔍 STEP 2: Checking for existing subscription', {
-        userId,
-        query: `SELECT stripe_customer_id FROM subscriptions WHERE user_id = '${userId}'`
-      })
-
+      // 🔧 FIX: Verificar subscription existente com melhor tratamento de erro
       const { data: existingSubscription, error: queryError } = await supabaseAdmin
         .from('subscriptions')
         .select('stripe_customer_id')
         .eq('user_id', userId)
-        .single()
+        .maybeSingle() // 🔧 FIX: usar maybeSingle() ao invés de single()
 
-      // Log detalhado do resultado da consulta
-      logger.info('🔍 STEP 3: Query result for existing subscription', {
-        userId,
-        existingSubscription,
-        queryError,
-        hasCustomerId: !!existingSubscription?.stripe_customer_id
-      })
+      // 🔧 FIX: Tratar queryError adequadamente
+      if (queryError) {
+        logger.warn('⚠️ [STRIPE] Query error checking subscription:', queryError.message)
+        // Continuar para criar novo customer se houver erro na consulta
+      }
 
-      if (existingSubscription?.stripe_customer_id) {
-        logger.info('🔍 STEP 4: Found existing customer, validating with Stripe...', {
-          userId,
-          existingCustomerId: existingSubscription.stripe_customer_id
-        })
-        
+      // 🔧 FIX: Validação melhorada do customer existente
+      if (existingSubscription?.stripe_customer_id && !queryError) {
         try {
-          // ✅ VERIFICAR se o customer existe no Stripe live mode
           const customer = await stripe.customers.retrieve(existingSubscription.stripe_customer_id)
-          logger.info('✅ STEP 4a: Customer validated in Stripe live mode', {
-            userId,
-            customerId: customer.id,
-            customerEmail: customer.deleted ? null : (customer as Stripe.Customer).email
-          })
-          return existingSubscription.stripe_customer_id
+          if (!customer.deleted) {
+            logger.info('✅ [STRIPE] Valid existing customer found', { userId, customerId: customer.id })
+            return existingSubscription.stripe_customer_id
+          }
         } catch (stripeError: any) {
-          logger.warn('⚠️ STEP 4b: Customer not found in Stripe live mode, creating new one', {
+          logger.warn('⚠️ [STRIPE] Invalid customer ID, will create new one', {
             userId,
-            oldCustomerId: existingSubscription.stripe_customer_id,
-            stripeError: stripeError.message,
-            isTestModeError: stripeError.message.includes('test mode')
+            error: stripeError.message?.substring(0, 50)
           })
-          
-          // Customer existe apenas no test mode, vamos criar um novo
-          // Não retornamos o antigo, continuamos para criar um novo
         }
       }
 
-      // Log antes de criar customer no Stripe
-      logger.info('🔍 STEP 5: No existing customer found, creating new Stripe customer', {
-        userId,
+      // 🔧 FIX: Melhor validação de dados de entrada
+      if (!email) {
+        throw new Error('Email is required to create Stripe customer')
+      }
+
+      // 🔧 FIX: Melhor extração de nome
+      const customerName = name || email.split('@')[0] || 'User'
+
+      logger.info('🔍 [STRIPE] Creating new Stripe customer', { userId, hasEmail: !!email, hasName: !!name })
+
+      const customerData: Stripe.CustomerCreateParams = {
         email,
-        name
-      })
-
-      const customerData: any = {
+        name: customerName,
         metadata: {
-          supabase_user_id: userId
+          supabase_user_id: userId,
+          created_via: 'mailtrendz_backend',
+          creation_date: new Date().toISOString()
         }
       }
-
-      if (email) {
-        customerData.email = email
-      }
-
-      if (name) {
-        customerData.name = name
-      }
-
-      logger.info('🔍 STEP 6: Stripe customer data prepared', {
-        userId,
-        customerData: JSON.stringify(customerData, null, 2)
-      })
 
       const customer = await stripe.customers.create(customerData)
+      logger.info('✅ [STRIPE] Customer created successfully', { userId, customerId: customer.id })
 
-      logger.info('✅ STEP 7: Stripe customer created successfully', {
-        userId,
-        customerId: customer.id,
-        customerEmail: customer.email,
-        customerName: customer.name
-      })
-
-      // Log antes do upsert no Supabase
+      // 🔧 FIX: Upsert mais robusto e atômico
       const upsertData = {
         user_id: userId,
         stripe_customer_id: customer.id,
-        plan_type: 'free' as 'free' | 'starter' | 'enterprise' | 'unlimited',
-        status: 'active'
+        plan_type: 'free' as ValidPlanType,
+        status: 'active',
+        updated_at: new Date().toISOString()
       }
 
-      // ✅ Se havia um customer antigo (test mode), loggar a migração
-      if (existingSubscription?.stripe_customer_id) {
-        logger.info('🔄 STEP 7b: Migrating from test mode customer to live mode customer', {
-          userId,
-          oldCustomerId: existingSubscription.stripe_customer_id,
-          newCustomerId: customer.id,
-          migrationReason: 'Test mode customer detected with live mode keys'
-        })
-      }
-
-      logger.info('🔍 STEP 8: Preparing upsert to subscriptions table', {
-        userId,
-        upsertData: JSON.stringify(upsertData, null, 2),
-        tableName: 'subscriptions'
-      })
-
-      const { data: upsertResult, error: upsertError } = await supabaseAdmin
+      const { error: upsertError } = await supabaseAdmin
         .from('subscriptions')
-        .upsert(upsertData)
+        .upsert(upsertData, { 
+          onConflict: 'user_id',
+          ignoreDuplicates: false 
+        })
 
-      // Log detalhado do resultado do upsert
       if (upsertError) {
-        logger.error('❌ STEP 9: UPSERT FAILED', {
+        logger.error('❌ [STRIPE] Failed to save customer to database', {
           userId,
-          customerId: customer.id,
-          upsertError: {
-            message: upsertError.message,
-            details: upsertError.details,
-            hint: upsertError.hint,
-            code: upsertError.code
-          },
-          upsertData,
-          timestamp: new Date().toISOString()
+          error: upsertError.message,
+          customerId: customer.id
         })
-        throw new Error(`Upsert failed: ${upsertError.message}`)
-      } else {
-        logger.info('✅ STEP 9: UPSERT SUCCESSFUL', {
-          userId,
-          customerId: customer.id,
-          upsertResult,
-          upsertData,
-          timestamp: new Date().toISOString()
-        })
+        
+        // 🔧 FIX: Cleanup - deletar customer do Stripe se DB falhou
+        try {
+          await stripe.customers.del(customer.id)
+          logger.info('🧹 [STRIPE] Cleaned up Stripe customer after DB failure')
+        } catch (cleanupError) {
+          logger.error('❌ [STRIPE] Failed to cleanup Stripe customer', cleanupError)
+        }
+        
+        throw new Error(`Database error: ${upsertError.message}`)
       }
 
-      logger.info('✅ STEP 10: createCustomer completed successfully', {
-        userId,
-        customerId: customer.id,
-        totalSteps: 10,
-        timestamp: new Date().toISOString()
-      })
+      logger.info('✅ [STRIPE] Customer creation completed', { userId, customerId: customer.id })
 
       return customer.id
     } catch (error: any) {
-      logger.error('❌ CRITICAL ERROR in createCustomer:', {
+      logger.error('❌ [STRIPE] createCustomer failed:', {
         userId,
-        email,
-        name,
-        error: {
-          message: error.message,
-          stack: error.stack,
-          code: error.code,
-          type: error.type,
-          name: error.name
-        },
-        timestamp: new Date().toISOString()
+        error: error.message,
+        errorType: error.constructor.name
       })
       throw error
     }
+  }
+
+  // 🔧 FIX: Método auxiliar para extrair nome do usuário
+  private extractUserName(user: any): string {
+    // Tentar diferentes fontes de nome
+    if (user.user_metadata?.name) {
+      return user.user_metadata.name
+    }
+    if (user.user_metadata?.full_name) {
+      return user.user_metadata.full_name
+    }
+    if (user.raw_user_meta_data?.name) {
+      return user.raw_user_meta_data.name
+    }
+    if (user.raw_user_meta_data?.full_name) {
+      return user.raw_user_meta_data.full_name
+    }
+    // Fallback para email
+    return user.email?.split('@')[0] || 'User'
   }
 
   async createCheckoutSession(
@@ -305,42 +257,53 @@ class StripeService {
         hasEmail: !!authUser.user.email 
       })
 
-      // Buscar profile (opcional)
-      logger.info('🔍 [STRIPE] Fetching user profile...')
-      const { data: profile, error: profileError } = await supabaseAdmin
+      // 🔧 FIX: Buscar e criar profile com tratamento robusto
+      let profile: any = null
+      const { data: existingProfile, error: profileError } = await supabaseAdmin
         .from('profiles')
         .select('name, email')
         .eq('id', userId)
-        .single()
+        .maybeSingle()
 
       if (profileError) {
-        logger.warn('⚠️ [STRIPE] Profile not found, will create minimal one', { 
-          userId, 
-          error: profileError.message 
-        })
+        logger.warn('⚠️ [STRIPE] Error fetching profile:', profileError.message)
+      }
+
+      if (!existingProfile) {
+        logger.info('🔍 [STRIPE] No profile found, creating one...')
         
-        // Criar profile básico se não existir
-        const { error: createError } = await supabaseAdmin
+        // 🔧 FIX: Extrair nome dos metadados de auth corretamente
+        const extractedName = this.extractUserName(authUser.user)
+        
+        const profileData = {
+          id: userId,
+          email: authUser.user.email,
+          name: extractedName,
+          subscription: 'free' as ValidPlanType, // 🔧 FIX: Novos usuários começam com 'free'
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+
+        const { data: newProfile, error: createError } = await supabaseAdmin
           .from('profiles')
-          .upsert({
-            id: userId,
-            email: authUser.user.email,
-            name: authUser.user.user_metadata?.name || authUser.user.email?.split('@')[0] || 'User',
-            subscription: 'starter',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'id' })
+          .upsert(profileData, { onConflict: 'id' })
+          .select('name, email')
+          .single()
 
         if (createError) {
-          logger.error('❌ [STRIPE] Failed to create profile', createError)
-          // Não bloquear checkout por isso
-        } else {
-          logger.info('✅ [STRIPE] Profile created successfully')
+          logger.error('❌ [STRIPE] Failed to create profile:', createError.message)
+          throw new Error(`Profile creation failed: ${createError.message}`)
         }
+        
+        profile = newProfile
+        logger.info('✅ [STRIPE] Profile created successfully', { name: profile?.name })
+      } else {
+        profile = existingProfile
+        logger.info('✅ [STRIPE] Profile found', { name: profile?.name })
       }
 
       const userEmail = authUser.user.email
-      const userName = profile?.name || authUser.user.user_metadata?.name || authUser.user.email?.split('@')[0] || 'User'
+      const userName = profile?.name || this.extractUserName(authUser.user)
 
       logger.info('📋 [STRIPE] User data for checkout:', { 
         userId, 

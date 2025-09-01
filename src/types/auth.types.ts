@@ -37,10 +37,11 @@ export interface LoginDto {
 }
 
 export interface RegisterDto {
-  name: string
+  name?: string
+  fullName?: string
   email: string
   password: string
-  confirmPassword: string
+  confirmPassword?: string
 }
 
 export interface AuthResponse {

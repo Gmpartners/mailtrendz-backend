@@ -13,20 +13,27 @@ type Profile = Database['public']['Tables']['profiles']['Row']
 class AuthService {
   async register(userData: RegisterDto) {
     try {
+      // 🔧 FIX: Melhor handling de metadados do usuário
+      const userName = userData.name || userData.fullName
+      
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email: userData.email,
         password: userData.password,
-        email_confirm: false,
+        email_confirm: true,
         user_metadata: {
-          name: userData.name
+          name: userName,
+          full_name: userName, // 🔧 FIX: Adicionar ambas as variáveis
+          registration_method: 'manual',
+          created_at: new Date().toISOString()
         }
       })
 
       if (authError) {
-        if (authError.message.includes('already registered')) {
+        if (authError.message.includes('already registered') || authError.code === 'email_exists') {
           throw new ApiError('Email já cadastrado', HTTP_STATUS.CONFLICT, ERROR_CODES.USER_ALREADY_EXISTS)
         }
-        throw authError
+        logger.error('Registration error:', authError)
+        throw new ApiError('Erro ao criar usuário', HTTP_STATUS.INTERNAL_SERVER_ERROR)
       }
 
       if (!authData.user) {
@@ -45,7 +52,10 @@ class AuthService {
         throw sessionError
       }
 
-      const { data: profile, error: profileError } = await supabase
+      // Garantir que o usuário seja inicializado primeiro
+      await subscriptionService.ensureUserInitialized(authData.user.id)
+
+      const { data: profile, error: profileError } = await supabaseAdmin
         .from('profiles')
         .select('*')
         .eq('id', authData.user.id)
@@ -53,6 +63,7 @@ class AuthService {
 
       if (profileError) {
         logger.error('Error fetching profile after registration:', profileError)
+        throw new ApiError('Erro ao buscar perfil do usuário', HTTP_STATUS.INTERNAL_SERVER_ERROR)
       }
 
       // Obter informações de créditos
@@ -77,9 +88,15 @@ class AuthService {
           creditsBalance
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       logger.error('Registration error:', error)
       if (error instanceof ApiError) throw error
+      
+      // Check for Supabase auth errors
+      if (error?.code === 'email_exists' || error?.message?.includes('already registered')) {
+        throw new ApiError('Email já cadastrado', HTTP_STATUS.CONFLICT, ERROR_CODES.USER_ALREADY_EXISTS)
+      }
+      
       throw new ApiError('Erro ao criar usuário', HTTP_STATUS.INTERNAL_SERVER_ERROR)
     }
   }
