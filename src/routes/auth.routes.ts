@@ -3,6 +3,7 @@ import AuthController from '../controllers/auth.controller'
 import DebugController from '../controllers/debug.controller'
 import { authLimiter } from '../middleware/rate-limit.middleware'
 import { authenticateToken } from '../middleware/auth.middleware'
+import { trackingMiddleware } from '../middleware/auto-tracking.middleware'
 import {
   validateRegister,
   validateLogin,
@@ -14,8 +15,8 @@ import {
 
 const router = Router()
 
-// Rotas públicas (sem autenticação)
-router.post('/register', authLimiter, validateRegister, AuthController.register)
+// Rotas públicas (sem autenticação) - com tracking automático
+router.post('/register', authLimiter, validateRegister, trackingMiddleware.registration, AuthController.register)
 router.post('/login', authLimiter, validateLogin, AuthController.login)
 router.post('/social-login', authLimiter, AuthController.socialLogin)
 

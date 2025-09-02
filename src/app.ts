@@ -42,6 +42,7 @@ import subscriptionRoutes from './routes/subscription.routes'
 import creditsRoutes from './routes/credits.routes'
 import webhookRoutes from './routes/webhook.routes'
 import translationRoutes from './routes/translation.routes'
+import trackingRoutes from './routes/tracking.routes'
 
 class App {
   public app: express.Application
@@ -251,6 +252,7 @@ class App {
     this.app.use(`${API_PREFIX}/subscriptions`, subscriptionRoutes) // Rate limiting já está nas rotas
     this.app.use(`${API_PREFIX}/credits`, creditsRoutes)
     this.app.use(`${API_PREFIX}/translation`, translationRoutes)
+    this.app.use(`${API_PREFIX}/tracking`, trackingRoutes) // Rotas de tracking Facebook Conversions API
     this.app.use(`${API_PREFIX}/webhooks`, webhookRoutes) // Rotas de webhook com middleware próprio
     
 
@@ -268,6 +270,7 @@ class App {
           upload: `${API_PREFIX}/upload`,
           subscriptions: `${API_PREFIX}/subscriptions`,
           credits: `${API_PREFIX}/credits`,
+          tracking: `${API_PREFIX}/tracking`,
           webhooks: `${API_PREFIX}/webhooks`,
           health: `${API_PREFIX}/health`
         },
