@@ -99,7 +99,9 @@ class FacebookConversionsService {
 
       // Build CustomData
       const customData: any = new CustomData();
-      if (eventData.value) customData.setValue(eventData.value);
+      if (eventData.value !== undefined && eventData.value !== null) {
+        customData.setValue(eventData.value);
+      }
       if (eventData.currency) customData.setCurrency(eventData.currency);
       if (eventData.contentType) customData.setContentType(eventData.contentType);
       if (eventData.contentIds) customData.setContentIds(eventData.contentIds);
@@ -190,7 +192,7 @@ class FacebookConversionsService {
     userEmail?: string;
     userPhone?: string;
     orderId: string;
-    value: number;
+    value?: number;
     currency?: string;
     productName?: string;
     sourceUrl?: string;

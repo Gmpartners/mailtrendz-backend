@@ -19,8 +19,8 @@ async function testFacebookTracking() {
 
   console.log('\n');
 
-  // 2. Teste de Evento Genérico
-  console.log('2️⃣ Testando Evento Genérico...');
+  // 2. Teste de Evento Genérico - ViewContent sem value (deve funcionar)
+  console.log('2️⃣ Testando Evento Genérico (ViewContent sem value)...');
   try {
     const response = await axios.post(`${API_BASE}/tracking/event`, {
       eventName: 'ViewContent',
@@ -29,11 +29,32 @@ async function testFacebookTracking() {
         contentType: 'page',
         contentName: 'test_page',
         sourceUrl: 'http://localhost:5173/test'
+        // Note: No value field - ViewContent doesn't require value
       }
     });
     console.log('✅ Evento genérico:', response.data);
   } catch (error) {
     console.log('❌ Evento genérico falhou:', error.response?.data || error.message);
+  }
+
+  console.log('\n');
+
+  // 2b. Teste de ViewContent com value = 0 (deve funcionar)
+  console.log('2️⃣b Testando ViewContent com value = 0...');
+  try {
+    const response = await axios.post(`${API_BASE}/tracking/event`, {
+      eventName: 'ViewContent',
+      eventData: {
+        userEmail: 'test@mailtrendz.com',
+        contentType: 'page',
+        contentName: 'test_page_with_value_zero',
+        sourceUrl: 'http://localhost:5173/test',
+        value: 0 // This should now work with the fix
+      }
+    });
+    console.log('✅ ViewContent com value=0:', response.data);
+  } catch (error) {
+    console.log('❌ ViewContent com value=0 falhou:', error.response?.data || error.message);
   }
 
   console.log('\n');

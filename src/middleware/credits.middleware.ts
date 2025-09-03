@@ -153,6 +153,34 @@ export const checkProjectLimit = async (
       return
     }
 
+    // 🚨 CORREÇÃO EMERGENCIAL: Verificar contas ilimitadas via profiles
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('email, subscription')
+        .eq('id', req.user.id)
+        .single()
+        
+      if (profile?.subscription === 'unlimited' || profile?.subscription === 'enterprise') {
+        logger.info('[Credits Middleware] Emergency bypass for unlimited/enterprise account:', { 
+          email: profile.email,
+          subscription: profile.subscription 
+        })
+        next()
+        return
+      }
+      
+      // Bypass adicional para emails específicos
+      const bypassedEmails = ['gabriel@exemplo.com', 'admin@mailtrendz.com', 'dev@mailtrendz.com']
+      if (profile?.email && bypassedEmails.includes(profile.email.toLowerCase())) {
+        logger.info('[Credits Middleware] Emergency bypass for hardcoded email:', profile.email)
+        next()
+        return
+      }
+    } catch (profileError) {
+      logger.warn('[Credits Middleware] Could not check profile for bypass:', profileError)
+    }
+
     // Obter contagem atual de projetos
     const { count } = await supabase
       .from('projects')
@@ -161,6 +189,14 @@ export const checkProjectLimit = async (
 
     const currentCount = count || 0
     const canCreate = await subscriptionService.checkProjectLimit(req.user.id, currentCount)
+    
+    // 🚨 DEBUG: Log detalhado para diagnóstico
+    logger.info('[Credits Middleware] Project limit check:', {
+      userId: req.user.id,
+      currentCount,
+      canCreate,
+      userEmail: req.user.email
+    })
     
     if (!canCreate) {
       const upgradeInfo = await subscriptionService.getUpgradeInfo(req.user.id, 'projects')

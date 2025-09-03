@@ -38,7 +38,7 @@ class TrackingController {
           result = await facebookConversionsService.trackPurchase({
             ...enrichedEventData,
             orderId: enrichedEventData.externalId || 'unknown',
-            value: enrichedEventData.value || 0
+            value: enrichedEventData.value // Don't default to 0, let it be undefined if not provided
           });
           break;
         case 'Subscribe':

@@ -143,7 +143,7 @@ router.get('/metrics', (_req, res) => {
         generateToProject: '/api/v1/ai/generate-to-project/:projectId'
       },
       ia_service: 'openrouter-integrated',
-      model: process.env.OPENROUTER_MODEL || 'anthropic/claude-sonnet-4',
+      model: process.env.OPENROUTER_MODEL || 'anthropic/claude-4-sonnet',
       features: [
         'direct-ia-integration',
         'html-generation-with-inline-css',
@@ -256,10 +256,10 @@ router.get('/status', (_req, res) => {
       proxy: 'nodejs-backend',
       version: '4.0.0-ia-integrated-credits-fixed',
       features: {
-        emailGeneration: 'openrouter-claude-sonnet-4',
-        emailModification: 'openrouter-claude-sonnet-4',
+        emailGeneration: 'openrouter-claude-4-sonnet',
+        emailModification: 'openrouter-claude-4-sonnet',
         htmlValidation: 'nodejs-native',
-        chatProcessing: 'openrouter-claude-sonnet-4',
+        chatProcessing: 'openrouter-claude-4-sonnet',
         cssInlining: 'cheerio-native',
         concurrency: 'nodejs-native',
         creditsSystem: 'integrated-fixed',

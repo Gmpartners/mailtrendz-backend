@@ -94,7 +94,7 @@ export const RATE_LIMITS = {
 
 // AI Models
 export const AI_MODELS = {
-  PRIMARY: 'anthropic/claude-3.5-sonnet',
+  PRIMARY: 'anthropic/claude-4-sonnet',
   FALLBACKS: [
     'anthropic/claude-3-sonnet-20240229',
     'anthropic/claude-3-haiku-20240307',
@@ -133,9 +133,9 @@ export const VALIDATION = {
   PROJECT: {
     NAME_MIN_LENGTH: 3,
     NAME_MAX_LENGTH: 100,
-    DESCRIPTION_MAX_LENGTH: 500,
-    PROMPT_MIN_LENGTH: 5,        // ✅ REDUZIDO de 10 para 5
-    PROMPT_MAX_LENGTH: 2000
+    DESCRIPTION_MAX_LENGTH: 5000,    // ✅ AUMENTADO de 500 para 5000 para permitir prompts grandes
+    PROMPT_MIN_LENGTH: 5,            // ✅ REDUZIDO de 10 para 5
+    PROMPT_MAX_LENGTH: 10000         // ✅ AUMENTADO de 2000 para 10000 para prompts ainda maiores
   },
   CONVERSATION: {
     TITLE_MAX_LENGTH: 100,

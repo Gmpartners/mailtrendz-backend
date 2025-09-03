@@ -171,13 +171,30 @@ ${priority === 'speed' ? '⚡ MODO RÁPIDO: Mudança cirúrgica apenas no texto 
       }
       
       // 🆕 MODO CRIAÇÃO - Para novo email
-      return `🆕 MODO CRIAÇÃO - NOVO EMAIL HTML
+      return `🆕 MODO CRIAÇÃO - EMAIL HTML PROFISSIONAL E MODERNO
 
-🎯 OBJETIVO: Criar um email HTML profissional do zero
-- Estrutura clean e responsiva
-- Design moderno e profissional
-- Compatível com clientes de email
-- CSS inline para máxima compatibilidade`
+🎯 ESTRUTURA OBRIGATÓRIA:
+- Container principal com background cinza claro (#f3f4f6)
+- Card principal branco centralizado com sombra forte
+- Header, conteúdo e footer bem definidos
+- Botões com gradiente e hover effects
+- Espaçamento consistente e generoso
+
+🎨 DESIGN MODERNO OBRIGATÓRIO:
+- Background: #f3f4f6 (cinza claro visível)
+- Card: #ffffff com border-radius: 16px e sombra forte
+- Títulos: 32px, peso 800, cor #111827
+- Botões: gradiente azul com padding generoso e sombra
+- Typography: -apple-system, BlinkMacSystemFont, 'Segoe UI'
+- Espaçamento: 40px interno, 20px externo
+- Responsivo: adaptável para mobile
+
+🚀 ELEMENTOS VISUAIS:
+- Sombras pronunciadas para destacar o email
+- Bordas bem arredondadas (16px)
+- Gradientes nos botões
+- Hierarquia visual clara
+- Contraste forte entre fundo e conteúdo`
     }
     
     return `Você é um especialista em HTML para emails.
@@ -189,8 +206,8 @@ ${getOptimizedPrompt()}
 ⚠️ INSTRUÇÕES CRÍTICAS:
 1. RESPOSTA = APENAS HTML (nenhum texto antes/depois)
 2. HTML em linha única, sem quebras de linha
-3. CSS dentro de <style> no <head>
-4. Font-size padrão: 18px para melhor legibilidade
+3. CSS moderno dentro de <style> no <head> com classes reutilizáveis
+4. Design com bordas arredondadas, sombras sutis e espaçamento generoso
 5. NUNCA use emojis no HTML final
 6. NUNCA use URLs de exemplo (example.com, etc)
 7. Se não há imagens fornecidas, NÃO inclua <img>
@@ -280,16 +297,70 @@ ${existingHTML}`
       
     } else {
       // 🆕 PROMPT PARA CRIAÇÃO NOVA
-      prompt = `🆕 CRIAÇÃO DE NOVO EMAIL:
+      prompt = `🆕 CRIAÇÃO DE EMAIL VIBRANTE E PROFISSIONAL:
 
 INSTRUÇÃO: ${userInput}
 
-OBJETIVO: Crie um email HTML profissional do zero
-- Estrutura responsiva e moderna
-- Compatível com clientes de email  
-- CSS inline para máxima compatibilidade${existingHTML ? `
+🎯 ESTRUTURA HTML COM SEÇÕES COLORIDAS:
+<body style="margin:0; padding:0; background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);">
+  <div style="max-width:600px; margin:0 auto; padding:24px;">
+    <!-- HEADER COM GRADIENTE -->
+    <div style="background: linear-gradient(135deg, #1e40af 0%, #7c3aed 100%); border-radius:20px 20px 0 0; padding:32px; text-align:center;">
+      <h1 style="color:#ffffff; font-size:36px; font-weight:800; margin:0;">[TÍTULO IMPACTANTE]</h1>
+    </div>
+    
+    <!-- SEÇÕES ALTERNADAS COM CORES -->
+    <div style="background:#ffffff; padding:32px; border-left:1px solid #e5e7eb; border-right:1px solid #e5e7eb;">
+      [CONTEÚDO PRINCIPAL]
+    </div>
+    
+    <div style="background:#f8fafc; padding:32px; border-left:1px solid #e5e7eb; border-right:1px solid #e5e7eb;">
+      [SEÇÃO ALTERNATIVA]
+    </div>
+    
+    <!-- BOTÃO CTA DESTACADO -->
+    <div style="background:#ffffff; padding:32px; text-align:center; border-radius:0 0 20px 20px; border:1px solid #e5e7eb;">
+      <a href="#" style="background: linear-gradient(135deg, #1e40af 0%, #7c3aed 100%); color:#ffffff; padding:20px 40px; border-radius:16px; text-decoration:none; font-weight:700; font-size:18px; box-shadow:0 8px 25px rgba(30,64,175,0.3); display:inline-block; transition:transform 0.2s;">
+        [CALL TO ACTION]
+      </a>
+    </div>
+  </div>
+</body>
 
-HTML DE REFERÊNCIA (não copie, apenas inspire-se):
+🎨 SISTEMA DE CORES VIBRANTES OBRIGATÓRIO:
+- Gradiente de fundo: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)
+- Header: gradiente azul-roxo (linear-gradient(135deg, #1e40af 0%, #7c3aed 100%))
+- Seções alternadas: #ffffff (branco) e #f8fafc (azul muito claro)
+- Botões: mesmo gradiente do header com sombra colorida
+- Texto primário: #1f2937 (escuro forte)
+- Texto secundário: #6b7280 (cinza médio)
+- Destaques: #fbbf24 (amarelo), #059669 (verde), #dc2626 (vermelho)
+
+🚀 ELEMENTOS VISUAIS OBRIGATÓRIOS:
+- Bordas arredondadas: 20px nos containers principais, 16px nos botões
+- Sombras coloridas: box-shadow com a cor do gradiente (rgba)
+- Espaçamento generoso: padding 32px nas seções
+- Ícones ou emojis estratégicos para cada seção
+- Hierarquia visual clara com tamanhos de fonte diferenciados
+- Transições suaves nos botões (hover effects)
+
+${imageUrls && imageUrls.length > 0 ? `
+🖼️ TRATAMENTO DE IMAGENS CRÍTICO:
+IMAGENS FORNECIDAS: ${imageUrls.join(', ')}
+
+INSTRUÇÕES PARA INSERÇÃO DE IMAGENS:
+- SEMPRE usar as URLs EXATAS fornecidas: ${imageUrls.map(url => `<img src="${url}" />`).join(' ')}
+- Aplicar estilos: max-width:100%; height:auto; border-radius:16px; box-shadow:0 8px 25px rgba(0,0,0,0.15);
+- Posicionar em seções dedicadas com backgrounds contrastantes
+- Adicionar moldura visual com padding:24px e background diferenciado
+- Alt text descritivo e contextual para cada imagem
+- Margin:24px 0 para espaçamento adequado entre imagens e texto
+` : '🎨 SEM IMAGENS: Compense com design rico em cores, gradientes e elementos visuais impactantes'}
+
+✅ RESULTADO ESPERADO:
+Email que é uma EXPERIÊNCIA VISUAL rica e vibrante, com seções coloridas bem delimitadas, hierarquia clara e personalidade forte da marca${existingHTML ? `
+
+HTML DE REFERÊNCIA (inspire-se na estrutura):
 ${existingHTML}` : ''}`
     }
 
@@ -324,28 +395,36 @@ IMAGENS: ${imageUrls.join(', ')}`
     return content
   }
 
-  // 🔥 NOVA FUNÇÃO: Remover URLs de exemplo não substituídas
+  // 🔥 FUNÇÃO CORRIGIDA: Remover apenas URLs de exemplo específicas, preservar imagens reais
   private removeExampleUrls(html: string): string {
-    // Padrões de URLs de exemplo comuns
-    const examplePatterns = [
-      /https?:\/\/exemplo\.com[^"'\s]*/gi,
-      /https?:\/\/example\.com[^"'\s]*/gi,
-      /https?:\/\/placeholder\.com[^"'\s]*/gi,
-      /https?:\/\/demo\.com[^"'\s]*/gi,
-      /https?:\/\/test\.com[^"'\s]*/gi
+    // Padrões muito específicos de URLs de exemplo para evitar remoção acidental
+    const specificExamplePatterns = [
+      /https?:\/\/(?:www\.)?exemplo\.com(?:\/[^"'\s]*)?/gi,
+      /https?:\/\/(?:www\.)?example\.com(?:\/[^"'\s]*)?/gi,
+      /https?:\/\/(?:www\.)?placeholder\.com(?:\/[^"'\s]*)?/gi,
+      /https?:\/\/(?:www\.)?test-site\.com(?:\/[^"'\s]*)?/gi,
+      /https?:\/\/(?:www\.)?demo-site\.com(?:\/[^"'\s]*)?/gi
     ]
     
     let cleanedHtml = html
     
-    // Remover todas as tags img com URLs de exemplo
-    examplePatterns.forEach(pattern => {
-      // Remover tags img inteiras que contenham URLs de exemplo
-      cleanedHtml = cleanedHtml.replace(/<img[^>]*src=["']?[^"']*exemplo\.com[^"']*["']?[^>]*>/gi, '')
-      cleanedHtml = cleanedHtml.replace(/<img[^>]*src=["']?[^"']*example\.com[^"']*["']?[^>]*>/gi, '')
-      
-      // Remover qualquer outra referência a URLs de exemplo
-      cleanedHtml = cleanedHtml.replace(pattern, '#')
+    // Remover apenas tags img com URLs claramente de exemplo
+    specificExamplePatterns.forEach(pattern => {
+      // Remover tags img que contenham esses domínios específicos
+      cleanedHtml = cleanedHtml.replace(new RegExp(`<img[^>]*src=["']?${pattern.source}[^"']*["']?[^>]*>`, 'gi'), '')
     })
+    
+    // Log para debug
+    const imgTags = html.match(/<img[^>]*>/gi)
+    if (imgTags) {
+      logger.debug('🖼️ [IA-SERVICE] Imagens encontradas no HTML:', {
+        count: imgTags.length,
+        images: imgTags.map(img => {
+          const srcMatch = img.match(/src=["']?([^"'\s>]+)["']?/)
+          return srcMatch ? srcMatch[1] : 'src não encontrado'
+        })
+      })
+    }
     
     return cleanedHtml
   }
@@ -598,25 +677,44 @@ IMAGENS: ${imageUrls.join(', ')}`
     try {
       const $ = cheerio.load(html)
       
-      let styleTag = $('style').html()
-      if (styleTag) {
-        let bodyRule = styleTag.match(/body\s*{[^}]*}/g)
-        
-        if (!bodyRule || !bodyRule[0].includes('font-size')) {
-          styleTag = styleTag.replace(/body\s*{/, 'body { font-size: 18px;')
-          $('style').html(styleTag)
-        }
-        
-        let pRule = styleTag.match(/p\s*{[^}]*}/g)
-        if (!pRule || !pRule[0].includes('font-size')) {
-          styleTag += '\np { font-size: 18px; }'
-          $('style').html(styleTag)
-        }
-        
-        html = $.html()
+      let styleTag = $('style').html() || ''
+      
+      // Aplicar CSS moderno se não existir
+      if (!styleTag.includes('border-radius') && !styleTag.includes('.email-container')) {
+        const modernCSS = `
+          body { margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+          .email-container { max-width: 600px; margin: 0 auto; background-color: #f3f4f6; padding: 20px; }
+          .email-card { background: #ffffff; border-radius: 16px; padding: 40px; margin: 20px 0; box-shadow: 0 10px 40px rgba(0,0,0,0.12); border: 1px solid #e5e7eb; }
+          .email-header { text-align: center; margin-bottom: 32px; }
+          .email-title { font-size: 32px; font-weight: 800; color: #111827; margin-bottom: 12px; line-height: 1.2; }
+          .email-subtitle { font-size: 18px; color: #6b7280; margin-bottom: 32px; line-height: 1.5; }
+          .email-content { font-size: 16px; line-height: 1.7; color: #374151; margin-bottom: 24px; }
+          .email-button { display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: #ffffff !important; padding: 16px 40px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 16px; margin: 24px 0; text-align: center; box-shadow: 0 4px 16px rgba(59,130,246,0.3); transition: transform 0.2s; }
+          .email-button:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(59,130,246,0.4); }
+          .email-footer { background: #f9fafb; border-radius: 12px; padding: 24px; margin-top: 32px; text-align: center; color: #6b7280; font-size: 14px; }
+          .benefits-list { background: #f8fafc; border-radius: 12px; padding: 24px; margin: 24px 0; }
+          .benefit-item { display: flex; align-items: center; margin-bottom: 12px; font-size: 16px; color: #374151; }
+          .benefit-check { color: #10b981; font-weight: 700; margin-right: 12px; font-size: 18px; }
+          @media (max-width: 600px) { 
+            .email-container { padding: 10px; } 
+            .email-card { padding: 24px; margin: 10px 0; }
+            .email-title { font-size: 26px; }
+            .email-button { padding: 14px 32px; font-size: 15px; }
+          }
+        `
+        styleTag = modernCSS + styleTag
+        $('style').html(styleTag)
       }
       
-      return html
+      // Garantir font-size base se necessário
+      if (!styleTag.includes('body') || !styleTag.includes('font-size')) {
+        if (!styleTag.includes('body')) {
+          styleTag += '\nbody { font-size: 16px; line-height: 1.6; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }'
+        }
+        $('style').html(styleTag)
+      }
+      
+      return $.html()
     } catch (error) {
       logger.error('Erro ao processar HTML com Cheerio:', error)
       return html

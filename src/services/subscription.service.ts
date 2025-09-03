@@ -54,7 +54,12 @@ class SubscriptionService {
         .single()
 
       if (error) {
-        logger.error('[SubscriptionService] Error getting state:', error)
+        logger.error('[SubscriptionService] Error getting state:', { 
+          userId, 
+          error: error.message, 
+          errorCode: error.code,
+          errorDetails: error.details
+        })
         
         // ✅ NOVO: Se não encontrou dados, tentar inicializar o usuário
         if (error.code === 'PGRST116') {
@@ -540,7 +545,37 @@ class SubscriptionService {
   async checkProjectLimit(userId: string, currentProjectCount: number): Promise<boolean> {
     try {
       const state = await this.getState(userId)
-      if (!state) return false
+      if (!state) {
+        logger.error('[SubscriptionService] No subscription state found for project limit check:', { userId })
+        
+        // 🚨 FALLBACK DE EMERGÊNCIA: Verificar se é conta admin/ilimitada via profiles
+        try {
+          const { data: profile } = await supabaseAdmin
+            .from('profiles')
+            .select('email, subscription')
+            .eq('id', userId)
+            .single()
+            
+          if (profile?.subscription === 'unlimited' || profile?.subscription === 'enterprise') {
+            logger.info('[SubscriptionService] Emergency fallback - unlimited account detected:', { userId, email: profile.email })
+            return true // Permitir projetos ilimitados
+          }
+        } catch (fallbackError) {
+          logger.error('[SubscriptionService] Emergency fallback failed:', fallbackError)
+        }
+        
+        return false
+      }
+
+      // 🚨 DEBUG: Log detalhado para diagnóstico
+      logger.info('[SubscriptionService] Project limit check details:', {
+        userId,
+        currentProjectCount,
+        maxProjects: state.features.maxProjects,
+        planType: state.planType,
+        canCreate: currentProjectCount < state.features.maxProjects,
+        stateExists: !!state
+      })
 
       return currentProjectCount < state.features.maxProjects
     } catch (error) {
