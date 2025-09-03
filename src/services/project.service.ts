@@ -632,9 +632,27 @@ class ProjectService {
       }
 
 
+      // ✅ CORRIGIDO: Ordenação para mostrar mais recentes PRIMEIRO
       const sortField = query.sortBy || 'updated_at'
       const sortOrder = query.order || 'desc'
-      queryBuilder = queryBuilder.order(sortField, { ascending: sortOrder === 'asc' })
+      
+      console.log('🔍 [PROJECT SERVICE] Sorting configuration:', {
+        sortField,
+        sortOrder,
+        ascending: sortOrder === 'asc',
+        expectedResult: sortOrder === 'desc' ? 'newest first' : 'oldest first'
+      })
+      
+      // Ordenação primária - MAIS RECENTES PRIMEIRO
+      queryBuilder = queryBuilder.order(sortField, { ascending: false }) // SEMPRE false para desc
+      
+      // ✅ Ordenação secundária: se updated_at for igual, usar created_at (também mais recente primeiro)
+      if (sortField === 'updated_at') {
+        queryBuilder = queryBuilder.order('created_at', { ascending: false })
+      }
+      
+      // ✅ Ordenação terciária: nome em ordem alfabética
+      queryBuilder = queryBuilder.order('name', { ascending: true })
 
       const limit = query.limit || 20
       const offset = ((query.page || 1) - 1) * limit
@@ -715,6 +733,9 @@ class ProjectService {
           lastModified: new Date().toISOString()
         }
       }
+
+      // ✅ CORREÇÃO: Sempre atualizar timestamp quando projeto é modificado
+      projectUpdate.updated_at = new Date().toISOString()
 
       const { data: project, error } = await supabase
         .from('projects')
