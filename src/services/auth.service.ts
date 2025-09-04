@@ -484,7 +484,8 @@ class AuthService {
         message: `Login com ${userData.provider} realizado com sucesso`,
         data: {
           user: profile,
-          creditsBalance
+          creditsBalance,
+          isNewUser
         }
       }
     } catch (error) {

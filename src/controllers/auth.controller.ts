@@ -92,11 +92,11 @@ class AuthController {
       // ✅ Set secure cookies
       this.setCookies(res, tokenPair)
       
-      // ✅ Background tasks (não bloquear)
+      // ✅ Background tasks (não bloquear)  
       this.handleAsyncSocialLoginTasks({
         supabaseUserId,
         provider,
-        isNewUser: !result.data.user.created_at || new Date(result.data.user.created_at).getTime() > (Date.now() - 60000),
+        isNewUser: result.data.isNewUser || false,
         avatar
       }).catch(asyncError => {
         logger.debug('Async tasks completed with warning:', asyncError.message)
@@ -136,7 +136,8 @@ class AuthController {
           creditsBalance: result.data.creditsBalance,
           accessToken: tokenPair.accessToken,
           refreshToken: tokenPair.refreshToken,
-          expiresIn: tokenPair.expiresIn
+          expiresIn: tokenPair.expiresIn,
+          isNewUser: result.data.isNewUser || false
         }
       })
 
