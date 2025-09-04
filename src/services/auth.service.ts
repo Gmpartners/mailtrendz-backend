@@ -427,7 +427,7 @@ class AuthService {
             email: userData.email,
             name: userData.name || userData.email.split('@')[0],
             avatar: userData.avatar,
-            subscription: 'starter',
+            subscription: 'free',
             preferences: {
               defaultIndustry: null,
               defaultTone: 'profissional',
