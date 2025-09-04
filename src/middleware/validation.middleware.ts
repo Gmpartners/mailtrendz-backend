@@ -289,7 +289,7 @@ export const validatePagination = [
   
   query('sortBy')
     .optional()
-    .isIn(['createdAt', 'updatedAt', 'name', 'type', 'status'])
+    .isIn(['created_at', 'updated_at', 'name', 'type', 'status'])
     .withMessage('Campo de ordenação inválido'),
   
   query('sortOrder')
