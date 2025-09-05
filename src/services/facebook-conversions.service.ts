@@ -11,6 +11,8 @@ export interface FacebookEventData {
   eventId?: string;
   userEmail?: string;
   userPhone?: string;
+  firstName?: string;
+  lastName?: string;
   externalId?: string;
   value?: number;
   currency?: string;
@@ -93,9 +95,18 @@ class FacebookConversionsService {
       if (eventData.userPhone) {
         userData.setPhone(this.hashUserData(eventData.userPhone));
       }
+      if (eventData.firstName) {
+        userData.setFirstName(this.hashUserData(eventData.firstName));
+      }
+      if (eventData.lastName) {
+        userData.setLastName(this.hashUserData(eventData.lastName));
+      }
       if (eventData.externalId) {
         userData.setExternalId(eventData.externalId);
       }
+      
+      // ✅ FALLBACK: Garantir pelo menos Country para melhorar match rate
+      userData.setCountryCode('br');
 
       // Build CustomData
       const customData: any = new CustomData();
@@ -166,6 +177,8 @@ class FacebookConversionsService {
     eventId?: string;
     userEmail?: string;
     userPhone?: string;
+    firstName?: string;
+    lastName?: string;
     userId?: string;
     method?: string;
     sourceUrl?: string;
@@ -175,6 +188,8 @@ class FacebookConversionsService {
       eventId: data.eventId || this.generateEventId('registration'),
       userEmail: data.userEmail,
       userPhone: data.userPhone,
+      firstName: data.firstName,
+      lastName: data.lastName,
       externalId: data.userId,
       contentType: 'registration',
       sourceUrl: data.sourceUrl,
