@@ -105,8 +105,16 @@ class FacebookConversionsService {
         userData.setExternalId(eventData.externalId);
       }
       
-      // ✅ FALLBACK: Garantir pelo menos Country para melhorar match rate
-      userData.setCountryCode('br');
+      // ✅ FALLBACK: Try country methods that exist in the SDK version
+      try {
+        if (userData.setCountryCode) {
+          userData.setCountryCode('br');
+        } else if (userData.setCountry) {
+          userData.setCountry('br');
+        }
+      } catch (error) {
+        // Skip country if method doesn't exist
+      }
 
       // Build CustomData
       const customData: any = new CustomData();
