@@ -19,12 +19,34 @@ class TrackingController {
         });
       }
 
-      // Enriquecer com dados do usuário autenticado se disponível
+      // ✅ ENHANCED: Extract client IP for Facebook matching
+      const getClientIP = (req: Request): string | undefined => {
+        const forwarded = req.headers['x-forwarded-for'];
+        const clientIP = typeof forwarded === 'string' 
+          ? forwarded.split(',')[0].trim()
+          : req.connection.remoteAddress || req.socket.remoteAddress;
+        
+        // Filter out localhost/internal IPs for better matching
+        if (clientIP && !['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(clientIP)) {
+          return clientIP;
+        }
+        return undefined;
+      };
+
+      // Enriquecer com dados do usuário autenticado e IP do cliente
       const enrichedEventData = {
         ...eventData,
         userEmail: eventData.userEmail || (req as any).user?.email,
         externalId: eventData.externalId || (req as any).user?.id,
-        sourceUrl: eventData.sourceUrl || req.headers.referer || 'https://mailtrendz.com'
+        sourceUrl: eventData.sourceUrl || req.headers.referer || 'https://mailtrendz.com',
+        customData: {
+          ...eventData.customData,
+          // ✅ CRITICAL: Add client IP for Facebook matching
+          clientIpAddress: getClientIP(req),
+          // Add server-side request info
+          serverTimestamp: Date.now(),
+          userAgent: req.headers['user-agent']
+        }
       };
 
       let result: TrackingResult;
