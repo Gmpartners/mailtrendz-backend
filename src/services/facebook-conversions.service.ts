@@ -136,9 +136,9 @@ class FacebookConversionsService {
         if (eventData.customData?.fbc) {
           userData.setFbc(eventData.customData.fbc);
         }
-      } catch (fbError) {
+      } catch (fbError: any) {
         // These are optional enhancements
-        console.log('Optional Facebook parameters not available:', fbError.message);
+        console.log('Optional Facebook parameters not available:', fbError?.message || 'Unknown error');
       }
       
       // ✅ LOCATION: Country for better matching
